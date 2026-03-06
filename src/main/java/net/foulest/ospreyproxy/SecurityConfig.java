@@ -122,4 +122,108 @@ public class SecurityConfig {
         bean.addUrlPatterns("/*");
         return bean;
     }
+
+    /**
+     * Request wrapper that enforces a byte-count limit on the input stream.
+     * Aborts with 413 if the client sends more bytes than allowed, preventing
+     * oversized bodies via chunked Transfer-Encoding from bypassing Content-Length checks.
+     */
+    private static class BodyLimitRequestWrapper extends HttpServletRequestWrapper {
+
+        private final int maxBytes;
+        private final HttpServletResponse response;
+
+        BodyLimitRequestWrapper(HttpServletRequest request, int maxBytes, HttpServletResponse response) {
+            super(request);
+            this.maxBytes = maxBytes;
+            this.response = response;
+        }
+
+        @Override
+        public @NonNull ServletInputStream getInputStream() throws IOException {
+            ServletInputStream original = super.getInputStream();
+            return new LimitedServletInputStream(original, maxBytes, response);
+        }
+
+        @Override
+        public @NonNull BufferedReader getReader() throws IOException {
+            ServletInputStream inputStream = getInputStream();
+            return new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * ServletInputStream decorator that counts bytes read and sends a 413
+     * error response when the limit is exceeded.
+     */
+    private static class LimitedServletInputStream extends ServletInputStream {
+
+        private final ServletInputStream delegate;
+        private final int maxBytes;
+        private final HttpServletResponse response;
+        private final AtomicInteger bytesRead = new AtomicInteger(0);
+
+        LimitedServletInputStream(ServletInputStream delegate, int maxBytes, HttpServletResponse response) {
+            this.delegate = delegate;
+            this.maxBytes = maxBytes;
+            this.response = response;
+            bytesRead.set(0);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = delegate.read();
+
+            if (b != -1) {
+                if (bytesRead.incrementAndGet() > maxBytes) {
+                    sendError();
+                    throw new IOException("Request body too large");
+                }
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte @NonNull [] b, int off, int len) throws IOException {
+            int count = delegate.read(b, off, len);
+
+            if (count > 0) {
+                if (bytesRead.addAndGet(count) > maxBytes) {
+                    sendError();
+                    throw new IOException("Request body too large");
+                }
+            }
+            return count;
+        }
+
+        private void sendError() throws IOException {
+            if (!response.isCommitted()) {
+                response.setStatus(413);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write(BODY_TOO_LARGE_ERROR);
+                response.getWriter().flush();
+            }
+        }
+
+        @Override
+        public boolean isFinished() {
+            return delegate.isFinished();
+        }
+
+        @Override
+        public boolean isReady() {
+            return delegate.isReady();
+        }
+
+        @Override
+        public void setReadListener(ReadListener readListener) {
+            delegate.setReadListener(readListener);
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+    }
 }
