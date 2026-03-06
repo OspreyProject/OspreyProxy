@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
+import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.http.HttpServletRequest;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import org.apache.hc.client5.http.DnsResolver;
@@ -95,7 +96,7 @@ public class ProxyController {
     // Rate limit configuration (per-IP)
     private static final int IP_BURST_CAPACITY = 15;
     private static final Duration IP_BURST_DURATION = Duration.ofSeconds(1);
-    private static final int IP_SUSTAINED_CAPACITY = 150;
+    private static final int IP_SUSTAINED_CAPACITY = 600;
     private static final Duration IP_SUSTAINED_DURATION = Duration.ofMinutes(1);
 
     // Rate limit configuration (global)
@@ -104,19 +105,28 @@ public class ProxyController {
     private static final int GLOBAL_SUSTAINED_CAPACITY = 35000;
     private static final Duration GLOBAL_SUSTAINED_DURATION = Duration.ofMinutes(1);
 
-    // Rate limit buckets (per-IP)
-    private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
+    // Cache for per-IP rate-limiting burst bucket
+    private final Cache<String, Bucket> burstBuckets = Caffeine.newBuilder()
             .expireAfterWrite(1, TimeUnit.HOURS)
             .maximumSize(100_000)
             .build();
 
-    // Global rate limiter to defend against distributed attacks
-    // and prevent cache-eviction rate-limit reset attacks
-    private static final Bucket GLOBAL_BUCKET = Bucket.builder()
+    // Cache for per-IP rate-limiting sustained bucket
+    private final Cache<String, Bucket> sustainedBuckets = Caffeine.newBuilder()
+            .expireAfterWrite(1, TimeUnit.HOURS)
+            .maximumSize(100_000)
+            .build();
+
+    // Global rate-limiting burst bucket
+    private static final Bucket GLOBAL_BURST_BUCKET = Bucket.builder()
             .addLimit(Bandwidth.builder()
                     .capacity(GLOBAL_BURST_CAPACITY)
                     .refillIntervally(GLOBAL_BURST_CAPACITY, GLOBAL_BURST_DURATION)
                     .build())
+            .build();
+
+    // Global rate-limiting sustained bucket
+    private static final Bucket GLOBAL_SUSTAINED_BUCKET = Bucket.builder()
             .addLimit(Bandwidth.builder()
                     .capacity(GLOBAL_SUSTAINED_CAPACITY)
                     .refillIntervally(GLOBAL_SUSTAINED_CAPACITY, GLOBAL_SUSTAINED_DURATION)
@@ -175,14 +185,20 @@ public class ProxyController {
         // noinspection NestedMethodCall
         String ip = hashIp(request.getRemoteAddr());
 
-        // Global rate limit to defend against distributed attacks
-        if (!GLOBAL_BUCKET.tryConsume(1)) {
-            return errorResponse(429, "Global rate limit exceeded");
+        // Global rate limit
+        if (!GLOBAL_BURST_BUCKET.tryConsume(1)) {
+            return errorResponse(429, "Global burst rate limit exceeded");
+        }
+        if (!GLOBAL_SUSTAINED_BUCKET.tryConsume(1)) {
+            return errorResponse(429, "Global sustained rate limit exceeded");
         }
 
         // Per-IP rate limit
-        if (!getBucket(ip).tryConsume(1)) {
-            return errorResponse(429, "Rate limit exceeded");
+        if (!getBurstBucket(ip).tryConsume(1)) {
+            return errorResponse(429, "Per-IP burst rate limit exceeded");
+        }
+        if (!getSustainedBucket(ip).tryConsume(1)) {
+            return errorResponse(429, "Per-IP sustained rate limit exceeded");
         }
 
         String url = incoming.getOrDefault("url", "").trim();
@@ -314,18 +330,30 @@ public class ProxyController {
     }
 
     /**
-     * Gets or creates a rate limiting bucket for the given IP address.
+     * Gets or creates a rate-limiting bucket for the given IP address for burst limits.
      *
-     * @param ip - The IP address to get the bucket for.
-     * @return The rate limiting bucket associated with the IP.
+     * @param ip - The hashed IP address to get the bucket for.
+     * @return A Bucket instance for the given IP address for burst rate limiting.
      */
     @SuppressWarnings("NestedMethodCall")
-    private Bucket getBucket(@NonNull String ip) {
-        return buckets.get(ip, k -> Bucket.builder()
+    private Bucket getBurstBucket(@NonNull String ip) {
+        return burstBuckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_BURST_CAPACITY)
                         .refillIntervally(IP_BURST_CAPACITY, IP_BURST_DURATION)
                         .build())
+                .build());
+    }
+
+    /**
+     * Gets or creates a rate-limiting bucket for the given IP address for sustained limits.
+     *
+     * @param ip - The hashed IP address to get the bucket for.
+     * @return A Bucket instance for the given IP address for sustained rate limiting.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    private Bucket getSustainedBucket(@NonNull String ip) {
+        return sustainedBuckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_SUSTAINED_CAPACITY)
                         .refillIntervally(IP_SUSTAINED_CAPACITY, IP_SUSTAINED_DURATION)
