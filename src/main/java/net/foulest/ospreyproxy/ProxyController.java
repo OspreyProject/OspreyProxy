@@ -6,17 +6,21 @@ import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.http.HttpServletRequest;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.SystemDefaultDnsResolver;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.io.SocketConfig;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -31,23 +35,48 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.HexFormat;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @RestController
 public class ProxyController {
 
-    // Shared instances
+    // JSON mapper for parsing and re-serializing upstream responses
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+
+    /**
+     * Custom DNS resolver that validates resolved IPs against private ranges
+     * at connection time to prevent DNS rebinding attacks (TOCTOU).
+     */
+    private static final DnsResolver SSRF_SAFE_DNS_RESOLVER = new DnsResolver() {
+        private final SystemDefaultDnsResolver delegate = SystemDefaultDnsResolver.INSTANCE;
+
+        @Override
+        public InetAddress[] resolve(String host) throws UnknownHostException {
+            InetAddress[] addresses = delegate.resolve(host);
+
+            for (InetAddress addr : addresses) {
+                if (isPrivateAddress(addr)) {
+                    throw new UnknownHostException("Blocked: resolved to private address");
+                }
+            }
+            return addresses;
+        }
+
+        @Override
+        public String resolveCanonicalHostname(String host) throws UnknownHostException {
+            return delegate.resolveCanonicalHostname(host);
+        }
+    };
+
+    // Custom RestClient with SSRF protections and timeouts
     private static final RestClient REST_CLIENT = RestClient.builder()
             .requestFactory(new HttpComponentsClientHttpRequestFactory(
                     HttpClients.custom()
                             .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
                                     .setMaxConnTotal(50)
                                     .setMaxConnPerRoute(20)
+                                    .setDnsResolver(SSRF_SAFE_DNS_RESOLVER)
                                     .setDefaultSocketConfig(SocketConfig.custom()
                                             .setSoTimeout(Timeout.ofSeconds(5))
                                             .build())
@@ -56,6 +85,7 @@ public class ProxyController {
                                     .setConnectionRequestTimeout(Timeout.ofSeconds(5))
                                     .setResponseTimeout(Timeout.ofSeconds(5))
                                     .build())
+                            .disableRedirectHandling()
                             .build()))
             .build();
 
