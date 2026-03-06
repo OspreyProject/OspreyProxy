@@ -162,6 +162,7 @@ public class ProxyController {
      * @param apiUrl      - The upstream API URL to forward the request to.
      * @return A sanitized JSON response or an appropriate error.
      */
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     private ResponseEntity<String> proxyRequest(@NonNull Map<String, String> incoming,
                                                 @NonNull HttpServletRequest request,
                                                 @NonNull BodyBuilder bodyBuilder,
@@ -220,6 +221,7 @@ public class ProxyController {
         }
 
         // Blocks URLs without allowed schemes
+        // noinspection NestedMethodCall
         if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
             return errorResponse(400, "URL scheme not allowed");
         }
@@ -322,6 +324,7 @@ public class ProxyController {
      * @param ip - The IP address to get the bucket for.
      * @return The rate limiting bucket associated with the IP.
      */
+    @SuppressWarnings("NestedMethodCall")
     private Bucket getBucket(@NonNull String ip) {
         return buckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
