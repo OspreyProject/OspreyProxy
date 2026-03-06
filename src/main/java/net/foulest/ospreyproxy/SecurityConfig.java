@@ -112,10 +112,6 @@ public class SecurityConfig {
             // Enforces HTTPS for all subdomains
             response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-            // Tries to prevent responses from being cached by proxies or clients
-            response.setHeader("Cache-Control", "no-store");
-            response.setHeader("Pragma", "no-cache");
-
             chain.doFilter(req, res);
         });
 
