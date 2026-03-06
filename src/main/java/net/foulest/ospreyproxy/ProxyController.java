@@ -302,7 +302,7 @@ public class ProxyController {
     /**
      * Helper method to create a standardized error response with a JSON body.
      *
-     * @param status  - The HTTP status code to return.
+     * @param status - The HTTP status code to return.
      * @param message - The error message to include in the response body.
      * @return A ResponseEntity with the specified status and a JSON body containing the error message.
      */
@@ -317,12 +317,5 @@ public class ProxyController {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body("{\"error\": \"Internal server error\"}");
         }
-    }
-
-    /**
-     * Clears all rate limiting buckets. For testing purposes only.
-     */
-    void resetRateLimiter() {
-        buckets.invalidateAll();
     }
 }

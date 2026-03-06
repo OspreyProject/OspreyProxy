@@ -21,11 +21,11 @@ public class SecurityConfig {
             String contentType = request.getContentType();
             MediaType parsed;
 
-            // Set default content type to application/json for all responses
+            // Sets the default content type to application/json for all responses
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
 
-            // Reject requests with no content type or blank content type
+            // Rejects requests with no content type or blank content type
             if (contentType == null || contentType.isBlank()) {
                 response.setStatus(415);
                 response.getWriter().write("{\"error\": \"Content-Type must be application/json\"}");
@@ -41,36 +41,36 @@ public class SecurityConfig {
                 return;
             }
 
-            // Only allow application/json content type for all requests
+            // Only allows application/json content types for all requests
             if (!parsed.equalsTypeAndSubtype(MediaType.APPLICATION_JSON)) {
                 response.setStatus(415);
                 response.getWriter().write("{\"error\": \"Content-Type must be application/json\"}");
                 return;
             }
 
-            // Prevent MIME-type sniffing
+            // Prevents MIME-type sniffing
             response.setHeader("X-Content-Type-Options", "nosniff");
 
-            // Prevent framing (clickjacking)
+            // Prevents framing (clickjacking)
             response.setHeader("X-Frame-Options", "DENY");
 
-            // Strict CSP — this API serves no assets
+            // Strict CSP (we don't have any assets)
             response.setHeader("Content-Security-Policy", "default-src 'none'");
 
-            // Never send Referer headers upstream
+            // Don't send referrer information to any site
             response.setHeader("Referrer-Policy", "no-referrer");
 
-            // Block XSS in older browsers
+            // Blocks XSS in older browsers
             response.setHeader("X-XSS-Protection", "1; mode=block");
 
-            // Disable access to sensitive browser APIs
+            // Disables access to sensitive browser APIs
             response.setHeader("Permissions-Policy",
                     "geolocation=(), camera=(), microphone=(), payment=()");
 
-            // Enforce HTTPS, including subdomains
+            // Enforces HTTPS for all subdomains
             response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-            // Prevent responses from being cached by proxies or clients
+            // Tries to prevent responses from being cached by proxies or clients
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Pragma", "no-cache");
 
