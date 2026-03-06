@@ -97,6 +97,16 @@ public class ProxyController {
                 AlphaMountainProvider.getApiUrl());
     }
 
+    /**
+     * Catch-all handler for all unmapped paths and methods.
+     * Returns a generic 404 JSON response to prevent Spring's default error
+     * handler from leaking path info via Problem Details.
+     */
+    @RequestMapping("/**")
+    public ResponseEntity<String> catchAll() {
+        return errorResponse(404, "Not found");
+    }
+
     // -------------------------------------------------------------------------
     // Core proxy logic
     // -------------------------------------------------------------------------
