@@ -62,15 +62,25 @@ public class ProxyController {
     // IP salt for hashing to prevent rainbow table attacks
     private static final byte[] IP_SALT = generateSalt();
 
-    // Rate limit buckets
+    // Rate limit configuration
+    private static final int MAX_IP_REQUESTS = 20;
+    private static final int MAX_GLOBAL_REQUESTS = 50000;
+    private static final Duration RATE_DURATION = Duration.ofMinutes(1);
+
+    // Rate limit buckets (per-IP)
     private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
-            .expireAfterAccess(1, TimeUnit.HOURS)
+            .expireAfterWrite(1, TimeUnit.HOURS)
             .maximumSize(100_000)
             .build();
 
-    // Rate limit configuration
-    private static final int MAX_REQUESTS = 20;
-    private static final Duration RATE_DURATION = Duration.ofMinutes(1);
+    // Global rate limiter to defend against distributed attacks
+    // and prevent cache-eviction rate-limit reset attacks
+    private static final Bucket GLOBAL_BUCKET = Bucket.builder()
+            .addLimit(Bandwidth.builder()
+                    .capacity(MAX_GLOBAL_REQUESTS)
+                    .refillIntervally(MAX_GLOBAL_REQUESTS, Duration.ofMinutes(1))
+                    .build())
+            .build();
 
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
@@ -118,7 +128,12 @@ public class ProxyController {
         // noinspection NestedMethodCall
         String ip = hashIp(request.getRemoteAddr());
 
-        // Rate limits by IP
+        // Global rate limit to defend against distributed attacks
+        if (!GLOBAL_BUCKET.tryConsume(1)) {
+            return errorResponse(429, "Rate limit exceeded");
+        }
+
+        // Per-IP rate limit
         if (!getBucket(ip).tryConsume(1)) {
             return errorResponse(429, "Rate limit exceeded");
         }
@@ -243,8 +258,8 @@ public class ProxyController {
     private Bucket getBucket(@NonNull String ip) {
         return buckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
-                        .capacity(MAX_REQUESTS)
-                        .refillIntervally(MAX_REQUESTS, RATE_DURATION)
+                        .capacity(MAX_IP_REQUESTS)
+                        .refillIntervally(MAX_IP_REQUESTS, RATE_DURATION)
                         .build())
                 .build());
     }
