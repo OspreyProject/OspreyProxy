@@ -147,8 +147,19 @@ public class ProxyController {
 
         String scheme = parsedUri.getScheme();
 
+        // Inserts 'https://' for schemeless URLs (e.g., example.com) to prevent them from being blocked
+        if (scheme == null) {
+            try {
+                parsedUri = new URI("https://" + url).normalize();
+                parsedUri.toURL(); // Called for validation only
+                scheme = parsedUri.getScheme();
+            } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+                return errorResponse(400, "Malformed URL");
+            }
+        }
+
         // Blocks URLs without allowed schemes
-        if (scheme == null || !ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
+        if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
             return errorResponse(400, "URL scheme not allowed");
         }
 
