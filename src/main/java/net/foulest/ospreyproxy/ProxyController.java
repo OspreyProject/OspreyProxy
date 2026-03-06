@@ -172,6 +172,12 @@ public class ProxyController {
 
         host = host.toLowerCase(Locale.ROOT);
 
+        // Blocks URLs with userinfo (e.g., http://user:pass@host/) to prevent
+        // URL parsing differentials between Java and upstream APIs
+        if (parsedUri.getUserInfo() != null) {
+            return errorResponse(400, "URL not allowed");
+        }
+
         // Blocks private or internal hosts
         if (isPrivateHost(host)) {
             return errorResponse(400, "URL not allowed");
