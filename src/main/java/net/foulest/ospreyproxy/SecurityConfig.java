@@ -120,6 +120,7 @@ public class SecurityConfig {
         });
 
         bean.addUrlPatterns("/*");
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return bean;
     }
 
