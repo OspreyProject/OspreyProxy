@@ -248,8 +248,23 @@ public class ProxyController {
 
         String host = parsedUri.getHost();
 
-        // Blocks URLs without hosts
+        // URI.getHost() returns null for hostnames containing underscores
+        // (technically invalid per RFC 2396 but common in real-world URLs)
+        // Fall back to manual extraction so these reach upstream validation
         if (host == null) {
+            String authority = parsedUri.getRawAuthority();
+
+            if (authority == null) {
+                return errorResponse(400, "Malformed URL");
+            }
+
+            // Strip port if present (e.g. "example.com:8080" -> "example.com")
+            int endIndex = authority.lastIndexOf(':');
+            host = authority.contains(":") ? authority.substring(0, endIndex) : authority;
+        }
+
+        // Blocks URLs with blank hosts
+        if (host.isBlank()) {
             return errorResponse(400, "Malformed URL");
         }
 
