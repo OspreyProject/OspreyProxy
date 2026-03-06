@@ -263,27 +263,49 @@ public class ProxyController {
             return true;
         }
 
-        // Block AWS/GCP/Azure metadata endpoints by name
-        if (host.equals("169.254.169.254")
-                || host.equals("metadata.google.internal")) {
+        // Block raw IP addresses used directly as hostnames.
+        // Uses numeric format detection to avoid DNS resolution (which would
+        // reintroduce the TOCTOU window this method is designed to avoid).
+        // IPv4 literals (e.g., "192.168.1.1") and IPv6 literals (e.g., "::1")
+        // are detected by format and then checked against private ranges.
+        if (isIpLiteral(host)) {
+            try {
+                InetAddress addr = InetAddress.getByName(host);
+                return isPrivateAddress(addr);
+            } catch (UnknownHostException e) {
+                // Malformed IP literal; block it to be safe
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the given host string is an IP address literal (IPv4 or IPv6)
+     * without performing any DNS resolution.
+     *
+     * @param host - The hostname to check.
+     * @return true if the host looks like an IP literal, false if it's a domain name.
+     */
+    @SuppressWarnings("CharacterComparison")
+    private static boolean isIpLiteral(@NonNull String host) {
+        // IPv6 literals from URI.getHost() come without brackets (e.g., "::1")
+        if (host.contains(":")) {
             return true;
         }
 
-        // Let InetAddress handle all IP range checks (IPv4 + IPv6)
-        try {
-            for (InetAddress addr : InetAddress.getAllByName(host)) {
-                if (addr.isLoopbackAddress()
-                        || addr.isSiteLocalAddress()
-                        || addr.isLinkLocalAddress()
-                        || addr.isAnyLocalAddress()
-                        || addr.isMulticastAddress()) {
-                    return true;
+        // IPv4: all characters must be digits or dots, and must contain at least one dot
+        if (host.contains(".")) {
+            for (int i = 0; i < host.length(); i++) {
+                char c = host.charAt(i);
+
+                if (c != '.' && (c < '0' || c > '9')) {
+                    return false;
                 }
             }
-            return false;
-        } catch (UnknownHostException e) {
             return true;
         }
+        return false;
     }
 
     /**
