@@ -100,14 +100,14 @@ public class ProxyController {
     // Rate limit configuration (per-IP)
     private static final int IP_BURST_CAPACITY = 15 * NUMBER_OF_PROVIDERS;
     private static final int IP_SUSTAINED_CAPACITY = 600 * NUMBER_OF_PROVIDERS;
-    private static final Duration IP_BURST_DURATION = Duration.ofSeconds(1);
-    private static final Duration IP_SUSTAINED_DURATION = Duration.ofMinutes(1);
 
     // Rate limit configuration (global)
     private static final int GLOBAL_BURST_CAPACITY = PEAK_CONCURRENT_USERS * IP_BURST_CAPACITY;
     private static final int GLOBAL_SUSTAINED_CAPACITY = PEAK_CONCURRENT_USERS * IP_SUSTAINED_CAPACITY;
-    private static final Duration GLOBAL_BURST_DURATION = Duration.ofSeconds(1);
-    private static final Duration GLOBAL_SUSTAINED_DURATION = Duration.ofMinutes(1);
+
+    // Refill durations for burst and sustained buckets
+    private static final Duration BURST_DURATION = Duration.ofSeconds(1);
+    private static final Duration SUSTAINED_DURATION = Duration.ofMinutes(1);
 
     // Cache for per-IP rate-limiting burst bucket
     private final Cache<String, Bucket> burstBuckets = Caffeine.newBuilder()
@@ -125,7 +125,7 @@ public class ProxyController {
     private static final Bucket GLOBAL_BURST_BUCKET = Bucket.builder()
             .addLimit(Bandwidth.builder()
                     .capacity(GLOBAL_BURST_CAPACITY)
-                    .refillIntervally(GLOBAL_BURST_CAPACITY, GLOBAL_BURST_DURATION)
+                    .refillIntervally(GLOBAL_BURST_CAPACITY, BURST_DURATION)
                     .build())
             .build();
 
@@ -133,7 +133,7 @@ public class ProxyController {
     private static final Bucket GLOBAL_SUSTAINED_BUCKET = Bucket.builder()
             .addLimit(Bandwidth.builder()
                     .capacity(GLOBAL_SUSTAINED_CAPACITY)
-                    .refillIntervally(GLOBAL_SUSTAINED_CAPACITY, GLOBAL_SUSTAINED_DURATION)
+                    .refillIntervally(GLOBAL_SUSTAINED_CAPACITY, SUSTAINED_DURATION)
                     .build())
             .build();
 
@@ -344,7 +344,7 @@ public class ProxyController {
         return burstBuckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_BURST_CAPACITY)
-                        .refillIntervally(IP_BURST_CAPACITY, IP_BURST_DURATION)
+                        .refillIntervally(IP_BURST_CAPACITY, BURST_DURATION)
                         .build())
                 .build());
     }
@@ -360,7 +360,7 @@ public class ProxyController {
         return sustainedBuckets.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_SUSTAINED_CAPACITY)
-                        .refillIntervally(IP_SUSTAINED_CAPACITY, IP_SUSTAINED_DURATION)
+                        .refillIntervally(IP_SUSTAINED_CAPACITY, SUSTAINED_DURATION)
                         .build())
                 .build());
     }
