@@ -160,11 +160,6 @@ public class ProxyController {
             return errorResponse(400, "Unexpected fields in request");
         }
 
-        // Blocks requests with excessively large bodies
-        if (request.getContentLengthLong() > 10_240) {
-            return errorResponse(413, "Request body too large");
-        }
-
         // noinspection NestedMethodCall
         String ip = hashIp(request.getRemoteAddr());
 
