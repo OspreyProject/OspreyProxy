@@ -238,11 +238,12 @@ public class ProxyController {
             return errorResponse(400, "URL not allowed");
         }
 
+        String normalizedUrl = parsedUri.toString();
         Map<String, Object> apiBody;
 
         // Builds the upstream request body
         try {
-            apiBody = bodyBuilder.build(url);
+            apiBody = bodyBuilder.build(normalizedUrl);
         } catch (RuntimeException e) {
             return errorResponse(500, "Failed to build request");
         }
