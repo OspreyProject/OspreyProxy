@@ -175,11 +175,9 @@ public class SecurityConfig {
         public int read() throws IOException {
             int b = delegate.read();
 
-            if (b != -1) {
-                if (bytesRead.incrementAndGet() > maxBytes) {
-                    sendError();
-                    throw new IOException("Request body too large");
-                }
+            if (b != -1 && bytesRead.incrementAndGet() > maxBytes) {
+                sendError();
+                throw new IOException("Request body too large");
             }
             return b;
         }
@@ -188,11 +186,9 @@ public class SecurityConfig {
         public int read(byte @NonNull [] b, int off, int len) throws IOException {
             int count = delegate.read(b, off, len);
 
-            if (count > 0) {
-                if (bytesRead.addAndGet(count) > maxBytes) {
-                    sendError();
-                    throw new IOException("Request body too large");
-                }
+            if (count > 0 && bytesRead.addAndGet(count) > maxBytes) {
+                sendError();
+                throw new IOException("Request body too large");
             }
             return count;
         }
