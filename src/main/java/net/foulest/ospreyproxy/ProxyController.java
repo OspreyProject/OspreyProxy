@@ -249,20 +249,40 @@ public class ProxyController {
 
         String rawResponse;
 
-        // Proxies the request to the upstream API
+        // Maximum allowed upstream response size (100 KB)
+        int maxResponseSize = 100_000;
+
+        // Proxies the request to the upstream API with streaming size enforcement.
+        // Uses exchange() with a byte-limited reader to abort early if the upstream
+        // sends more data than expected, preventing large responses from consuming
+        // unbounded heap memory.
         try {
             rawResponse = REST_CLIENT.post()
                     .uri(apiUrl)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(apiBody)
-                    .retrieve()
-                    .body(String.class);
+                    .exchange((req, res) -> {
+                        HttpStatusCode statusCode = res.getStatusCode();
+
+                        if (statusCode.isError()) {
+                            throw new RestClientException("Upstream returned " + statusCode);
+                        }
+
+                        try (var inputStream = res.getBody()) {
+                            byte[] buffer = inputStream.readNBytes(maxResponseSize + 1);
+
+                            if (buffer.length > maxResponseSize) {
+                                return null; // Signal that the response was too large
+                            }
+                            return new String(buffer, StandardCharsets.UTF_8);
+                        }
+                    });
         } catch (RestClientException e) {
             return errorResponse(502, "Upstream request failed");
         }
 
-        // Blocks excessively large responses to prevent abuse
-        if (rawResponse != null && rawResponse.length() > 100_000) {
+        // Blocks null upstream responses (also triggered by oversized responses)
+        if (rawResponse == null) {
             return errorResponse(502, "Upstream response too large");
         }
 
