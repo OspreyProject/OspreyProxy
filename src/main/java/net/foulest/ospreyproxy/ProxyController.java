@@ -251,6 +251,9 @@ public class ProxyController {
 
     /**
      * Checks if the host is private or internal to prevent SSRF attacks.
+     * Only performs string-based hostname checks here; IP-level blocking
+     * is handled by SSRF_SAFE_DNS_RESOLVER at connection time to avoid
+     * DNS rebinding (TOCTOU) vulnerabilities from double-resolution.
      *
      * @param host - The hostname to check.
      * @return true if the host is considered private/internal, false otherwise.
@@ -259,7 +262,8 @@ public class ProxyController {
         // Block known internal hostnames by name
         if (host.equals("localhost")
                 || host.endsWith(".local")
-                || host.endsWith(".internal")) {
+                || host.endsWith(".internal")
+                || host.endsWith(".localhost")) {
             return true;
         }
 
