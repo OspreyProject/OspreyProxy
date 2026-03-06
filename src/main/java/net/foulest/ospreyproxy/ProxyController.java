@@ -177,7 +177,7 @@ public class ProxyController {
 
         // Global rate limit to defend against distributed attacks
         if (!GLOBAL_BUCKET.tryConsume(1)) {
-            return errorResponse(429, "Rate limit exceeded");
+            return errorResponse(429, "Global rate limit exceeded");
         }
 
         // Per-IP rate limit
