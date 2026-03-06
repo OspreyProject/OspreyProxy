@@ -4,7 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.http.HttpServletRequest;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import org.apache.hc.client5.http.DnsResolver;
@@ -93,16 +92,21 @@ public class ProxyController {
     // IP salt for hashing to prevent rainbow table attacks
     private static final byte[] IP_SALT = generateSalt();
 
+    // Number of active providers to scale rate limits by
+    private static final int NUMBER_OF_PROVIDERS = 1;
+    private static final int WEEKLY_USERS = 6_000;
+    private static final int PEAK_CONCURRENT_USERS = (int) (WEEKLY_USERS / 7.0 * 0.12 * 1.5);
+
     // Rate limit configuration (per-IP)
-    private static final int IP_BURST_CAPACITY = 15;
+    private static final int IP_BURST_CAPACITY = 15 * NUMBER_OF_PROVIDERS;
+    private static final int IP_SUSTAINED_CAPACITY = 600 * NUMBER_OF_PROVIDERS;
     private static final Duration IP_BURST_DURATION = Duration.ofSeconds(1);
-    private static final int IP_SUSTAINED_CAPACITY = 600;
     private static final Duration IP_SUSTAINED_DURATION = Duration.ofMinutes(1);
 
     // Rate limit configuration (global)
-    private static final int GLOBAL_BURST_CAPACITY = 3500;
+    private static final int GLOBAL_BURST_CAPACITY = PEAK_CONCURRENT_USERS * IP_BURST_CAPACITY;
+    private static final int GLOBAL_SUSTAINED_CAPACITY = PEAK_CONCURRENT_USERS * IP_SUSTAINED_CAPACITY;
     private static final Duration GLOBAL_BURST_DURATION = Duration.ofSeconds(1);
-    private static final int GLOBAL_SUSTAINED_CAPACITY = 35000;
     private static final Duration GLOBAL_SUSTAINED_DURATION = Duration.ofMinutes(1);
 
     // Cache for per-IP rate-limiting burst bucket
@@ -448,7 +452,7 @@ public class ProxyController {
             byte[] bytes = addr.getAddress();
             int first = bytes[0] & 0xFF;
             int second = bytes[1] & 0xFF;
-            return first == 100 && (second >= 64 && second <= 127);
+            return first == 100 && second >= 64 && second <= 127;
         }
         return false;
     }
