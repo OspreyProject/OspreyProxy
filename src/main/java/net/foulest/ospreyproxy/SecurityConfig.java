@@ -11,6 +11,9 @@ import org.springframework.http.MediaType;
 @Configuration
 public class SecurityConfig {
 
+    // Constant for error message thrown when the content type is invalid
+    private static final String CONTENT_TYPE_ERROR = "{\"error\": \"Content-Type must be application/json\"}";
+
     @Bean
     public FilterRegistrationBean<Filter> securityHeaders() {
         FilterRegistrationBean<Filter> bean = new FilterRegistrationBean<>();
@@ -28,7 +31,7 @@ public class SecurityConfig {
             // Rejects requests with no content type or blank content type
             if (contentType == null || contentType.isBlank()) {
                 response.setStatus(415);
-                response.getWriter().write("{\"error\": \"Content-Type must be application/json\"}");
+                response.getWriter().write(CONTENT_TYPE_ERROR);
                 return;
             }
 
@@ -37,14 +40,14 @@ public class SecurityConfig {
                 parsed = MediaType.parseMediaType(contentType);
             } catch (RuntimeException e) {
                 response.setStatus(415);
-                response.getWriter().write("{\"error\": \"Content-Type must be application/json\"}");
+                response.getWriter().write(CONTENT_TYPE_ERROR);
                 return;
             }
 
             // Only allows application/json content types for all requests
             if (!parsed.equalsTypeAndSubtype(MediaType.APPLICATION_JSON)) {
                 response.setStatus(415);
-                response.getWriter().write("{\"error\": \"Content-Type must be application/json\"}");
+                response.getWriter().write(CONTENT_TYPE_ERROR);
                 return;
             }
 
