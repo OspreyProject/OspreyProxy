@@ -19,6 +19,12 @@ public class AlphaMountainProvider {
         if (API_KEY == null || API_KEY.isBlank()) {
             throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is not set");
         }
+
+        // Enforce HTTPS to prevent API key exposure in cleartext
+        // noinspection ConstantValue
+        if (!API_URL.startsWith("https://")) {
+            throw new IllegalStateException("AlphaMountain API URL must use HTTPS");
+        }
     }
 
     /**
