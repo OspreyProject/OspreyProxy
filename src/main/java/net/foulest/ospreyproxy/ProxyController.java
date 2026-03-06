@@ -290,11 +290,6 @@ public class ProxyController {
             return errorResponse(502, "Upstream request failed");
         }
 
-        // Blocks null upstream responses (also triggered by oversized responses)
-        if (rawResponse == null) {
-            return errorResponse(502, "Upstream response too large");
-        }
-
         // Parses and re-serializes the response to strip any unexpected content
         try {
             JsonNode json = MAPPER.readTree(rawResponse);
