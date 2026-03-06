@@ -1,3 +1,3 @@
 ## OspreyProxy
 
-Backend code for our [REST API](https://api.osprey.ac) located in Frankfurt, DE for [Osprey](https://osprey.ac).
+Backend code for our [proxy server](https://api.osprey.ac) located in Frankfurt, DE, for [Osprey: Browser Protection](https://osprey.ac).
