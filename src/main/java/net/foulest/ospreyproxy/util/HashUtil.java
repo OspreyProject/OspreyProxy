@@ -41,8 +41,10 @@ public final class HashUtil {
 
     /**
      * Hashes the IP address using SHA-256 with a salt to prevent rainbow table attacks.
+     * Uses getIfPresent() fast-path to avoid Caffeine locking on cache hits,
+     * and ThreadLocal MessageDigest to avoid getInstance() overhead on misses.
      *
-     * @param ip - The IP address to hash.
+     * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
      */
     public static String hashIp(@NonNull String ip) {

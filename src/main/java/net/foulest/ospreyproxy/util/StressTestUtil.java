@@ -50,16 +50,6 @@ public final class StressTestUtil {
      * Generates a synthetic IP address for each request in stress test mode.
      * This exercises the Caffeine rate limiter cache with distinct keys rather than
      * all requests sharing the same IP, which would not reflect real-world behavior.
-     * <p>
-     * Uses a single ThreadLocalRandom.nextLong() call instead of four bounded nextInt()
-     * calls. Flame graph shows RandomSupport.boundedNextInt as hot due to rejection
-     * sampling overhead. Extracting octets via bit shifts from one unbounded call
-     * eliminates both the bound checks and the StringBuilder from string concatenation.
-     * <p>
-     * The IP space is limited to ~65K unique addresses (10.X.Y.1) to balance
-     * cache miss rate vs allocation pressure. With 4 billion unique IPs, every
-     * request was a Caffeine cache miss, triggering Bucket + BucketConfiguration
-     * + BucketState64BitsInteger allocation on every call.
      *
      * @return A string that will be treated as a distinct IP by the rate limiter.
      */

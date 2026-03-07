@@ -43,7 +43,7 @@ public final class BucketUtil {
     /**
      * Gets or creates a rate-limiting burst bucket for the given IP address.
      *
-     * @param ip - The hashed IP address to get the bucket for.
+     * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for burst rate limiting.
      */
     @SuppressWarnings("NestedMethodCall")
@@ -59,7 +59,7 @@ public final class BucketUtil {
     /**
      * Gets or creates a rate-limiting sustained bucket for the given IP address.
      *
-     * @param ip - The hashed IP address to get the bucket for.
+     * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for sustained rate limiting.
      */
     @SuppressWarnings("NestedMethodCall")

@@ -11,7 +11,7 @@ import java.util.Map;
  * Each provider implements only the methods relevant to its API style.
  * POST providers override {@link #buildBody}; GET providers override
  * {@link #getMethod} and {@link #buildRequestUrl}.
- * All validation and proxying logic lives in ProxyController.proxyRequest().
+ * All validation and proxying logic lives in ProxyHandler.proxyRequest().
  */
 @FunctionalInterface
 public interface Provider {
@@ -48,7 +48,7 @@ public interface Provider {
      * Builds the request body for POST providers.
      * Returns null for GET providers.
      *
-     * @param url - The validated URL to check.
+     * @param url The validated URL to check.
      * @return The request body map, or null for GET providers.
      */
     default @Nullable Map<String, Object> buildBody(@NonNull String url) {
@@ -60,7 +60,7 @@ public interface Provider {
      * For POST providers this defaults to {@link #getApiUrl()}.
      * For GET providers this should encode the target URL into the path.
      *
-     * @param url - The validated URL to check.
+     * @param url The validated URL to check.
      * @return The full upstream request URL.
      */
     default @NonNull String buildRequestUrl(@NonNull String url) {
