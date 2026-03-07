@@ -38,6 +38,9 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Global security configuration for the proxy server.
+ */
 @Configuration
 public class SecurityConfig {
 

@@ -56,8 +56,6 @@ import java.util.Set;
 
 /**
  * Functional request handler for all proxy endpoints.
- *
- * @author Foulest
  */
 @Component
 public class ProxyHandler {

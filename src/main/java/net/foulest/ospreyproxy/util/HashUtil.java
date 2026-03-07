@@ -31,8 +31,6 @@ import java.util.HexFormat;
 
 /**
  * Utility class for hashing IP addresses with a salt.
- *
- * @author Foulest
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HashUtil {

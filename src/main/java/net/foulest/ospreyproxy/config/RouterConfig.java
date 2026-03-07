@@ -35,8 +35,6 @@ import org.springframework.web.reactive.function.server.ServerResponse;
  * {@code RequestMappingInfo}, {@code InvocableHandlerMethod}, etc.).
  * <p>
  * Routes are matched top-to-bottom; the catch-all must be last.
- *
- * @author Foulest
  */
 @Configuration
 public class RouterConfig {

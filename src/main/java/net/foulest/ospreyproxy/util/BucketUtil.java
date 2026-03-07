@@ -30,8 +30,6 @@ import java.time.Duration;
 
 /**
  * Utility class for managing rate-limiting buckets using Bucket4j and Caffeine.
- *
- * @author Foulest
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BucketUtil {

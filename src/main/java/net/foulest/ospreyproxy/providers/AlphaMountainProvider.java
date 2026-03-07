@@ -23,6 +23,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * Provider implementation for AlphaMountain.
+ */
 @Component
 public class AlphaMountainProvider implements Provider {
 

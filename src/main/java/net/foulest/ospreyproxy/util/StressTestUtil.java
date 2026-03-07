@@ -35,8 +35,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * synthetic IP to simulate distinct users and exercise the rate limiter cache.
  * <p>
  * This mode must never be enabled in production.
- *
- * @author Foulest
  */
 @Component
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

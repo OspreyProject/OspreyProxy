@@ -25,6 +25,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+/**
+ * Provider implementation for PrecisionSec.
+ */
 @Component
 public class PrecisionSecProvider implements Provider {
 

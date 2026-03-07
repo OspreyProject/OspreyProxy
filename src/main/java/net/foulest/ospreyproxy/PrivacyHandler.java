@@ -59,8 +59,6 @@ import java.util.Properties;
  * Also exposes the Git commit hash and JAR SHA-256 checksum so that anyone
  * can clone the repo, build the same commit, and verify that the checksum
  * matches, proving the open source code is what's actually running.
- *
- * @author Foulest
  */
 @Component
 public class PrivacyHandler {

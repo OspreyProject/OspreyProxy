@@ -29,8 +29,6 @@ import java.util.Arrays;
 
 /**
  * Utility class for checking if an IP address or hostname is private/internal to prevent SSRF attacks.
- *
- * @author Foulest
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class IPUtil {
