@@ -22,8 +22,8 @@ public final class IPUtil {
      * Checks if an InetAddress is private or internal.
      * Used by the SSRF-safe DNS resolver at connection time.
      *
-     * @param addr - The InetAddress to check.
-     * @return true if the address is private/internal, false otherwise.
+     * @param addr The InetAddress to check.
+     * @return True if the address is private/internal, false otherwise.
      */
     public static boolean isPrivateAddress(@NonNull InetAddress addr) {
         // Block standard private and special-use ranges
@@ -106,8 +106,8 @@ public final class IPUtil {
      * is handled by SSRF_SAFE_DNS_RESOLVER at connection time to avoid
      * DNS rebinding (TOCTOU) vulnerabilities from double-resolution.
      *
-     * @param host - The hostname to check.
-     * @return true if the host is considered private/internal, false otherwise.
+     * @param host The hostname to check.
+     * @return True if the host is considered private/internal, false otherwise.
      */
     public static boolean isPrivateHost(@NonNull String host) {
         // Block known internal hostnames by name
@@ -139,8 +139,8 @@ public final class IPUtil {
      * Checks if the given host string is an IP address literal (IPv4 or IPv6)
      * without performing any DNS resolution.
      *
-     * @param host - The hostname to check.
-     * @return true if the host looks like an IP literal, false if it's a domain name.
+     * @param host The hostname to check.
+     * @return True if the host looks like an IP literal, false if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
     private static boolean isIpLiteral(@NonNull String host) {
