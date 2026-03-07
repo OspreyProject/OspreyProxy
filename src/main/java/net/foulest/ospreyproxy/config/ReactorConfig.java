@@ -26,6 +26,9 @@ public class ReactorConfig {
 
         // Disable Netty resource leak detection in production
         ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.DISABLED);
+
+        // Ensure Reactor Netty access log is disabled via system property
+        System.setProperty("reactor.netty.http.server.accessLogEnabled", "false");
     }
 
     /**
