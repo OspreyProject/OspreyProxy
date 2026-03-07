@@ -70,6 +70,9 @@ public class ProxyController {
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
 
+    // Maximum allowed upstream response size in bytes (100 KB)
+    private static final int MAX_RESPONSE_SIZE = 100_000;
+
     // Custom RestClient with SSRF protections and timeouts
     private static final RestClient REST_CLIENT = RestClient.builder()
             .requestFactory(new HttpComponentsClientHttpRequestFactory(
@@ -241,9 +244,6 @@ public class ProxyController {
         String normalizedUrl = parsedUri.toString();
         String rawResponse;
 
-        // Maximum allowed upstream response size (100 KB)
-        int maxResponseSize = 100_000;
-
         // Proxies the request to the upstream provider.
         // Uses exchange() with a byte-limited reader to abort early if the upstream
         // sends more data than expected, preventing large responses from consuming
@@ -281,9 +281,9 @@ public class ProxyController {
                 }
 
                 try (var inputStream = res.getBody()) {
-                    byte[] buffer = inputStream.readNBytes(maxResponseSize + 1);
+                    byte[] buffer = inputStream.readNBytes(MAX_RESPONSE_SIZE + 1);
 
-                    if (buffer.length > maxResponseSize) {
+                    if (buffer.length > MAX_RESPONSE_SIZE) {
                         return null; // Signal that the response was too large
                     }
                     return new String(buffer, StandardCharsets.UTF_8);
