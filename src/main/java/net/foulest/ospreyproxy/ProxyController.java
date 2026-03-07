@@ -180,8 +180,7 @@ public class ProxyController {
         // Parses and validates the URL
         try {
             parsedUri = new URI(url).normalize();
-            parsedUri.toURL(); // Called for validation only
-        } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+        } catch (URISyntaxException | IllegalArgumentException e) {
             return errorResponse(400, "Malformed URL");
         }
 
