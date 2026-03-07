@@ -23,7 +23,11 @@ repositories {
 dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.2.0'
     implementation 'com.bucket4j:bucket4j-core:8.10.1'
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    implementation('org.springframework.boot:spring-boot-starter-webflux') {
+        // Exclude Reactor debug agent
+        exclude group: 'io.projectreactor', module: 'reactor-tools'
+    }
 
     // JetBrains Annotations - for code inspection and documentation
     // https://mvnrepository.com/artifact/org.jetbrains/annotations
