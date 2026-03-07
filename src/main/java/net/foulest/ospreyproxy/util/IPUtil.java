@@ -26,6 +26,7 @@ public final class IPUtil {
      * @return true if the address is private/internal, false otherwise.
      */
     public static boolean isPrivateAddress(@NotNull InetAddress addr) {
+        // Block standard private and special-use ranges
         if (addr.isLoopbackAddress()
                 || addr.isSiteLocalAddress()
                 || addr.isLinkLocalAddress()
@@ -34,9 +35,18 @@ public final class IPUtil {
             return true;
         }
 
+        // Block carrier-grade NAT range (100.64.0.0/10)
+        if (addr instanceof Inet4Address v4) {
+            byte[] bytes = v4.getAddress();
+            int first = bytes[0] & 0xFF;
+            int second = bytes[1] & 0xFF;
+            return first == 100 && second >= 64 && second <= 127;
+        }
+
         // Block IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1, ::ffff:169.254.169.254)
         if (addr instanceof Inet6Address v6) {
             byte[] bytes = v6.getAddress();
+            int firstByte = addr.getAddress()[0] & 0xFF;
             boolean isMapped = true;
 
             // Check for ::ffff:x.x.x.x (IPv4-mapped IPv6)
@@ -58,33 +68,21 @@ public final class IPUtil {
                     return true;
                 }
             }
-        }
 
-        // Block IPv6 unique-local addresses (fc00::/7, e.g., fd00:ec2::254 AWS metadata)
-        if (addr instanceof Inet6Address) {
-            int firstByte = addr.getAddress()[0] & 0xFF;
-
+            // Block IPv6 unique-local addresses (fc00::/7, e.g., fd00:ec2::254 AWS metadata)
             if ((firstByte & 0xFE) == 0xFC) {
                 return true;
             }
-        }
 
-        // Block IPv6 Teredo addresses (2001:0000::/32) which can encapsulate arbitrary
-        // private IPv4 addresses that Java's standard checks won't flag
-        if (addr instanceof Inet6Address) {
-            byte[] bytes = addr.getAddress();
-
+            // Block IPv6 Teredo addresses (2001:0000::/32) which can encapsulate arbitrary
+            // private IPv4 addresses that Java's standard checks won't flag
             if ((bytes[0] & 0xFF) == 0x20 && bytes[1] == 0x01
                     && bytes[2] == 0x00 && bytes[3] == 0x00) {
                 return true;
             }
-        }
 
-        // Block IPv6 6to4 addresses (2002::/16) which embed IPv4 addresses in bytes 2-5
-        // (e.g., 2002:a9fe:a9fe:: encapsulates 169.254.169.254)
-        if (addr instanceof Inet6Address) {
-            byte[] bytes = addr.getAddress();
-
+            // Block IPv6 6to4 addresses (2002::/16) which embed IPv4 addresses in bytes 2-5
+            // (e.g., 2002:a9fe:a9fe:: encapsulates 169.254.169.254)
             if ((bytes[0] & 0xFF) == 0x20 && (bytes[1] & 0xFF) == 0x02) {
                 byte[] embeddedV4 = Arrays.copyOfRange(bytes, 2, 6);
 
@@ -98,14 +96,6 @@ public final class IPUtil {
                     return true;
                 }
             }
-        }
-
-        // Block carrier-grade NAT range (100.64.0.0/10)
-        if (addr instanceof Inet4Address) {
-            byte[] bytes = addr.getAddress();
-            int first = bytes[0] & 0xFF;
-            int second = bytes[1] & 0xFF;
-            return first == 100 && second >= 64 && second <= 127;
         }
         return false;
     }
