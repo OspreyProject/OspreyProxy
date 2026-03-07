@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Component
-public class AlphaMountainProvider {
+public class AlphaMountainProvider implements Provider {
 
     // API key and URL
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
@@ -27,21 +27,12 @@ public class AlphaMountainProvider {
         }
     }
 
-    /**
-     * Returns the upstream API URL for the provider.
-     *
-     * @return The AlphaMountainProvider API URL.
-     */
+    @Override
     public @NotNull String getApiUrl() {
         return API_URL;
     }
 
-    /**
-     * Builds the request body for the API.
-     *
-     * @param url - The URL to check.
-     * @return The request body map expected by the API.
-     */
+    @Override
     public @NotNull Map<String, Object> buildBody(@NotNull String url) {
         Map<String, Object> body = new HashMap<>();
         body.put("uri", url);
