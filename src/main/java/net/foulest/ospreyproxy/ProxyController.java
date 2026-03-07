@@ -146,16 +146,6 @@ public class ProxyController {
         // noinspection NestedMethodCall
         String hashedIp = HashUtil.hashIp(request.getRemoteAddr());
 
-        // Global burst rate limit
-        if (!BucketUtil.GLOBAL_BURST_BUCKET.tryConsume(1)) {
-            return errorResponse(429, "Global burst rate limit exceeded");
-        }
-
-        // Global sustained rate limit
-        if (!BucketUtil.GLOBAL_SUSTAINED_BUCKET.tryConsume(1)) {
-            return errorResponse(429, "Global sustained rate limit exceeded");
-        }
-
         // Per-IP burst rate limit
         if (!BucketUtil.getBurstBucket(hashedIp).tryConsume(1)) {
             return errorResponse(429, "Per-IP burst rate limit exceeded");

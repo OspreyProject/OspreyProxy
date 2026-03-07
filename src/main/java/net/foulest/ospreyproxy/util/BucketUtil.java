@@ -19,18 +19,10 @@ import java.util.concurrent.TimeUnit;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BucketUtil {
 
-    // Update WEEKLY_USERS as the extension grows (~25-30% growth increments)
-    private static final int WEEKLY_USERS = 6_000;
-    private static final int PEAK_CONCURRENT_USERS = (int) (WEEKLY_USERS / 7.0 * 0.12 * 1.5);
-
     // Rate limit configuration (per-IP)
-    private static final int IP_BURST_CAPACITY = 15;
-    private static final int IP_SUSTAINED_CAPACITY = 600;
-
-    // Rate limit configuration (global)
-    // Derived from peak concurrency; scales automatically with WEEKLY_USERS
-    private static final int GLOBAL_BURST_CAPACITY = PEAK_CONCURRENT_USERS * IP_BURST_CAPACITY;
-    private static final int GLOBAL_SUSTAINED_CAPACITY = PEAK_CONCURRENT_USERS * IP_SUSTAINED_CAPACITY;
+    private static final int NUMBER_OF_PROVIDERS = 2;
+    private static final int IP_BURST_CAPACITY = 15 * NUMBER_OF_PROVIDERS;
+    private static final int IP_SUSTAINED_CAPACITY = 600 * NUMBER_OF_PROVIDERS;
 
     // Refill durations for burst and sustained buckets
     private static final Duration BURST_DURATION = Duration.ofSeconds(1);
@@ -46,22 +38,6 @@ public final class BucketUtil {
     private static final Cache<String, Bucket> SUSTAINED_BUCKETS = Caffeine.newBuilder()
             .expireAfterWrite(1, TimeUnit.HOURS)
             .maximumSize(100_000)
-            .build();
-
-    // Global rate-limiting burst bucket
-    public static final Bucket GLOBAL_BURST_BUCKET = Bucket.builder()
-            .addLimit(Bandwidth.builder()
-                    .capacity(GLOBAL_BURST_CAPACITY)
-                    .refillIntervally(GLOBAL_BURST_CAPACITY, BURST_DURATION)
-                    .build())
-            .build();
-
-    // Global rate-limiting sustained bucket
-    public static final Bucket GLOBAL_SUSTAINED_BUCKET = Bucket.builder()
-            .addLimit(Bandwidth.builder()
-                    .capacity(GLOBAL_SUSTAINED_CAPACITY)
-                    .refillIntervally(GLOBAL_SUSTAINED_CAPACITY, SUSTAINED_DURATION)
-                    .build())
             .build();
 
     /**
