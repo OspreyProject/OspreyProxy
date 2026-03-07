@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.http.MediaType;
+import org.springframework.web.filter.RequestContextFilter;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -31,6 +32,19 @@ public class SecurityConfig {
 
     // Error message for oversized request bodies
     private static final String BODY_TOO_LARGE_ERROR = "{\"error\": \"Request body too large\"}";
+
+    /**
+     * Disables the default RequestContextFilter to prevent potential memory leaks and
+     * unnecessary thread-local usage since we don't need request attributes or session management.
+     *
+     * @return A FilterRegistrationBean with RequestContextFilter disabled.
+     */
+    @Bean
+    public FilterRegistrationBean<RequestContextFilter> requestContextFilter() {
+        FilterRegistrationBean<RequestContextFilter> reg = new FilterRegistrationBean<>(new RequestContextFilter());
+        reg.setEnabled(false);
+        return reg;
+    }
 
     /**
      * Filter that enforces a hard body-size limit for ALL content types,
