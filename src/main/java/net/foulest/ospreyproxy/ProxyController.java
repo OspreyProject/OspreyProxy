@@ -75,8 +75,8 @@ public class ProxyController {
             .requestFactory(new HttpComponentsClientHttpRequestFactory(
                     HttpClients.custom()
                             .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
-                                    .setMaxConnTotal(50)
-                                    .setMaxConnPerRoute(20)
+                                    .setMaxConnTotal(400)
+                                    .setMaxConnPerRoute(200)
                                     .setDnsResolver(SSRF_SAFE_DNS_RESOLVER)
                                     .setDefaultSocketConfig(SocketConfig.custom()
                                             .setSoTimeout(Timeout.ofSeconds(5))
