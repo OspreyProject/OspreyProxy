@@ -4,12 +4,12 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
+import io.github.bucket4j.local.LocalBucketBuilder;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Utility class for managing rate-limiting buckets using Bucket4j and Caffeine.
@@ -28,6 +28,18 @@ public final class BucketUtil {
     private static final Duration BURST_DURATION = Duration.ofSeconds(1);
     private static final Duration SUSTAINED_DURATION = Duration.ofMinutes(1);
 
+    // Pre-built burst Bandwidth object
+    private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
+            .capacity(IP_BURST_CAPACITY)
+            .refillIntervally(IP_BURST_CAPACITY, BURST_DURATION)
+            .build();
+
+    // Pre-built sustained Bandwidth object
+    private static final Bandwidth SUSTAINED_BANDWIDTH = Bandwidth.builder()
+            .capacity(IP_SUSTAINED_CAPACITY)
+            .refillIntervally(IP_SUSTAINED_CAPACITY, SUSTAINED_DURATION)
+            .build();
+
     // Cache for per-IP rate-limiting burst buckets
     private static final Cache<String, Bucket> BURST_BUCKETS = Caffeine.newBuilder()
             .maximumSize(100_000)
@@ -44,14 +56,17 @@ public final class BucketUtil {
      * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for burst rate limiting.
      */
-    @SuppressWarnings("NestedMethodCall")
     public static Bucket getBurstBucket(@NonNull String ip) {
-        return BURST_BUCKETS.get(ip, k -> Bucket.builder()
-                .addLimit(Bandwidth.builder()
-                        .capacity(IP_BURST_CAPACITY)
-                        .refillIntervally(IP_BURST_CAPACITY, BURST_DURATION)
-                        .build())
-                .build());
+        Bucket bucket = BURST_BUCKETS.getIfPresent(ip);
+
+        if (bucket != null) {
+            return bucket;
+        }
+
+        return BURST_BUCKETS.get(ip, k -> {
+            LocalBucketBuilder builder = Bucket.builder().addLimit(BURST_BANDWIDTH);
+            return builder.build();
+        });
     }
 
     /**
@@ -60,13 +75,16 @@ public final class BucketUtil {
      * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for sustained rate limiting.
      */
-    @SuppressWarnings("NestedMethodCall")
     public static Bucket getSustainedBucket(@NonNull String ip) {
-        return SUSTAINED_BUCKETS.get(ip, k -> Bucket.builder()
-                .addLimit(Bandwidth.builder()
-                        .capacity(IP_SUSTAINED_CAPACITY)
-                        .refillIntervally(IP_SUSTAINED_CAPACITY, SUSTAINED_DURATION)
-                        .build())
-                .build());
+        Bucket bucket = SUSTAINED_BUCKETS.getIfPresent(ip);
+
+        if (bucket != null) {
+            return bucket;
+        }
+
+        return SUSTAINED_BUCKETS.get(ip, k -> {
+            LocalBucketBuilder builder = Bucket.builder().addLimit(SUSTAINED_BANDWIDTH);
+            return builder.build();
+        });
     }
 }
