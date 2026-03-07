@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @Component
@@ -13,6 +12,11 @@ public class AlphaMountainProvider implements Provider {
     // API key and URL
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
+
+    // Static fields for request body parameters
+    private static final String LICENSE = API_KEY;
+    private static final int VERSION = 1;
+    private static final String TYPE = "partner.info";
 
     @PostConstruct
     public void validateConfig() {
@@ -34,11 +38,11 @@ public class AlphaMountainProvider implements Provider {
 
     @Override
     public @NotNull Map<String, Object> buildBody(@NotNull String url) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("uri", url);
-        body.put("license", API_KEY);
-        body.put("version", 1);
-        body.put("type", "partner.info");
-        return body;
+        return Map.of(
+                "uri", url,
+                "license", LICENSE,
+                "version", VERSION,
+                "type", TYPE
+        );
     }
 }
