@@ -14,7 +14,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.io.SocketConfig;
 import org.apache.hc.core5.util.Timeout;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -135,9 +135,9 @@ public class ProxyController {
      * @return A sanitized JSON response or an appropriate error.
      */
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    private ResponseEntity<String> proxyRequest(@NotNull Map<String, String> incoming,
-                                                @NotNull HttpServletRequest request,
-                                                @NotNull Provider provider) {
+    private ResponseEntity<String> proxyRequest(@NonNull Map<String, String> incoming,
+                                                @NonNull HttpServletRequest request,
+                                                @NonNull Provider provider) {
         // Blocks requests with unexpected fields to prevent abuse
         if (incoming.size() > 1) {
             return errorResponse(400, "Unexpected fields in request");

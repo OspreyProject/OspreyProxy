@@ -1,7 +1,7 @@
 package net.foulest.ospreyproxy.providers;
 
 import jakarta.annotation.PostConstruct;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -32,12 +32,12 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
-    public @NotNull String getApiUrl() {
+    public @NonNull String getApiUrl() {
         return API_URL;
     }
 
     @Override
-    public @NotNull Map<String, Object> buildBody(@NotNull String url) {
+    public @NonNull Map<String, Object> buildBody(@NonNull String url) {
         return Map.of(
                 "uri", url,
                 "license", LICENSE,

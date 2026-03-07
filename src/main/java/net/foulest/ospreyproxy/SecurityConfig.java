@@ -7,7 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -138,13 +138,13 @@ public class SecurityConfig {
         }
 
         @Override
-        public @NotNull ServletInputStream getInputStream() throws IOException {
+        public @NonNull ServletInputStream getInputStream() throws IOException {
             ServletInputStream original = super.getInputStream();
             return new LimitedServletInputStream(original, maxBytes, response);
         }
 
         @Override
-        public @NotNull BufferedReader getReader() throws IOException {
+        public @NonNull BufferedReader getReader() throws IOException {
             ServletInputStream inputStream = getInputStream();
             return new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         }
@@ -174,7 +174,7 @@ public class SecurityConfig {
         }
 
         @Override
-        public int read(byte @NotNull [] b, int off, int len) throws IOException {
+        public int read(byte @NonNull [] b, int off, int len) throws IOException {
             int count = delegate.read(b, off, len);
 
             if (count > 0 && bytesRead.addAndGet(count) > maxBytes) {

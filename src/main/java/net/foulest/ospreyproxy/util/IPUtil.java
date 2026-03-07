@@ -2,7 +2,7 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -25,7 +25,7 @@ public final class IPUtil {
      * @param addr - The InetAddress to check.
      * @return true if the address is private/internal, false otherwise.
      */
-    public static boolean isPrivateAddress(@NotNull InetAddress addr) {
+    public static boolean isPrivateAddress(@NonNull InetAddress addr) {
         // Block standard private and special-use ranges
         if (addr.isLoopbackAddress()
                 || addr.isSiteLocalAddress()
@@ -109,7 +109,7 @@ public final class IPUtil {
      * @param host - The hostname to check.
      * @return true if the host is considered private/internal, false otherwise.
      */
-    public static boolean isPrivateHost(@NotNull String host) {
+    public static boolean isPrivateHost(@NonNull String host) {
         // Block known internal hostnames by name
         if (host.equals("localhost")
                 || host.endsWith(".local")
@@ -143,7 +143,7 @@ public final class IPUtil {
      * @return true if the host looks like an IP literal, false if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
-    private static boolean isIpLiteral(@NotNull String host) {
+    private static boolean isIpLiteral(@NonNull String host) {
         // IPv6 literals from URI.getHost() come without brackets (e.g., "::1")
         if (host.contains(":")) {
             return true;

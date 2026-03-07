@@ -1,7 +1,7 @@
 package net.foulest.ospreyproxy.providers;
 
 import jakarta.annotation.PostConstruct;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -29,22 +29,22 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
-    public @NotNull String getApiUrl() {
+    public @NonNull String getApiUrl() {
         return API_URL;
     }
 
     @Override
-    public @NotNull String getMethod() {
+    public @NonNull String getMethod() {
         return "GET";
     }
 
     @Override
-    public @NotNull Map<String, String> getHeaders() {
+    public @NonNull Map<String, String> getHeaders() {
         return Map.of("API-Key", API_KEY);
     }
 
     @Override
-    public @NotNull String buildRequestUrl(@NotNull String url) {
+    public @NonNull String buildRequestUrl(@NonNull String url) {
         String encoded = URLEncoder.encode(url, StandardCharsets.UTF_8);
         return API_URL + encoded;
     }

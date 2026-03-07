@@ -1,7 +1,7 @@
 package net.foulest.ospreyproxy.providers;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
 
@@ -21,7 +21,8 @@ public interface Provider {
      *
      * @return The upstream API URL.
      */
-    @NotNull String getApiUrl();
+    @NonNull
+    String getApiUrl();
 
     /**
      * HTTP method to use for the upstream request.
@@ -29,7 +30,7 @@ public interface Provider {
      *
      * @return The HTTP method string.
      */
-    default @NotNull String getMethod() {
+    default @NonNull String getMethod() {
         return "POST";
     }
 
@@ -39,7 +40,7 @@ public interface Provider {
      *
      * @return A map of header name to header value.
      */
-    default @NotNull Map<String, String> getHeaders() {
+    default @NonNull Map<String, String> getHeaders() {
         return Map.of();
     }
 
@@ -50,7 +51,7 @@ public interface Provider {
      * @param url - The validated URL to check.
      * @return The request body map, or null for GET providers.
      */
-    default @Nullable Map<String, Object> buildBody(@NotNull String url) {
+    default @Nullable Map<String, Object> buildBody(@NonNull String url) {
         return null;
     }
 
@@ -62,7 +63,7 @@ public interface Provider {
      * @param url - The validated URL to check.
      * @return The full upstream request URL.
      */
-    default @NotNull String buildRequestUrl(@NotNull String url) {
+    default @NonNull String buildRequestUrl(@NonNull String url) {
         return getApiUrl();
     }
 }

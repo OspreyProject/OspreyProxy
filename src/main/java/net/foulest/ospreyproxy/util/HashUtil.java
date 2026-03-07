@@ -4,7 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -33,7 +33,7 @@ public final class HashUtil {
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
      */
-    private static byte @NotNull [] generateSalt() {
+    private static byte @NonNull [] generateSalt() {
         byte[] salt = new byte[32];
         new SecureRandom().nextBytes(salt);
         return salt;
@@ -45,7 +45,7 @@ public final class HashUtil {
      * @param ip - The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
      */
-    public static String hashIp(@NotNull String ip) {
+    public static String hashIp(@NonNull String ip) {
         return HASH_CACHE.get(ip, k -> {
             try {
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");

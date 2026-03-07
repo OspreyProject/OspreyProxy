@@ -6,7 +6,7 @@ import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -47,7 +47,7 @@ public final class BucketUtil {
      * @return A Bucket instance for the given IP address for burst rate limiting.
      */
     @SuppressWarnings("NestedMethodCall")
-    public static Bucket getBurstBucket(@NotNull String ip) {
+    public static Bucket getBurstBucket(@NonNull String ip) {
         return BURST_BUCKETS.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_BURST_CAPACITY)
@@ -63,7 +63,7 @@ public final class BucketUtil {
      * @return A Bucket instance for the given IP address for sustained rate limiting.
      */
     @SuppressWarnings("NestedMethodCall")
-    public static Bucket getSustainedBucket(@NotNull String ip) {
+    public static Bucket getSustainedBucket(@NonNull String ip) {
         return SUSTAINED_BUCKETS.get(ip, k -> Bucket.builder()
                 .addLimit(Bandwidth.builder()
                         .capacity(IP_SUSTAINED_CAPACITY)
