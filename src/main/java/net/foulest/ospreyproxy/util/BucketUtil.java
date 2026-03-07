@@ -30,13 +30,11 @@ public final class BucketUtil {
 
     // Cache for per-IP rate-limiting burst buckets
     private static final Cache<String, Bucket> BURST_BUCKETS = Caffeine.newBuilder()
-            .expireAfterWrite(1, TimeUnit.HOURS)
             .maximumSize(100_000)
             .build();
 
     // Cache for per-IP rate-limiting sustained buckets
     private static final Cache<String, Bucket> SUSTAINED_BUCKETS = Caffeine.newBuilder()
-            .expireAfterWrite(1, TimeUnit.HOURS)
             .maximumSize(100_000)
             .build();
 
