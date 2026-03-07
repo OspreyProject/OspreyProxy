@@ -6,6 +6,7 @@ import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.AllArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -153,19 +154,13 @@ public class SecurityConfig {
      * ServletInputStream decorator that counts bytes read and sends a 413
      * error response when the limit is exceeded.
      */
+    @AllArgsConstructor
     private static class LimitedServletInputStream extends ServletInputStream {
 
         private final ServletInputStream delegate;
         private final int maxBytes;
         private final HttpServletResponse response;
         private final AtomicInteger bytesRead = new AtomicInteger(0);
-
-        LimitedServletInputStream(ServletInputStream delegate, int maxBytes, HttpServletResponse response) {
-            this.delegate = delegate;
-            this.maxBytes = maxBytes;
-            this.response = response;
-            bytesRead.set(0);
-        }
 
         @Override
         public int read() throws IOException {
