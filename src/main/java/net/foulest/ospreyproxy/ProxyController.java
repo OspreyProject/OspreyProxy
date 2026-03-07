@@ -36,9 +36,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 public class ProxyController {
+
+    // Injected provider instances for handling requests to each upstream API
+    private final AlphaMountainProvider alphaMountainProvider;
+    private final PrecisionSecProvider precisionSecProvider;
 
     /**
      * Custom DNS resolver that validates resolved IPs against private ranges
@@ -68,6 +73,9 @@ public class ProxyController {
     // JSON mapper for parsing and re-serializing upstream responses
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
+    // Pre-serialized error responses (avoids Jackson overhead on every error)
+    private static final Map<String, String> ERROR_CACHE = new ConcurrentHashMap<>();
+
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
 
@@ -95,21 +103,54 @@ public class ProxyController {
             .build();
 
     // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    /**
+     * Constructor for ProxyController. Initializes the upstream providers and pre-warms
+     * the JSON mapper and error cache to optimize performance for the first requests.
+     *
+     * @param alphaMountainProvider - The provider instance for AlphaMountain API.
+     * @param precisionSecProvider - The provider instance for PrecisionSec API.
+     */
+    public ProxyController(AlphaMountainProvider alphaMountainProvider,
+                           PrecisionSecProvider precisionSecProvider) {
+        this.alphaMountainProvider = alphaMountainProvider;
+        this.precisionSecProvider = precisionSecProvider;
+
+        // Pre-warm Jackson type metadata cache at startup so first requests
+        // don't pay the construction cost
+        MAPPER.constructType(Map.class);
+        MAPPER.constructType(String.class);
+
+        // Pre-populate error cache for all known error messages at startup
+        errorResponse(400, "Unexpected fields in request");
+        errorResponse(400, "Missing or empty 'url' field");
+        errorResponse(400, "URL too long");
+        errorResponse(400, "Malformed URL");
+        errorResponse(400, "URL scheme not allowed");
+        errorResponse(400, "URL not allowed");
+        errorResponse(429, "Per-IP burst rate limit exceeded");
+        errorResponse(429, "Per-IP sustained rate limit exceeded");
+        errorResponse(502, "Upstream request failed");
+        errorResponse(502, "Invalid JSON in upstream response");
+        errorResponse(404, "Not found");
+    }
+
+    // -------------------------------------------------------------------------
     // Endpoints
     // -------------------------------------------------------------------------
 
     @PostMapping("/alphamountain")
     public ResponseEntity<String> checkWithAlphaMountain(@RequestBody Map<String, String> incoming,
-                                                         HttpServletRequest request,
-                                                         AlphaMountainProvider provider) {
-        return proxyRequest(incoming, request, provider);
+                                                         HttpServletRequest request) {
+        return proxyRequest(incoming, request, alphaMountainProvider);
     }
 
     @PostMapping("/precisionsec")
     public ResponseEntity<String> checkWithPrecisionSec(@RequestBody Map<String, String> incoming,
-                                                        HttpServletRequest request,
-                                                        PrecisionSecProvider provider) {
-        return proxyRequest(incoming, request, provider);
+                                                        HttpServletRequest request) {
+        return proxyRequest(incoming, request, precisionSecProvider);
     }
 
     /**
@@ -307,21 +348,23 @@ public class ProxyController {
 
     /**
      * Helper method to create a standardized error response with a JSON body.
+     * Uses a cache to store pre-serialized JSON error messages to avoid the overhead
      *
      * @param status  - The HTTP status code to return.
      * @param message - The error message to include in the response body.
      * @return A ResponseEntity with the specified status and a JSON body containing the error message.
      */
-    private static @NotNull ResponseEntity<String> errorResponse(int status, String message) {
-        try {
-            String body = MAPPER.writeValueAsString(Map.of("error", message));
-            return ResponseEntity.status(status)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body);
-        } catch (JacksonException e) {
-            return ResponseEntity.status(status)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body("{\"error\": \"Internal server error\"}");
-        }
+    private static @NonNull ResponseEntity<String> errorResponse(int status, @NonNull String message) {
+        String body = ERROR_CACHE.computeIfAbsent(message, k -> {
+            try {
+                return MAPPER.writeValueAsString(Map.of("error", k));
+            } catch (JacksonException e) {
+                return "{\"error\": \"Internal server error\"}";
+            }
+        });
+
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 }
