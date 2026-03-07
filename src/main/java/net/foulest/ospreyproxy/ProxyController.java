@@ -7,6 +7,7 @@ import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.util.BucketUtil;
 import net.foulest.ospreyproxy.util.HashUtil;
 import net.foulest.ospreyproxy.util.IPUtil;
+import net.foulest.ospreyproxy.util.StressTestUtil;
 import org.apache.hc.client5.http.DnsResolver;
 import org.apache.hc.client5.http.SystemDefaultDnsResolver;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -144,7 +145,9 @@ public class ProxyController {
         }
 
         // noinspection NestedMethodCall
-        String hashedIp = HashUtil.hashIp(request.getRemoteAddr());
+        String hashedIp = StressTestUtil.isEnabled()
+                ? StressTestUtil.syntheticIp()
+                : HashUtil.hashIp(request.getRemoteAddr());
 
         // Per-IP burst rate limit
         if (!BucketUtil.getBurstBucket(hashedIp).tryConsume(1)) {
@@ -233,6 +236,11 @@ public class ProxyController {
 
         String normalizedUrl = parsedUri.toString();
         String rawResponse;
+
+        // If stress testing is enabled, skip the upstream request and return a fake response
+        if (StressTestUtil.isEnabled()) {
+            return ResponseEntity.ok(StressTestUtil.getFakeResponse());
+        }
 
         // Proxies the request to the upstream provider.
         // Uses exchange() with a byte-limited reader to abort early if the upstream
