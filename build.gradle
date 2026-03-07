@@ -6,7 +6,6 @@ plugins {
 }
 
 group = 'net.foulest'
-version = '1.0.0'
 description = 'OspreyProxy'
 
 // Set the language level to Java 21
@@ -21,7 +20,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.0'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.3'
     implementation 'com.bucket4j:bucket4j-core:8.10.1'
 
     implementation('org.springframework.boot:spring-boot-starter-webflux') {
@@ -31,7 +30,7 @@ dependencies {
 
     // JetBrains Annotations - for code inspection and documentation
     // https://mvnrepository.com/artifact/org.jetbrains/annotations
-    compileOnly group: 'org.jetbrains', name: 'annotations', version: '26.1.0'
+    compileOnly 'org.jetbrains:annotations:26.1.0'
 
     // Lombok - for reducing boilerplate code
     // https://projectlombok.org
