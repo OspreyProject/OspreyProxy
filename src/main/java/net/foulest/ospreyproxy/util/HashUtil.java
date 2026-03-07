@@ -23,6 +23,15 @@ public final class HashUtil {
     // IP salt for hashing to prevent rainbow table attacks
     private static final byte[] IP_SALT = generateSalt();
 
+    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call
+    private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    });
+
     // Cache for hashed IP addresses to improve performance and reduce CPU load on repeated hashes
     private static final Cache<String, String> HASH_CACHE = Caffeine.newBuilder()
             .maximumSize(100_000)
@@ -48,17 +57,19 @@ public final class HashUtil {
      * @return A hexadecimal string representation of the hashed IP address.
      */
     public static String hashIp(@NonNull String ip) {
-        return HASH_CACHE.get(ip, k -> {
-            try {
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                digest.update(IP_SALT);
+        String cached = HASH_CACHE.getIfPresent(ip);
 
-                byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
-                byte[] hash = digest.digest(bytes);
-                return HexFormat.of().formatHex(hash);
-            } catch (NoSuchAlgorithmException e) {
-                throw new IllegalStateException("SHA-256 not available", e);
-            }
+        if (cached != null) {
+            return cached;
+        }
+
+        return HASH_CACHE.get(ip, k -> {
+            MessageDigest digest = SHA256_DIGEST.get();
+            digest.reset();
+            digest.update(IP_SALT);
+            byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
+            byte[] hash = digest.digest(bytes);
+            return HexFormat.of().formatHex(hash);
         });
     }
 }
