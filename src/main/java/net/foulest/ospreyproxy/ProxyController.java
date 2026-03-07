@@ -253,7 +253,7 @@ public class ProxyController {
             String method = provider.getMethod();
             String uri = provider.buildRequestUrl(normalizedUrl);
 
-            if (method.equalsIgnoreCase("GET")) {
+            if (method.equals("GET")) {
                 requestSpec = REST_CLIENT.get().uri(uri);
             } else {
                 RestClient.RequestBodySpec postSpec = REST_CLIENT.post().uri(uri);
