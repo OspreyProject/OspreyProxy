@@ -13,7 +13,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.io.SocketConfig;
 import org.apache.hc.core5.util.Timeout;
-import org.jspecify.annotations.NonNull;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -177,10 +177,9 @@ public class ProxyController {
      * @return A sanitized JSON response or an appropriate error.
      */
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    private ResponseEntity<String> proxyRequest(@NonNull Map<String, String> incoming,
-                                                @NonNull HttpServletRequest request,
-                                                @NonNull BodyBuilder bodyBuilder,
-                                                @NonNull String apiUrl) {
+    private ResponseEntity<String> proxyRequest(@NotNull Map<String, String> incoming,
+                                                @NotNull HttpServletRequest request,
+                                                @NotNull Provider provider) {
         // Blocks requests with unexpected fields to prevent abuse
         if (incoming.size() > 1) {
             return errorResponse(400, "Unexpected fields in request");
@@ -572,7 +571,7 @@ public class ProxyController {
      * @param message - The error message to include in the response body.
      * @return A ResponseEntity with the specified status and a JSON body containing the error message.
      */
-    private static @NonNull ResponseEntity<String> errorResponse(int status, String message) {
+    private static @NotNull ResponseEntity<String> errorResponse(int status, String message) {
         try {
             String body = MAPPER.writeValueAsString(Map.of("error", message));
             return ResponseEntity.status(status)

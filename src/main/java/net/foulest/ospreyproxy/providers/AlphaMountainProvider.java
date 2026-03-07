@@ -1,7 +1,7 @@
 package net.foulest.ospreyproxy.providers;
 
 import jakarta.annotation.PostConstruct;
-import org.jspecify.annotations.NonNull;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -32,7 +32,7 @@ public class AlphaMountainProvider {
      *
      * @return The AlphaMountainProvider API URL.
      */
-    public static @NonNull String getApiUrl() {
+    public @NotNull String getApiUrl() {
         return API_URL;
     }
 
@@ -42,7 +42,7 @@ public class AlphaMountainProvider {
      * @param url - The URL to check.
      * @return The request body map expected by the API.
      */
-    public static @NonNull Map<String, Object> buildBody(@NonNull String url) {
+    public @NotNull Map<String, Object> buildBody(@NotNull String url) {
         Map<String, Object> body = new HashMap<>();
         body.put("uri", url);
         body.put("license", API_KEY);
