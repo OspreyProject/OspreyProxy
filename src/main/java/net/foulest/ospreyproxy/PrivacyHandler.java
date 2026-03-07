@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import io.netty.util.ResourceLeakDetector;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
@@ -73,35 +75,50 @@ public class PrivacyHandler {
 
     /**
      * Handles GET /privacy requests.
-     * Reads live JVM state to build the response - nothing is hardcoded.
+     * Reads live JVM state and OS config files to build the response.
      */
     @NonNull
     public Mono<ServerResponse> handlePrivacy(@NonNull ServerRequest request) {
         Map<String, Object> privacy = new LinkedHashMap<>();
 
-        // Root log level (proves no per-request INFO/DEBUG output)
+        // --- Application-level checks (read from running JVM) ---
+
+        // Root log level: proves no per-request INFO/DEBUG output
         privacy.put("rootLogLevel", getRootLogLevel());
 
-        // Reactor Netty access log (records client IPs and URIs if enabled)
+        // Whether any Logback file appenders are configured (would write logs to disk)
+        privacy.put("logbackFileAppenders", getLogbackFileAppenderCount());
+
+        // Reactor Netty access log: records client IPs and URIs if enabled
         privacy.put("reactorNettyAccessLog", getAccessLogEnabled());
 
-        // Netty resource leak detector level (DISABLED means no tracking)
+        // Netty resource leak detector level: DISABLED means no tracking
         privacy.put("nettyLeakDetection", ResourceLeakDetector.getLevel().name());
 
-        // Whether a log file is configured (logging.file.name / logging.file.path)
-        privacy.put("logFileConfigured", isLogFileConfigured());
+        // Whether a Spring log file is configured (logging.file.name / logging.file.path)
+        privacy.put("springLogFileConfigured", isLogFileConfigured());
 
         // Spring error detail suppression
         privacy.put("includeStacktrace", getSystemProperty("spring.web.error.include-stacktrace", "never"));
         privacy.put("includeMessage", getSystemProperty("spring.web.error.include-message", "never"));
         privacy.put("includeBindingErrors", getSystemProperty("spring.web.error.include-binding-errors", "never"));
 
-        // Data persistence
-        privacy.put("database", "none");
-        privacy.put("diskWrites", false);
+        // Whether any database driver implementation is on the classpath.
+        // Note: java.sql.DriverManager is part of the JDK itself, so we check
+        // for actual driver implementations (H2, MySQL, PostgreSQL, etc.)
+        privacy.put("databaseDriverOnClasspath", hasDatabaseDriver());
 
-        // Build verification — clone the repo, build the same commit, compare the checksum.
-        // If your checksum matches, the open source code is what's running on this server.
+        // --- OS-level checks (read from config files on disk) ---
+
+        // Nginx access log status: reads the actual Nginx config to verify access_log is off
+        privacy.put("nginxAccessLog", getNginxAccessLogStatus());
+
+        // Systemd journal persistence: reads journald.conf to verify Storage setting
+        privacy.put("systemdJournalStorage", getJournaldStorage());
+
+        // --- Build verification ---
+
+        // Git commit hash and JAR SHA-256 for reproducible build verification
         privacy.put("buildCommit", BUILD_COMMIT);
         privacy.put("buildJarSha256", BUILD_JAR_SHA256);
 
@@ -159,6 +176,230 @@ public class PrivacyHandler {
      */
     private static @NonNull String getSystemProperty(@NonNull String key, @NonNull String defaultValue) {
         return System.getProperty(key, defaultValue);
+    }
+
+    /**
+     * Counts how many Logback file-based appenders are active.
+     * If 0, no logs are being written to disk by the application.
+     */
+    private static int getLogbackFileAppenderCount() {
+        try {
+            LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+            Logger root = context.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+            int count = 0;
+            var it = root.iteratorForAppenders();
+
+            while (it.hasNext()) {
+                var appender = it.next();
+                String name = appender.getClass().getSimpleName();
+
+                // FileAppender, RollingFileAppender, etc.
+                if (name.contains("File")) {
+                    count++;
+                }
+            }
+            return count;
+        } catch (ClassCastException e) {
+            return -1; // Unable to determine
+        }
+    }
+
+    /**
+     * Reads Nginx config files to determine access_log status.
+     * Scans all common config paths for access_log directives, including
+     * those indented inside server/location blocks.
+     * Returns the most relevant access_log status found.
+     */
+    private static @NonNull String getNginxAccessLogStatus() {
+        // Check site-specific config first, then the global config
+        String[] configPaths = {
+                "/etc/nginx/sites-enabled/ospreyproxy",
+                "/etc/nginx/sites-available/ospreyproxy",
+                "/etc/nginx/conf.d/ospreyproxy.conf",
+                "/etc/nginx/nginx.conf"
+        };
+
+        // Track what we find across all config files
+        String lastFound = null;
+        boolean anyConfigReadable = false;
+
+        for (String configPath : configPaths) {
+            Path path = Paths.get(configPath);
+
+            if (!Files.isReadable(path)) {
+                continue;
+            }
+
+            anyConfigReadable = true;
+
+            try {
+                String content = Files.readString(path);
+
+                // Search every line for access_log (handles indented directives in server/location blocks)
+                for (String line : content.split("\n")) {
+                    String trimmed = line.trim();
+
+                    // Skip comments
+                    if (trimmed.isEmpty() || trimmed.charAt(0) == '#') {
+                        continue;
+                    }
+
+                    if (trimmed.startsWith("access_log")) {
+                        if (trimmed.contains("off") || trimmed.contains("/dev/null")) {
+                            // Site-specific "off" takes precedence, return immediately
+                            return "disabled";
+                        }
+                        lastFound = trimmed;
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
+        if (!anyConfigReadable) {
+            return "config not found (not running on Linux or Nginx not installed)";
+        }
+
+        if (lastFound != null) {
+            return "enabled (" + lastFound + ")";
+        }
+        return "not set (defaults to enabled)";
+    }
+
+    /**
+     * Reads journald config to determine journal persistence.
+     * "volatile" means journals are stored in /run/log/journal (RAM only, lost on reboot).
+     * "persistent" or "auto" means journals may be written to /var/log/journal (disk).
+     * Checks drop-in directories first (they override the main config).
+     * <p>
+     * When Storage=auto (the default), systemd only persists journals if
+     * /var/log/journal/ exists. If that directory is absent, journals go
+     * to /run/log/journal/ (RAM only, lost on reboot), effectively volatile.
+     */
+    private static @NonNull String getJournaldStorage() {
+        // Drop-in configs override the main config, check them first
+        String dropInResult = checkJournaldDropIns();
+
+        if (dropInResult != null) {
+            return resolveAutoStorage(dropInResult);
+        }
+
+        // Fall back to main config
+        Path journaldConf = Paths.get("/etc/systemd/journald.conf");
+        String result = parseJournaldStorage(journaldConf);
+
+        if (result != null) {
+            return resolveAutoStorage(result);
+        }
+
+        if (Files.isReadable(journaldConf)) {
+            // No Storage= directive found (systemd defaults to "auto")
+            return resolveAutoStorage("auto");
+        }
+        return "config not found (not running on Linux or systemd not installed)";
+    }
+
+    /**
+     * If the storage mode is "auto", checks whether /var/log/journal/ exists
+     * to determine the effective behavior. In auto mode, systemd persists
+     * journals only if that directory exists; otherwise journals are volatile.
+     */
+    private static @NonNull String resolveAutoStorage(@NonNull String storageValue) {
+        if ("auto".equals(storageValue)) {
+            boolean persistDirExists = Files.isDirectory(Paths.get("/var/log/journal"));
+
+            if (persistDirExists) {
+                return "auto (persistent; /var/log/journal exists)";
+            }
+            return "auto (volatile; /var/log/journal does not exist)";
+        }
+        return storageValue;
+    }
+
+    /**
+     * Checks /etc/systemd/journald.conf.d/*.conf for Storage= overrides.
+     */
+    private static @Nullable String checkJournaldDropIns() {
+        Path dropInDir = Paths.get("/etc/systemd/journald.conf.d");
+
+        if (!Files.isDirectory(dropInDir)) {
+            return null;
+        }
+
+        try (var entries = Files.list(dropInDir)) {
+            // Process in sorted order (last one wins in systemd)
+            String lastValue = null;
+
+            for (Path file : entries.sorted().toList()) {
+                if (!file.toString().endsWith(".conf") || !Files.isReadable(file)) {
+                    continue;
+                }
+
+                String parsed = parseJournaldStorage(file);
+
+                if (parsed != null) {
+                    lastValue = parsed;
+                }
+            }
+            return lastValue;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Parses a journald config file for the Storage= directive.
+     * Returns the value if found, or null if not present.
+     */
+    private static @Nullable String parseJournaldStorage(@NonNull Path path) {
+        if (!Files.isReadable(path)) {
+            return null;
+        }
+
+        try {
+            String content = Files.readString(path);
+
+            for (String line : content.split("\n")) {
+                String trimmed = line.trim();
+
+                if (trimmed.isEmpty() || trimmed.charAt(0) == '#') {
+                    continue;
+                }
+
+                if (trimmed.startsWith("Storage=")) {
+                    return trimmed.substring("Storage=".length()).trim().toLowerCase(Locale.ROOT);
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Checks whether any database driver implementation is on the classpath.
+     */
+    private static boolean hasDatabaseDriver() {
+        String[] driverClasses = {
+                "org.h2.Driver",
+                "com.mysql.cj.jdbc.Driver",
+                "org.mariadb.jdbc.Driver",
+                "org.postgresql.Driver",
+                "oracle.jdbc.OracleDriver",
+                "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+                "org.sqlite.JDBC",
+                "com.mongodb.client.MongoClient"
+        };
+
+        ClassLoader cl = PrivacyHandler.class.getClassLoader();
+
+        for (String driver : driverClasses) {
+            try {
+                Class.forName(driver, false, cl);
+                return true;
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return false;
     }
 
     /**
