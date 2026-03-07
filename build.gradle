@@ -40,6 +40,17 @@ tasks {
         archiveFileName.set("${project.name}-${project.version}.jar")
     }
 
+    bootRun {
+        jvmArgs = [
+                '-Xms512m',
+                '-Xmx1g',
+                '-XX:MaxDirectMemorySize=256m',
+                '-XX:+UseZGC',
+                '-XX:+UnlockDiagnosticVMOptions',
+                '-XX:+DebugNonSafepoints'
+        ]
+    }
+
     build {
         dependsOn(bootJar)
     }
