@@ -28,15 +28,6 @@ public final class HashUtil {
             .maximumSize(100_000)
             .build();
 
-    // Thread-local MessageDigest instance to avoid synchronization overhead and improve performance
-    private static final ThreadLocal<MessageDigest> DIGEST = ThreadLocal.withInitial(() -> {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-    });
-
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
      *
@@ -56,11 +47,16 @@ public final class HashUtil {
      */
     public static String hashIp(@NotNull String ip) {
         return HASH_CACHE.get(ip, k -> {
-            MessageDigest digest = DIGEST.get();
-            digest.update(IP_SALT);
-            byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
-            byte[] hash = digest.digest(bytes);
-            return HexFormat.of().formatHex(hash);
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                digest.update(IP_SALT);
+
+                byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
+                byte[] hash = digest.digest(bytes);
+                return HexFormat.of().formatHex(hash);
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("SHA-256 not available", e);
+            }
         });
     }
 }
