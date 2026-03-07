@@ -46,7 +46,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
- * Handler for the GET /privacy endpoint.
+ * Handler for the <a href="https://api.osprey.ac/privacy">GET /privacy</a> endpoint.
  * <p>
  * Returns a live snapshot of the server's privacy-related configuration so
  * that anyone can verify at runtime, not just by reading source code,
