@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Utility class for stress testing OspreyProxy without hitting upstream providers.
@@ -47,13 +47,71 @@ public final class StressTestUtil {
     }
 
     /**
-     * Generates a unique synthetic IP address for each request in stress test mode.
+     * Generates a synthetic IP address for each request in stress test mode.
      * This exercises the Caffeine rate limiter cache with distinct keys rather than
      * all requests sharing the same IP, which would not reflect real-world behavior.
+     * <p>
+     * Uses a single ThreadLocalRandom.nextLong() call instead of four bounded nextInt()
+     * calls. Flame graph shows RandomSupport.boundedNextInt as hot due to rejection
+     * sampling overhead. Extracting octets via bit shifts from one unbounded call
+     * eliminates both the bound checks and the StringBuilder from string concatenation.
+     * <p>
+     * The IP space is limited to ~65K unique addresses (10.X.Y.1) to balance
+     * cache miss rate vs allocation pressure. With 4 billion unique IPs, every
+     * request was a Caffeine cache miss, triggering Bucket + BucketConfiguration
+     * + BucketState64BitsInteger allocation on every call.
      *
-     * @return A unique string that will be treated as a distinct IP by the rate limiter.
+     * @return A string that will be treated as a distinct IP by the rate limiter.
      */
     public static @NonNull String syntheticIp() {
-        return UUID.randomUUID().toString();
+        long bits = ThreadLocalRandom.current().nextLong();
+
+        // Extract 2 octets from the random long for ~65K unique IPs (10.X.Y.1)
+        int b = (int) ((bits >>> 8) & 0xFF);    // 0-255
+        int c = (int) ((bits >>> 16) & 0xFF);    // 0-255
+
+        // Write directly into a char array to avoid StringBuilder allocation.
+        char[] buf = new char[12]; // max "10.255.255.1"
+        buf[0] = '1';
+        buf[1] = '0';
+        buf[2] = '.';
+
+        int pos = 3;
+        pos = writeOctet(buf, pos, b);
+
+        buf[pos] = '.';
+        pos++;
+
+        pos = writeOctet(buf, pos, c);
+
+        buf[pos] = '.';
+        pos++;
+
+        buf[pos] = '1';
+        pos++;
+        return new String(buf, 0, pos);
+    }
+
+    /**
+     * Writes an integer octet (0-255) into the char buffer at the given position.
+     *
+     * @return The new position after writing.
+     */
+    @SuppressWarnings("CharUsedInArithmeticContext")
+    private static int writeOctet(char @NonNull [] buf, int pos, int value) {
+        if (value >= 100) {
+            buf[pos] = (char) ('0' + value / 100);
+            pos++;
+
+            buf[pos] = (char) ('0' + (value / 10) % 10);
+            pos++;
+        } else if (value >= 10) {
+            buf[pos] = (char) ('0' + value / 10);
+            pos++;
+        }
+
+        buf[pos] = (char) ('0' + value % 10);
+        pos++;
+        return pos;
     }
 }
