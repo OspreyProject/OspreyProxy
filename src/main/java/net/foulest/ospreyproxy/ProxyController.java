@@ -294,16 +294,11 @@ public class ProxyController {
             return errorResponse(502, "Upstream request failed");
         }
 
-        // Blocks responses that are too large
-        if (rawResponse == null) {
-            return errorResponse(502, "Upstream response too large");
-        }
-
-        // Parses and re-serializes the response to strip any unexpected content
+        // Parses the upstream response to ensure it's valid JSON, then re-serializes
         try {
             JsonNode json = MAPPER.readTree(rawResponse);
-            String body = MAPPER.writeValueAsString(json);
-            return ResponseEntity.ok(body);
+            String jsonString = json.toString();
+            return ResponseEntity.ok(jsonString);
         } catch (JacksonException e) {
             return errorResponse(502, "Invalid JSON in upstream response");
         }
