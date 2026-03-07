@@ -22,11 +22,14 @@ repositories {
 
 dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.2.0'
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.3'
     implementation 'com.bucket4j:bucket4j-core:8.10.1'
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // JetBrains Annotations - for code inspection and documentation
+    // https://mvnrepository.com/artifact/org.jetbrains/annotations
+    compileOnly group: 'org.jetbrains', name: 'annotations', version: '26.1.0'
 
     // Lombok - for reducing boilerplate code
     // https://projectlombok.org
