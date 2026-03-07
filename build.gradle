@@ -39,9 +39,41 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.42'
 }
 
+// Generates build-info.properties with Git commit hash before compilation.
+// This file is included in the JAR and read by PrivacyHandler at runtime.
+tasks.register('generateBuildInfo') {
+    final def outputDir = layout.buildDirectory.dir('resources/main')
+    final def outputFile = outputDir.map { it.file('build-info.properties') }
+    outputs.file(outputFile)
+
+    doLast {
+        def commit = 'unknown'
+
+        try {
+            final def result = providers.exec {
+                commandLine 'git', 'rev-parse', 'HEAD'
+            }
+            commit = result.standardOutput.asText.get().trim()
+        } catch (final Exception ignored) {
+        }
+
+        outputDir.get().asFile.mkdirs()
+        outputFile.get().asFile.text = "ospreyproxy.build.commit=${commit}\n"
+    }
+}
+
 tasks {
     bootJar {
-        archiveFileName.set("${project.name}-${project.version}.jar")
+        archiveFileName.set("${project.name}.jar")
+
+        // Reproducible build: fixed file order and timestamps so the same
+        // source always produces the same JAR byte-for-byte.
+        reproducibleFileOrder = true
+        preserveFileTimestamps = false
+    }
+
+    processResources {
+        dependsOn 'generateBuildInfo'
     }
 
     bootRun {

@@ -29,8 +29,22 @@ cookies, and no user accounts.
 - **URLs** submitted for checking are forwarded to the upstream
   provider ([AlphaMountain](https://alphamountain.ai/privacy-policy) or [PrecisionSec](https://precisionsec.com)) and
   then discarded. Refer to each provider's privacy policy for how they handle submitted URLs.
-- **No request logging**: application logging is set to WARN level, so individual requests are never written to disk.
+- **No request logging**: The application contains zero logging calls. The root log level is set to `WARN`, the Reactor
+  Netty access log is explicitly disabled via both property and system property, and no log file path is configured.
+  These are verifiable in [`application.properties`](src/main/resources/application.properties) and
+  [`ReactorConfig.java`](src/main/java/net/foulest/ospreyproxy/config/ReactorConfig.java). Nginx access logging is
+  disabled and the systemd journal is configured to not persist across reboots.
 - **All in-memory caches** (IP hashes, rate limit buckets) are bounded, non-persistent, and lost on restart.
+- **Live verification**: https://api.osprey.ac/privacy returns a real-time snapshot of the server's privacy
+  configuration (log levels, access log status, leak detection, log file paths, error detail settings) read directly
+  from the running JVM. It also exposes the Git commit hash and JAR SHA-256 checksum from the build, so anyone can
+  verify the open source code is what's actually running:
+  ```
+  1. Check the commit:   curl -s https://api.osprey.ac/privacy | jq .buildCommit
+  2. Clone and build:    git checkout <commit> && ./gradlew bootJar
+  3. Compare checksum:   sha256sum build/libs/OspreyProxy.jar
+  4. Match against:      curl -s https://api.osprey.ac/privacy | jq .buildJarSha256
+  ```
 
 ### VPS Specs
 

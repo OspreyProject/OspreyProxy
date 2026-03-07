@@ -38,11 +38,15 @@ public class SecurityConfig {
     // Singleton exception to avoid stack trace generation on every oversized request
     private static final RequestBodyTooLargeException BODY_TOO_LARGE = new RequestBodyTooLargeException();
 
+    // Path exempted from Content-Type enforcement (read-only GET, no request body)
+    private static final String PRIVACY_PATH = "/privacy";
+
     /**
      * Global security filter that applies to all requests. Sets security headers on every response
      * and enforces that incoming requests have a Content-Type of application/json, rejecting with
-     * 415 Unsupported Media Type if not. Runs first (order 1) to ensure security headers are always
-     * set even on rejected requests.
+     * 415 Unsupported Media Type if not. The /privacy endpoint is exempt since it is a GET with
+     * no request body. Runs first (order 1) to ensure security headers are always set even on
+     * rejected requests.
      */
     @Bean
     @Order(1)
@@ -63,6 +67,13 @@ public class SecurityConfig {
             responseHeaders.set("X-XSS-Protection", "1; mode=block");
             responseHeaders.set("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
             responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+            String path = request.getPath().value();
+
+            // Skip Content-Type check for the privacy endpoint (read-only GET, no body)
+            if (PRIVACY_PATH.equals(path)) {
+                return chain.filter(exchange);
+            }
 
             MediaType contentType = request.getHeaders().getContentType();
 
