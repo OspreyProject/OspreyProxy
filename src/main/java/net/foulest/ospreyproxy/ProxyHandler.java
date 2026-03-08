@@ -40,14 +40,13 @@ import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.core.JsonParser;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.ObjectReader;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.*;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -68,11 +67,8 @@ public class ProxyHandler {
     private static final ParameterizedTypeReference<Map<String, String>> MAP_TYPE_REF = new ParameterizedTypeReference<>() {
     };
 
-    // JSON mapper for parsing and re-serializing upstream responses
+    // JSON mapper for parsing upstream responses and serializing error bodies
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
-
-    // Pre-built ObjectReader for JsonNode
-    private static final ObjectReader JSON_NODE_READER = MAPPER.readerFor(JsonNode.class);
 
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
@@ -166,10 +162,18 @@ public class ProxyHandler {
         }
     };
 
+    // Bounded connection pool for the upstream WebClient to prevent resource exhaustion
+    private static final ConnectionProvider CONNECTION_PROVIDER = ConnectionProvider.builder("upstream")
+            .maxConnections(200)
+            .pendingAcquireMaxCount(500)
+            .maxIdleTime(Duration.ofSeconds(30))
+            .maxLifeTime(Duration.ofMinutes(5))
+            .build();
+
     // WebClient backed by Reactor Netty with SSRF-safe DNS, timeouts, no redirects
     private static final WebClient WEB_CLIENT = WebClient.builder()
             .clientConnector(new ReactorClientHttpConnector(
-                    HttpClient.create()
+                    HttpClient.create(CONNECTION_PROVIDER)
                             .resolver(SSRF_SAFE_RESOLVER)
                             .followRedirect(false)
                             .responseTimeout(Duration.ofSeconds(5))
@@ -188,7 +192,6 @@ public class ProxyHandler {
         // Pre-warm Jackson type metadata
         MAPPER.constructType(Map.class);
         MAPPER.constructType(String.class);
-        MAPPER.constructType(JsonNode.class);
         MAPPER.constructType(Object.class);
         MAPPER.constructType(byte[].class);
     }
@@ -372,20 +375,28 @@ public class ProxyHandler {
 
         // Retrieves the response body as bytes to enforce size limits before parsing
         return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
+                    if (bytes.length == 0) {
+                        return RESP_502_INVALID_JSON;
+                    }
+
                     if (bytes.length > MAX_RESPONSE_SIZE) {
                         return RESP_502_TOO_LARGE;
                     }
 
-                    String rawResponse = new String(bytes, StandardCharsets.UTF_8);
-
-                    try {
-                        JsonNode json = JSON_NODE_READER.readValue(rawResponse);
-                        return ServerResponse.ok()
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(json.toString());
+                    // Validate that the response is well-formed JSON using a streaming parser
+                    try (JsonParser parser = MAPPER.createParser(bytes)) {
+                        // noinspection StatementWithEmptyBody
+                        while (parser.nextToken() != null) {
+                            // Consume all tokens; throws on malformed input
+                        }
                     } catch (JacksonException e) {
                         return RESP_502_INVALID_JSON;
                     }
+
+                    // Pass through the validated raw bytes directly
+                    return ServerResponse.ok()
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .bodyValue(bytes);
                 })
                 .onErrorResume(WebClientResponseException.class, e -> RESP_502_FAILED)
                 .onErrorResume(Exception.class, e -> RESP_502_FAILED);
