@@ -39,11 +39,19 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 @Configuration
 public class RouterConfig {
 
+    /**
+     * Defines functional routes for the application.
+     * Routes are matched top-to-bottom; the catch-all must be last.
+     *
+     * @param proxyHandler Handles proxy-related requests.
+     * @param privacyHandler Handles privacy page requests.
+     * @return The composed router function.
+     */
     @Bean
     public RouterFunction<ServerResponse> routes(ProxyHandler proxyHandler, PrivacyHandler privacyHandler) {
         return RouterFunctions.route(RequestPredicates.POST("/alphamountain"), proxyHandler::handleAlphaMountain)
                 .andRoute(RequestPredicates.POST("/precisionsec"), proxyHandler::handlePrecisionSec)
                 .andRoute(RequestPredicates.GET("/privacy"), privacyHandler::handlePrivacy)
-                .andRoute(RequestPredicates.path("/**"), request -> ProxyHandler.RESP_404);
+                .andRoute(RequestPredicates.path("/**"), ignored -> ProxyHandler.RESP_404);
     }
 }
