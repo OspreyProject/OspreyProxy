@@ -61,7 +61,6 @@ public final class IPUtil {
         // Block IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1, ::ffff:169.254.169.254)
         if (addr instanceof Inet6Address v6) {
             byte[] bytes = v6.getAddress();
-            int firstByte = addr.getAddress()[0] & 0xFF;
             boolean isMapped = true;
 
             // Check for ::ffff:x.x.x.x (IPv4-mapped IPv6)
@@ -85,7 +84,7 @@ public final class IPUtil {
             }
 
             // Block IPv6 unique-local addresses (fc00::/7, e.g., fd00:ec2::254 AWS metadata)
-            if ((firstByte & 0xFE) == 0xFC) {
+            if (((bytes[0] & 0xFF) & 0xFE) == 0xFC) {
                 return true;
             }
 
@@ -154,17 +153,28 @@ public final class IPUtil {
      * Checks if the given host string is an IP address literal (IPv4 or IPv6)
      * without performing any DNS resolution.
      *
-     * @param host The hostname to check.
+     * <p>This is a fast format-detection heuristic, not a full IP validator.
+     * Malformed inputs (e.g., "..." or "1.2.3.4.5.6") are intentionally accepted
+     * here because the caller ({@link #isPrivateHost}) passes the result to
+     * {@code InetAddress.getByName()}, which performs strict validation and throws
+     * {@code UnknownHostException} on invalid literals (caught and treated as blocked).
+     *
+     * @param host The hostname from {@code URI.getHost()}, which never contains a port
+     *             component (e.g., "example.com:8080" → "example.com", "[::1]:8080" → "::1").
      * @return True if the host looks like an IP literal, false if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
     private static boolean isIpLiteral(@NonNull String host) {
-        // IPv6 literals from URI.getHost() come without brackets (e.g., "::1")
+        // IPv6 literals from URI.getHost() come without brackets (e.g., "::1").
+        // Port-separated colons (e.g., "host:8080") cannot appear here because
+        // URI.getHost() returns only the host component with the port stripped.
         if (host.contains(":")) {
             return true;
         }
 
-        // IPv4: all characters must be digits or dots, and must contain at least one dot
+        // IPv4 heuristic: contains a dot and only digits/dots. Intentionally loose;
+        // malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught by
+        // InetAddress.getByName() in the caller and treated as blocked.
         if (host.contains(".")) {
             for (int i = 0; i < host.length(); i++) {
                 char c = host.charAt(i);
