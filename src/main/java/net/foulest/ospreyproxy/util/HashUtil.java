@@ -68,6 +68,7 @@ public final class HashUtil {
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
      */
+    @SuppressWarnings("java:S2119")
     private static byte @NonNull [] generateSalt() {
         byte[] salt = new byte[32];
         new SecureRandom().nextBytes(salt);
