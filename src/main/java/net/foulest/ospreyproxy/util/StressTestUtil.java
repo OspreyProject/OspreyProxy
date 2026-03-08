@@ -41,29 +41,17 @@ import java.util.concurrent.ThreadLocalRandom;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StressTestUtil {
 
-    // Fake upstream response returned in stress test mode
-    private static final String FAKE_RESPONSE = "{\"stress_test\": true, \"verdict\": \"safe\"}";
-
     // Whether stress test mode is active; injected from application.properties.
     // Volatile for visibility: written by Spring's main thread via @Value setter,
     // read by Netty event loop threads during request handling.
     @Getter
-    private static volatile boolean enabled;
+    public static volatile boolean enabled;
 
     // Instance method is required for Spring @Value injection; cannot be static.
     @SuppressWarnings({"MethodMayBeStatic", "java:S2696"})
     @Value("${ospreyproxy.stress-test-mode:false}")
     public void setEnabled(boolean value) {
         enabled = value;
-    }
-
-    /**
-     * Returns a fake upstream response for use in stress test mode.
-     *
-     * @return A JSON string simulating a provider response.
-     */
-    public static @NonNull String getFakeResponse() {
-        return FAKE_RESPONSE;
     }
 
     /**
