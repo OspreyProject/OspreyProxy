@@ -36,8 +36,6 @@ import java.util.Map;
  */
 public interface Provider {
 
-    int DEFAULT_IP_BURST_CAPACITY = 11;
-
     /**
      * A human-readable name for this provider, used in logging and error messages.
      *
