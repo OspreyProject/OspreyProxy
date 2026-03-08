@@ -31,7 +31,7 @@ import reactor.core.publisher.Hooks;
  * {@code server.netty.worker-threads} (Spring Boot) or defaults to
  * {@code availableProcessors() * 2} via Reactor Netty's built-in
  * {@code ReactorResourceFactory}. A custom {@code LoopResources} is not
- * needed because Spring's auto-configured resource factory handles
+ * needed because Spring's autoconfigured resource factory handles
  * lifecycle (creation and shutdown) automatically, avoiding duplicate
  * thread pools.
  */
