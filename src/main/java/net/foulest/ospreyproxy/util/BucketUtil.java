@@ -41,7 +41,7 @@ public final class BucketUtil {
     // are used simultaneously. This is a generous limit that should not be hit
     // under normal usage, but protects against abuse and is still low enough to
     // prevent resource exhaustion and keep the proxy responsive under attack.
-    private static final int NUMBER_OF_PROVIDERS = 1;
+    private static final int NUMBER_OF_PROVIDERS = 2;
     private static final int IP_BURST_CAPACITY = 11 * NUMBER_OF_PROVIDERS;
     private static final int IP_SUSTAINED_CAPACITY = 400 * NUMBER_OF_PROVIDERS;
 
