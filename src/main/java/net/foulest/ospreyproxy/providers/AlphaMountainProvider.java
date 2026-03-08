@@ -48,6 +48,11 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
+    public @NonNull String getName() {
+        return "alphaMountain";
+    }
+
+    @Override
     public @NonNull String getApiUrl() {
         return API_URL;
     }

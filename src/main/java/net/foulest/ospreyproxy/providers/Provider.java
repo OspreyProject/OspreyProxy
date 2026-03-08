@@ -34,6 +34,14 @@ import java.util.Map;
 public interface Provider {
 
     /**
+     * A human-readable name for this provider, used in logging and error messages.
+     *
+     * @return The display name of the provider.
+     */
+    @NonNull
+    String getName();
+
+    /**
      * The base upstream API URL.
      *
      * @return The upstream API URL.

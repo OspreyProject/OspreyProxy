@@ -45,6 +45,11 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    public @NonNull String getName() {
+        return "PrecisionSec";
+    }
+
+    @Override
     public @NonNull String getApiUrl() {
         return API_URL;
     }
