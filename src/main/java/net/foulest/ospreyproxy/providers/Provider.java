@@ -18,7 +18,6 @@
 package net.foulest.ospreyproxy.providers;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import org.jspecify.annotations.NonNull;
@@ -36,6 +35,8 @@ import java.util.Map;
  * All validation and proxying logic lives in ProxyHandler.proxyRequest().
  */
 public interface Provider {
+
+    int DEFAULT_IP_BURST_CAPACITY = 11;
 
     /**
      * A human-readable name for this provider, used in logging and error messages.
@@ -102,9 +103,7 @@ public interface Provider {
      *
      * @return The capacity for the burst rate limit bucket.
      */
-    default int getIPBurstCapacity() {
-        return 11;
-    }
+    int getBurstCapacity();
 
     /**
      * Gets the capacity for the sustained rate limit bucket.
@@ -112,81 +111,49 @@ public interface Provider {
      *
      * @return The capacity for the sustained rate limit bucket.
      */
-    default int getIPSustainedCapacity() {
-        return 400;
-    }
+    int getSustainedCapacity();
 
     /**
      * Duration for burst rate limiting. This is the interval at which the burst bucket refills.
      *
      * @return A Duration object representing the burst rate limit refill interval.
      */
-    default @NonNull Duration getBurstDuration() {
-        return Duration.ofSeconds(1);
-    }
+    @NonNull Duration getBurstDuration();
 
     /**
      * Duration for sustained rate limiting. This is the interval at which the sustained bucket refills.
      *
      * @return A Duration object representing the sustained rate limit refill interval.
      */
-    default @NonNull Duration getSustainedDuration() {
-        return Duration.ofMinutes(1);
-    }
+    @NonNull Duration getSustainedDuration();
 
     /**
      * Constructs the Bandwidth object for burst rate limiting based on the provider's parameters.
      *
      * @return A Bandwidth instance configured for burst rate limiting according to the provider's settings.
      */
-    default @NonNull Bandwidth getBurstBandwidth() {
-        int ipBurstCapacity = getIPBurstCapacity();
-        Duration burstDuration = getBurstDuration();
-
-        return Bandwidth.builder()
-                .capacity(ipBurstCapacity)
-                .refillIntervally(ipBurstCapacity, burstDuration)
-                .build();
-    }
+    @NonNull Bandwidth getBurstBandwidth();
 
     /**
      * Constructs the Bandwidth object for sustained rate limiting based on the provider's parameters.
      *
      * @return A Bandwidth instance configured for sustained rate limiting according to the provider's settings.
      */
-    default @NonNull Bandwidth getSustainedBandwidth() {
-        int ipSustainedCapacity = getIPSustainedCapacity();
-        Duration sustainedDuration = getSustainedDuration();
-
-        return Bandwidth.builder()
-                .capacity(ipSustainedCapacity)
-                .refillIntervally(ipSustainedCapacity, sustainedDuration)
-                .build();
-    }
+    @NonNull Bandwidth getSustainedBandwidth();
 
     /**
      * Provides the Caffeine cache object for burst rate limit buckets.
      *
      * @return A Caffeine Cache instance for burst rate limit buckets.
      */
-    default @NonNull Cache<String, Bucket> getBurstBucketObject() {
-        return Caffeine.newBuilder()
-                .expireAfterAccess(Duration.ofHours(1))
-                .maximumSize(100_000)
-                .build();
-    }
+    @NonNull Cache<String, Bucket> getBurstBucketCache();
 
     /**
      * Provides the Caffeine cache object for sustained rate limit buckets.
      *
      * @return A Caffeine Cache instance for sustained rate limit buckets.
      */
-    default @NonNull Cache<String, Bucket> getSustainedBucketObject() {
-        return Caffeine.newBuilder()
-                .expireAfterAccess(Duration.ofHours(1))
-                .maximumSize(100_000)
-                .build();
-    }
+    @NonNull Cache<String, Bucket> getSustainedBucketCache();
 
     /**
      * Gets the burst rate limit bucket for the given IP address, creating it if it doesn't exist.
@@ -194,12 +161,7 @@ public interface Provider {
      * @param ip The IP address to get the burst bucket for.
      * @return The Bucket object representing the burst rate limit for the given IP.
      */
-    default @NonNull Bucket getBurstBucket(@NonNull String ip) {
-        return getBurstBucketObject().get(ip, k -> {
-            Bandwidth burstBandwidth = getBurstBandwidth();
-            return Bucket.builder().addLimit(burstBandwidth).build();
-        });
-    }
+    @NonNull Bucket getBurstBucket(@NonNull String ip);
 
     /**
      * Gets the sustained rate limit bucket for the given IP address, creating it if it doesn't exist.
@@ -207,10 +169,5 @@ public interface Provider {
      * @param ip The IP address to get the sustained bucket for.
      * @return The Bucket object representing the sustained rate limit for the given IP.
      */
-    default @NonNull Bucket getSustainedBucket(@NonNull String ip) {
-        return getSustainedBucketObject().get(ip, k -> {
-            Bandwidth sustainedBandwidth = getSustainedBandwidth();
-            return Bucket.builder().addLimit(sustainedBandwidth).build();
-        });
-    }
+    @NonNull Bucket getSustainedBucket(@NonNull String ip);
 }
