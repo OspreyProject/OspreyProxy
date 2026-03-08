@@ -21,44 +21,24 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Global security configuration for the proxy server.
  */
 @Configuration
 public class SecurityConfig {
-
-    // Error messages
-    private static final String CONTENT_TYPE_ERROR = "{\"error\": \"Content-Type must be application/json\"}";
-    private static final String BODY_TOO_LARGE_ERROR = "{\"error\": \"Request body too large\"}";
-
-    // Pre-allocated error response byte arrays to avoid repeated getBytes() allocation
-    private static final byte[] CONTENT_TYPE_ERROR_BYTES = CONTENT_TYPE_ERROR.getBytes(StandardCharsets.UTF_8);
-    private static final byte[] BODY_TOO_LARGE_ERROR_BYTES = BODY_TOO_LARGE_ERROR.getBytes(StandardCharsets.UTF_8);
-
-    // Maximum request body size in bytes (10 KB)
-    private static final int MAX_BODY_SIZE = 10_240;
-
-    // Singleton exception to avoid stack trace generation on every oversized request
-    private static final RequestBodyTooLargeException BODY_TOO_LARGE = new RequestBodyTooLargeException();
 
     // Path exempted from Content-Type enforcement (read-only GET, no request body)
     private static final String PRIVACY_PATH = "/privacy";
@@ -106,71 +86,21 @@ public class SecurityConfig {
                 return chain.filter(exchange);
             }
 
-            MediaType contentType = request.getHeaders().getContentType();
+            // Fast-path: compare raw header string before allocating a MediaType object.
+            // The vast majority of valid clients send exactly "application/json"; only
+            // fall back to full MIME parsing for values with parameters (e.g., charset).
+            String rawContentType = request.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
 
-            // Reject requests without application/json Content-Type
-            if (contentType == null || !contentType.equalsTypeAndSubtype(MediaType.APPLICATION_JSON)) {
+            boolean valid = rawContentType != null
+                    && (rawContentType.equals("application/json")
+                    || (rawContentType.startsWith("application/json")
+                    && MediaType.parseMediaType(rawContentType).equalsTypeAndSubtype(MediaType.APPLICATION_JSON)));
+
+            if (!valid) {
                 response.setStatusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
                 return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415_CONTENT_TYPE)));
             }
             return chain.filter(exchange);
         };
-    }
-
-    /**
-     * Enforces a hard body-size limit on all incoming requests.
-     * Decorates the request body Flux to count bytes as they arrive and
-     * cancel with an error signal if the limit is exceeded. The decorated
-     * request is passed downstream so Spring can still read the body normally.
-     * Runs second (order 2).
-     */
-    @Bean
-    @Order(2)
-    public WebFilter bodySizeFilter() {
-        return (ServerWebExchange exchange, WebFilterChain chain) -> {
-            // AtomicInteger is used for lambda capture (must be effectively final);
-            // Reactor's handle() operator processes buffers sequentially per
-            // subscription, so there is no concurrent access to the counter.
-            AtomicInteger bytesRead = new AtomicInteger(0);
-            ServerHttpResponse response = exchange.getResponse();
-
-            // Decorate the request body flux with a byte counter
-            ServerHttpRequestDecorator decorator = new ServerHttpRequestDecorator(exchange.getRequest()) {
-                @Override
-                public @NonNull Flux<DataBuffer> getBody() {
-                    return super.getBody().handle((dataBuffer, sink) -> {
-                        int count = dataBuffer.readableByteCount();
-
-                        // addAndGet atomically accumulates then checks; the buffer that
-                        // exceeds the limit is released (not forwarded), so at most one
-                        // chunk (~8 KB on Netty) is read beyond MAX_BODY_SIZE before
-                        // rejection. Checking before adding would forward the oversized
-                        // buffer downstream, which is worse.
-                        if (bytesRead.addAndGet(count) > MAX_BODY_SIZE) {
-                            DataBufferUtils.release(dataBuffer);
-                            sink.error(BODY_TOO_LARGE);
-                        } else {
-                            sink.next(dataBuffer);
-                        }
-                    });
-                }
-            };
-
-            return chain.filter(exchange.mutate().request(decorator).build())
-                    .onErrorResume(RequestBodyTooLargeException.class, e -> {
-                        response.setStatusCode(HttpStatus.CONTENT_TOO_LARGE);
-                        return response.writeWith(Mono.just(response.bufferFactory().wrap(BODY_TOO_LARGE_ERROR_BYTES)));
-                    });
-        };
-    }
-
-    /**
-     * Sentinel exception used to signal body size exceeded within the reactive pipeline.
-     */
-    private static class RequestBodyTooLargeException extends RuntimeException {
-
-        RequestBodyTooLargeException() {
-            super("Request body too large", null, true, false);
-        }
     }
 }
