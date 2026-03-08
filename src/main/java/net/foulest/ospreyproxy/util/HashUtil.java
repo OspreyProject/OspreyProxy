@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.HexFormat;
 
 /**
@@ -35,10 +36,17 @@ import java.util.HexFormat;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HashUtil {
 
-    // IP salt for hashing to prevent rainbow table attacks
+    // Random salt for hashing IPs; intentionally regenerated on each restart.
+    // Hashes are used only for in-memory rate-limit bucket keys (Caffeine cache),
+    // not persisted, so cross-restart consistency is unnecessary. Regeneration
+    // improves privacy by preventing long-term IP correlation.
     private static final byte[] IP_SALT = generateSalt();
 
-    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call
+    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call.
+    // This is a static final field intended to live for the application's lifetime;
+    // remove() is not needed because Netty event loop threads are long-lived and
+    // terminated at shutdown, at which point the ThreadLocal is cleaned up.
+    @SuppressWarnings("java:S5164")
     private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
         try {
             return MessageDigest.getInstance("SHA-256");
@@ -49,11 +57,14 @@ public final class HashUtil {
 
     // Cache for hashed IP addresses to improve performance and reduce CPU load on repeated hashes
     private static final Cache<String, String> HASH_CACHE = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
 
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
+     * Creates a new SecureRandom instance, which is acceptable because this method
+     * is called exactly once at class load time ({@code IP_SALT} initialization).
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
      */
@@ -65,19 +76,14 @@ public final class HashUtil {
 
     /**
      * Hashes the IP address using SHA-256 with a salt to prevent rainbow table attacks.
-     * Uses getIfPresent() fast-path to avoid Caffeine locking on cache hits,
-     * and ThreadLocal MessageDigest to avoid getInstance() overhead on misses.
+     * Caffeine's get() uses an optimistic fast-path for cache hits internally
+     * without locking, so no manual getIfPresent() check is needed.
+     * Uses ThreadLocal MessageDigest to avoid getInstance() overhead on misses.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
      */
     public static String hashIp(@NonNull String ip) {
-        String cached = HASH_CACHE.getIfPresent(ip);
-
-        if (cached != null) {
-            return cached;
-        }
-
         return HASH_CACHE.get(ip, k -> {
             MessageDigest digest = SHA256_DIGEST.get();
             digest.reset();
