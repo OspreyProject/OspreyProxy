@@ -255,32 +255,33 @@ public class PrivacyHandler {
                 for (String line : content.split("\n")) {
                     String trimmed = line.trim();
 
-                    // Skip comments and blank lines
-                    if (trimmed.isEmpty() || trimmed.charAt(0) == '#') {
+                    // Skip lines that don't start with "access_log"
+                    if (trimmed.isEmpty() || trimmed.charAt(0) == '#' || !trimmed.startsWith("access_log")) {
                         continue;
                     }
 
-                    if (trimmed.startsWith("access_log")) {
-                        // Extract the value after "access_log" (e.g., "off;", "/dev/null;")
-                        // Nginx syntax: access_log <path|off> [format ...];
-                        String value = trimmed.substring("access_log".length()).trim();
+                    // Extract the value after "access_log" (e.g., "off;", "/dev/null;")
+                    // Nginx syntax: access_log <path|off> [format ...];
+                    String value = trimmed.substring("access_log".length()).trim();
 
-                        // Strip trailing semicolon and any format/params after the path
-                        int space = value.indexOf(' ');
-                        if (space > 0) {
-                            value = value.substring(0, space);
-                        }
-
-                        if (!value.isEmpty() && value.charAt(value.length() - 1) == ';') {
-                            value = value.substring(0, value.length() - 1);
-                        }
-
-                        if ("off".equals(value) || "/dev/null".equals(value)) {
-                            // Site-specific "off" takes precedence, return immediately
-                            return "disabled";
-                        }
-                        lastFound = trimmed;
+                    // Strip trailing semicolon and any format/params after the path
+                    int space = value.indexOf(' ');
+                    if (space > 0) {
+                        value = value.substring(0, space);
                     }
+
+                    // Strip trailing semicolon if present
+                    if (!value.isEmpty() && value.charAt(value.length() - 1) == ';') {
+                        value = value.substring(0, value.length() - 1);
+                    }
+
+                    // Check if access_log is set to "off" or a null device, which means disabled
+                    // Site-specific "off" takes precedence, return immediately if found
+                    if ("off".equals(value) || "/dev/null".equals(value)) {
+                        return "disabled";
+                    }
+
+                    lastFound = trimmed;
                 }
             } catch (IOException ignored) {
             }
