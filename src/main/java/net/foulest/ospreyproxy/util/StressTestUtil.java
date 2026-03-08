@@ -37,16 +37,21 @@ import java.util.concurrent.ThreadLocalRandom;
  * This mode must never be enabled in production.
  */
 @Component
+// Private constructor is accessible to Spring via CGLIB reflection-based instantiation.
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StressTestUtil {
 
     // Fake upstream response returned in stress test mode
     private static final String FAKE_RESPONSE = "{\"stress_test\": true, \"verdict\": \"safe\"}";
 
-    // Whether stress test mode is active; injected from application.properties
+    // Whether stress test mode is active; injected from application.properties.
+    // Volatile for visibility: written by Spring's main thread via @Value setter,
+    // read by Netty event loop threads during request handling.
     @Getter
-    private static boolean enabled;
+    private static volatile boolean enabled;
 
+    // Instance method is required for Spring @Value injection; cannot be static.
+    @SuppressWarnings("MethodMayBeStatic")
     @Value("${ospreyproxy.stress-test-mode:false}")
     public void setEnabled(boolean value) {
         enabled = value;
@@ -75,7 +80,7 @@ public final class StressTestUtil {
         int b = (int) ((bits >>> 8) & 0xFF);    // 0-255
         int c = (int) ((bits >>> 16) & 0xFF);    // 0-255
 
-        // Write directly into a char array to avoid StringBuilder allocation.
+        // Write directly into a char array to avoid StringBuilder allocation
         char[] buf = new char[12]; // max "10.255.255.1"
         buf[0] = '1';
         buf[1] = '0';
