@@ -21,7 +21,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.local.LocalBucketBuilder;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.NonNull;
@@ -35,6 +34,13 @@ import java.time.Duration;
 public final class BucketUtil {
 
     // Rate limit configuration (per-IP)
+    //
+    // 15 req/sec and 600 req/min is a reasonable upper limit of what's possible
+    // to request under normal usage for a single provider in Osprey. We then
+    // multiply by the number of providers to allow full capacity if all providers
+    // are used simultaneously. This is a generous limit that should not be hit
+    // under normal usage, but protects against abuse and is still low enough to
+    // prevent resource exhaustion and keep the proxy responsive under attack.
     private static final int NUMBER_OF_PROVIDERS = 2;
     private static final int IP_BURST_CAPACITY = 15 * NUMBER_OF_PROVIDERS;
     private static final int IP_SUSTAINED_CAPACITY = 600 * NUMBER_OF_PROVIDERS;
@@ -57,49 +63,41 @@ public final class BucketUtil {
 
     // Cache for per-IP rate-limiting burst buckets
     private static final Cache<String, Bucket> BURST_BUCKETS = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
 
     // Cache for per-IP rate-limiting sustained buckets
     private static final Cache<String, Bucket> SUSTAINED_BUCKETS = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
 
     /**
      * Gets or creates a rate-limiting burst bucket for the given IP address.
+     * Caffeine's {@code get(key, mappingFunction)} is atomic per key; the lambda
+     * executes at most once per key even under concurrent access, so duplicate
+     * buckets with independent state cannot be created for the same IP.
      *
      * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for burst rate limiting.
      */
+    @SuppressWarnings("NestedMethodCall")
     public static Bucket getBurstBucket(@NonNull String ip) {
-        Bucket bucket = BURST_BUCKETS.getIfPresent(ip);
-
-        if (bucket != null) {
-            return bucket;
-        }
-
-        return BURST_BUCKETS.get(ip, k -> {
-            LocalBucketBuilder builder = Bucket.builder().addLimit(BURST_BANDWIDTH);
-            return builder.build();
-        });
+        return BURST_BUCKETS.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
     }
 
     /**
      * Gets or creates a rate-limiting sustained bucket for the given IP address.
+     * Caffeine's {@code Cache.get(key, mappingFunction)} is atomic per key; the lambda
+     * executes at most once per key even under concurrent access, so duplicate
+     * buckets with independent state cannot be created for the same IP.
      *
      * @param ip The hashed IP address to get the bucket for.
      * @return A Bucket instance for the given IP address for sustained rate limiting.
      */
+    @SuppressWarnings("NestedMethodCall")
     public static Bucket getSustainedBucket(@NonNull String ip) {
-        Bucket bucket = SUSTAINED_BUCKETS.getIfPresent(ip);
-
-        if (bucket != null) {
-            return bucket;
-        }
-
-        return SUSTAINED_BUCKETS.get(ip, k -> {
-            LocalBucketBuilder builder = Bucket.builder().addLimit(SUSTAINED_BANDWIDTH);
-            return builder.build();
-        });
+        return SUSTAINED_BUCKETS.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
     }
 }
