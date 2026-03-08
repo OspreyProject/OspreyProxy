@@ -77,12 +77,15 @@ tasks {
 
     bootRun {
         jvmArgs = [
-                '-Xms512m',
-                '-Xmx1g',
-                '-XX:MaxDirectMemorySize=256m',
+                '-server',
                 '-XX:+UseZGC',
+                '-XX:+ZGenerational',
+                '-XX:InitialRAMPercentage=12.5',
+                '-XX:MaxRAMPercentage=25.0',
+                '-XX:MaxDirectMemorySize=512m',
                 '-XX:+UnlockDiagnosticVMOptions',
-                '-XX:+DebugNonSafepoints'
+                '-XX:+DebugNonSafepoints',
+                '-XX:+AlwaysPreTouch'
         ]
     }
 
