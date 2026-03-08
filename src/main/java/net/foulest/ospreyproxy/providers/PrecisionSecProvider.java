@@ -31,7 +31,6 @@ import java.util.Map;
 @Component
 public class PrecisionSecProvider implements Provider {
 
-    @NonNull
     private static final String API_KEY = System.getenv("PRECISIONSEC_API_KEY");
     private static final String API_URL = "https://api.precisionsec.com/check_url/";
     private static final String UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -39,7 +38,7 @@ public class PrecisionSecProvider implements Provider {
     @PostConstruct
     public void validateConfig() {
         // Check if the key is blank or doesn't match UUID spec
-        if (API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN)) {
+        if (API_KEY == null || API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN)) {
             throw new IllegalStateException("PRECISIONSEC_API_KEY environment variable is invalid or not set");
         }
     }
