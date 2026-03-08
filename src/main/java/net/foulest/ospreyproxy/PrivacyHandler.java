@@ -21,6 +21,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import io.netty.util.ResourceLeakDetector;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.LoggerFactory;
@@ -57,6 +58,7 @@ import java.util.*;
  * can clone the repo, build the same commit, and verify that the checksum
  * matches, proving the open source code is what's actually running.
  */
+@Slf4j
 @Component
 public class PrivacyHandler {
 
@@ -72,7 +74,8 @@ public class PrivacyHandler {
             if (is != null) {
                 buildInfo.load(is);
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            log.warn("Failed to load build info properties", e);
         }
 
         BUILD_COMMIT = buildInfo.getProperty("ospreyproxy.build.commit", "unknown");
@@ -139,6 +142,7 @@ public class PrivacyHandler {
         try {
             body = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(privacy);
         } catch (JacksonException e) {
+            log.warn("Failed to serialize privacy info to JSON", e);
             body = "{\"error\":\"Failed to serialize privacy info\"}";
         }
 
@@ -157,6 +161,7 @@ public class PrivacyHandler {
             Level level = root.getLevel();
             return level != null ? level.toString() : "UNKNOWN";
         } catch (ClassCastException e) {
+            log.warn("Failed to read Logback root logger level", e);
             return "UNKNOWN";
         }
     }
@@ -215,6 +220,7 @@ public class PrivacyHandler {
             }
             return count;
         } catch (ClassCastException e) {
+            log.warn("Failed to read Logback appenders", e);
             return -1; // Unable to determine
         }
     }
@@ -283,7 +289,8 @@ public class PrivacyHandler {
 
                     lastFound = trimmed;
                 }
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                log.warn("Failed to read Nginx config file", e);
             }
         }
 
@@ -374,6 +381,7 @@ public class PrivacyHandler {
             }
             return lastValue;
         } catch (IOException e) {
+            log.warn("Failed to read journald drop-in configs", e);
             return null;
         }
     }
@@ -403,7 +411,8 @@ public class PrivacyHandler {
                     return trimmed.substring("Storage=".length()).trim().toLowerCase(Locale.ROOT);
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            log.warn("Failed to read journald config file", e);
         }
         return null;
     }
@@ -482,6 +491,7 @@ public class PrivacyHandler {
             byte[] hash = digest.digest();
             return HexFormat.of().formatHex(hash);
         } catch (URISyntaxException | IOException | NoSuchAlgorithmException | SecurityException e) {
+            log.warn("Failed to compute JAR SHA-256 checksum", e);
             return "unknown";
         }
     }

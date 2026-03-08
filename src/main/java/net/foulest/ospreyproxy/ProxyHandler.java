@@ -21,6 +21,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.resolver.*;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Promise;
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
 import net.foulest.ospreyproxy.providers.Provider;
@@ -57,6 +58,7 @@ import java.util.Set;
 /**
  * Functional request handler for all proxy endpoints.
  */
+@Slf4j
 @Component
 public class ProxyHandler {
 
@@ -243,6 +245,7 @@ public class ProxyHandler {
 
         // Per-IP sustained rate limit
         if (!BucketUtil.getSustainedBucket(hashedIp).tryConsume(1)) {
+            log.warn("Sustained rate limit exceeded for IP");
             return ErrorUtil.resp429Sustained();
         }
 
@@ -262,11 +265,13 @@ public class ProxyHandler {
             try {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
+                log.warn("Blocked request with malformed JSON body", e);
                 return ErrorUtil.resp400Malformed();
             }
 
             // Rejects unexpected fields
             if (incoming.size() > 1) {
+                log.warn("Blocked request with unexpected fields");
                 return ErrorUtil.resp400Unexpected();
             }
 
@@ -274,11 +279,13 @@ public class ProxyHandler {
 
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
+                log.warn("Blocked request with missing or empty URL");
                 return ErrorUtil.resp400MissingUrl();
             }
 
             // Rejects excessively long URLs
             if (url.length() > 2048) {
+                log.warn("Blocked request with excessively long URL");
                 return ErrorUtil.resp400UrlTooLong();
             }
 
@@ -288,6 +295,7 @@ public class ProxyHandler {
             try {
                 parsedUri = new URI(url).normalize();
             } catch (URISyntaxException | IllegalArgumentException e) {
+                log.warn("Blocked request with malformed URL", e);
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -300,6 +308,7 @@ public class ProxyHandler {
                     parsedUri.toURL();
                     scheme = parsedUri.getScheme();
                 } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+                    log.warn("Blocked request with malformed schemeless URL", e);
                     return ErrorUtil.resp400Malformed();
                 }
             }
@@ -307,6 +316,7 @@ public class ProxyHandler {
             // Rejects unsupported schemes (only http and https allowed)
             // noinspection NestedMethodCall
             if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
+                log.warn("Blocked request with disallowed scheme");
                 return ErrorUtil.resp400Scheme();
             }
 
@@ -317,6 +327,7 @@ public class ProxyHandler {
                 String authority = parsedUri.getRawAuthority();
 
                 if (authority == null) {
+                    log.warn("Blocked request with no host");
                     return ErrorUtil.resp400Malformed();
                 }
 
@@ -326,6 +337,7 @@ public class ProxyHandler {
 
             // Rejects empty hosts
             if (host.isBlank()) {
+                log.warn("Blocked request with empty host");
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -333,11 +345,13 @@ public class ProxyHandler {
 
             // Blocks userinfo to prevent URL parsing differentials
             if (parsedUri.getUserInfo() != null) {
+                log.warn("Blocked request with userinfo in URL");
                 return ErrorUtil.resp400NotAllowed();
             }
 
             // Blocks private/internal hosts
             if (IPUtil.isPrivateHost(host)) {
+                log.warn("Blocked request to private/internal host");
                 return ErrorUtil.resp400NotAllowed();
             }
 
@@ -379,10 +393,12 @@ public class ProxyHandler {
         // Retrieves the response body as bytes to enforce size limits before parsing
         return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
                     if (bytes.length == 0) {
+                        log.warn("Upstream response was empty");
                         return ErrorUtil.resp502InvalidJson();
                     }
 
                     if (bytes.length > MAX_RESPONSE_SIZE) {
+                        log.warn("Upstream response exceeded maximum size: {} bytes", bytes.length);
                         return ErrorUtil.resp502TooLarge();
                     }
 
@@ -398,6 +414,7 @@ public class ProxyHandler {
                                 depth++;
 
                                 if (depth > MAX_NESTING_DEPTH) {
+                                    log.warn("Upstream response exceeded maximum nesting depth: {}", depth);
                                     return ErrorUtil.resp502InvalidJson();
                                 }
                             } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
@@ -405,6 +422,7 @@ public class ProxyHandler {
                             }
                         }
                     } catch (JacksonException e) {
+                        log.warn("Failed to parse upstream response as JSON", e);
                         return ErrorUtil.resp502InvalidJson();
                     }
 
@@ -413,7 +431,13 @@ public class ProxyHandler {
                             .contentType(MediaType.APPLICATION_JSON)
                             .bodyValue(bytes);
                 })
-                .onErrorResume(WebClientResponseException.class, e -> ErrorUtil.resp502Failed())
-                .onErrorResume(Exception.class, e -> ErrorUtil.resp502Failed());
+                .onErrorResume(WebClientResponseException.class, e -> {
+                    log.warn("Upstream request failed", e);
+                    return ErrorUtil.resp502Failed();
+                })
+                .onErrorResume(Exception.class, e -> {
+                    log.error("Unexpected error during upstream request", e);
+                    return ErrorUtil.resp502Failed();
+                });
     }
 }

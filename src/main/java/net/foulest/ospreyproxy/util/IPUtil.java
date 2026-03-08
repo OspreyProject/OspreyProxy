@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 
 import java.net.Inet4Address;
@@ -30,6 +31,7 @@ import java.util.Arrays;
 /**
  * Utility class for checking if an IP address or hostname is private/internal to prevent SSRF attacks.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class IPUtil {
 
@@ -79,6 +81,7 @@ public final class IPUtil {
                     InetAddress v4Addr = InetAddress.getByAddress(v4Bytes);
                     return isPrivateAddress(v4Addr);
                 } catch (UnknownHostException e) {
+                    log.warn("Invalid IPv4-mapped IPv6 address", e);
                     return true;
                 }
             }
@@ -107,6 +110,7 @@ public final class IPUtil {
                         return true;
                     }
                 } catch (UnknownHostException e) {
+                    log.warn("Invalid 6to4 IPv6 address", e);
                     return true;
                 }
             }
@@ -142,7 +146,7 @@ public final class IPUtil {
                 InetAddress addr = InetAddress.getByName(host);
                 return isPrivateAddress(addr);
             } catch (UnknownHostException e) {
-                // Malformed IP literal; block it to be safe
+                log.warn("Invalid IP literal", e);
                 return true;
             }
         }

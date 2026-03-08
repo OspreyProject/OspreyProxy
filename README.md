@@ -26,12 +26,13 @@ cookies, and no user accounts.
 
 - **IP addresses** are held in memory only for rate limiting, hashed with SHA-256 and a random salt that changes every
   restart. Raw IPs are never logged or sent upstream.
-- **URLs** submitted for checking are forwarded to the upstream
-  provider ([AlphaMountain](https://alphamountain.ai/privacy-policy) or [PrecisionSec](https://precisionsec.com)) and
-  then discarded. Refer to each provider's privacy policy for how they handle submitted URLs.
-- **No request logging**: The application contains zero logging calls. The root log level is set to `WARN`, the Reactor
-  Netty access log is explicitly disabled via both property and system property, and no log file path is configured.
-  These are verifiable in [`application.properties`](src/main/resources/application.properties) and
+- **URLs** submitted for checking are forwarded to the upstream providers and then discarded. Refer to each provider's
+  privacy policy for how they handle submitted URLs.
+- **No request logging**: The application contains zero logging calls that record user-supplied content (such as IPs,
+  URLs, hosts, and request bodies). All `log.warn` calls contain no user data and only log internal events or errors.
+  The root log level is set to `WARN`, the Reactor Netty access log is explicitly disabled via both property and system
+  property, and no log file path is configured. These are verifiable in
+  [`application.properties`](src/main/resources/application.properties) and
   [`ReactorConfig.java`](src/main/java/net/foulest/ospreyproxy/config/ReactorConfig.java).
 - **All in-memory caches** (IP hashes, rate limit buckets) are bounded, non-persistent, and lost on restart.
 - **Cloudflare**: Requests are proxied through [Cloudflare](https://www.cloudflare.com/) (orange cloud enabled) for
