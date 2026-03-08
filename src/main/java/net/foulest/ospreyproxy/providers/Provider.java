@@ -30,7 +30,7 @@ import java.util.Map;
  * {@link #getMethod} and {@link #buildRequestUrl}.
  * All validation and proxying logic lives in ProxyHandler.proxyRequest().
  */
-@FunctionalInterface
+@SuppressWarnings("InterfaceMayBeAnnotatedFunctional")
 public interface Provider {
 
     /**
