@@ -24,10 +24,7 @@ import io.netty.util.concurrent.Promise;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
 import net.foulest.ospreyproxy.providers.Provider;
-import net.foulest.ospreyproxy.util.BucketUtil;
-import net.foulest.ospreyproxy.util.HashUtil;
-import net.foulest.ospreyproxy.util.IPUtil;
-import net.foulest.ospreyproxy.util.StressTestUtil;
+import net.foulest.ospreyproxy.util.*;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
@@ -46,6 +43,7 @@ import tools.jackson.core.JsonToken;
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -66,10 +64,6 @@ public class ProxyHandler {
     private final AlphaMountainProvider alphaMountainProvider;
     private final PrecisionSecProvider precisionSecProvider;
 
-    // Jackson type reference for synchronous body deserialization (Map<String, String>)
-    private static final TypeReference<Map<String, String>> MAP_TYPE = new TypeReference<>() {
-    };
-
     // Maximum nesting depth enforced during upstream response validation.
     // Mirrors the StreamReadConstraints limit above; applied manually during
     // the streaming token-walk to catch any parser that fails to enforce it.
@@ -88,6 +82,15 @@ public class ProxyHandler {
                             .build())
                     .build())
             .build();
+
+    // Pre-resolved JavaType for synchronous body deserialization (Map<String, String>).
+    // Resolving once at class-load avoids per-request TypeFactory.constructType() overhead.
+    // The TypeReference overload of readValue() calls constructType() on every invocation,
+    // walking the generic type hierarchy through _fromAny → _fromParamType → _fromClass.
+    private static final JavaType MAP_TYPE = MAPPER.constructType(
+            new TypeReference<Map<String, String>>() {
+            }
+    );
 
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
