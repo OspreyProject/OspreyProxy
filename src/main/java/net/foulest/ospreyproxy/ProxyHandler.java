@@ -30,7 +30,6 @@ import net.foulest.ospreyproxy.util.IPUtil;
 import net.foulest.ospreyproxy.util.StressTestUtil;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
@@ -43,6 +42,10 @@ import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -63,12 +66,28 @@ public class ProxyHandler {
     private final AlphaMountainProvider alphaMountainProvider;
     private final PrecisionSecProvider precisionSecProvider;
 
-    // Type reference for manual body deserialization (replaces @RequestBody)
-    private static final ParameterizedTypeReference<Map<String, String>> MAP_TYPE_REF = new ParameterizedTypeReference<>() {
+    // Jackson type reference for synchronous body deserialization (Map<String, String>)
+    private static final TypeReference<Map<String, String>> MAP_TYPE = new TypeReference<>() {
     };
 
-    // JSON mapper for parsing upstream responses and serializing error bodies
-    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+    // Maximum nesting depth enforced during upstream response validation.
+    // Mirrors the StreamReadConstraints limit above; applied manually during
+    // the streaming token-walk to catch any parser that fails to enforce it.
+    private static final int MAX_NESTING_DEPTH = 50;
+
+    // JSON mapper for parsing upstream responses and serializing error bodies.
+    // Explicit StreamReadConstraints harden against CVE GHSA-72hv-8253-57qq
+    // (async parser maxNumberLength bypass) and CVE-2026-29062 (nesting depth
+    // bypass in UTF8DataInputJsonParser / ReaderBasedJsonParser) at the
+    // application level, regardless of which internal parser Jackson selects.
+    private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
+                    .streamReadConstraints(StreamReadConstraints.builder()
+                            .maxNumberLength(1000)
+                            .maxNestingDepth(MAX_NESTING_DEPTH)
+                            .maxStringLength(500_000)
+                            .build())
+                    .build())
+            .build();
 
     // Only allow these URI schemes
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
@@ -256,8 +275,20 @@ public class ProxyHandler {
             return RESP_429_SUSTAINED;
         }
 
-        // Read body manually (replaces @RequestBody annotation-driven deserialization)
-        return request.bodyToMono(MAP_TYPE_REF).flatMap(incoming -> {
+        // Read body as raw bytes, then deserialize with the synchronous Jackson parser.
+        // Spring WebFlux's default bodyToMono(MAP_TYPE_REF) uses the non-blocking (async)
+        // JSON parser, which bypasses maxNumberLength validation (CVE GHSA-72hv-8253-57qq).
+        // By parsing raw bytes with MAPPER.readValue() we use the synchronous parser,
+        // which correctly enforces StreamReadConstraints (maxNumberLength, maxNestingDepth, etc.).
+        return request.bodyToMono(byte[].class).flatMap(bytes -> {
+            Map<String, String> incoming;
+
+            try {
+                incoming = MAPPER.readValue(bytes, MAP_TYPE);
+            } catch (JacksonException e) {
+                return RESP_400_MALFORMED;
+            }
+
             // Rejects unexpected fields
             if (incoming.size() > 1) {
                 return RESP_400_UNEXPECTED;
@@ -351,6 +382,7 @@ public class ProxyHandler {
      * @param normalizedUrl The validated and normalized URL to check.
      * @return A Mono emitting the ServerResponse to return to the client.
      */
+    @SuppressWarnings("NestedAssignment")
     private static @NonNull Mono<ServerResponse> executeUpstream(@NonNull Provider provider,
                                                                  @NonNull String normalizedUrl) {
         String method = provider.getMethod();
@@ -383,11 +415,23 @@ public class ProxyHandler {
                         return RESP_502_TOO_LARGE;
                     }
 
-                    // Validate that the response is well-formed JSON using a streaming parser
+                    // Validate that the response is well-formed JSON using a streaming parser.
+                    // Manually tracks nesting depth as defense-in-depth against CVE-2026-29062
+                    // (nesting depth bypass in certain Jackson parser implementations).
                     try (JsonParser parser = MAPPER.createParser(bytes)) {
-                        // noinspection StatementWithEmptyBody
-                        while (parser.nextToken() != null) {
-                            // Consume all tokens; throws on malformed input
+                        int depth = 0;
+                        JsonToken token;
+
+                        while ((token = parser.nextToken()) != null) {
+                            if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
+                                depth++;
+
+                                if (depth > MAX_NESTING_DEPTH) {
+                                    return RESP_502_INVALID_JSON;
+                                }
+                            } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                                depth--;
+                            }
                         }
                     } catch (JacksonException e) {
                         return RESP_502_INVALID_JSON;
