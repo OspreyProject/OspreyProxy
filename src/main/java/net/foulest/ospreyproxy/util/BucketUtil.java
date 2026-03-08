@@ -35,15 +35,15 @@ public final class BucketUtil {
 
     // Rate limit configuration (per-IP)
     //
-    // 15 req/sec and 600 req/min is a reasonable upper limit of what's possible
+    // 11 req/sec and 400 req/min is a reasonable upper limit of what's possible
     // to request under normal usage for a single provider in Osprey. We then
     // multiply by the number of providers to allow full capacity if all providers
     // are used simultaneously. This is a generous limit that should not be hit
     // under normal usage, but protects against abuse and is still low enough to
     // prevent resource exhaustion and keep the proxy responsive under attack.
-    private static final int NUMBER_OF_PROVIDERS = 2;
-    private static final int IP_BURST_CAPACITY = 15 * NUMBER_OF_PROVIDERS;
-    private static final int IP_SUSTAINED_CAPACITY = 600 * NUMBER_OF_PROVIDERS;
+    private static final int NUMBER_OF_PROVIDERS = 1;
+    private static final int IP_BURST_CAPACITY = 11 * NUMBER_OF_PROVIDERS;
+    private static final int IP_SUSTAINED_CAPACITY = 400 * NUMBER_OF_PROVIDERS;
 
     // Refill durations for burst and sustained buckets
     private static final Duration BURST_DURATION = Duration.ofSeconds(1);
