@@ -51,7 +51,7 @@ public final class StressTestUtil {
     private static volatile boolean enabled;
 
     // Instance method is required for Spring @Value injection; cannot be static.
-    @SuppressWarnings("MethodMayBeStatic")
+    @SuppressWarnings({"MethodMayBeStatic", "java:S2696"})
     @Value("${ospreyproxy.stress-test-mode:false}")
     public void setEnabled(boolean value) {
         enabled = value;
