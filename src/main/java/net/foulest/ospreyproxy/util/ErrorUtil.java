@@ -42,16 +42,20 @@ public final class ErrorUtil {
     private static final byte[] BYTES_400_MALFORMED = bytes("Malformed URL");
     private static final byte[] BYTES_400_SCHEME = bytes("URL scheme not allowed");
     private static final byte[] BYTES_400_NOT_ALLOWED = bytes("URL not allowed");
+    private static final byte[] BYTES_400_PROVIDER = bytes("Rejected by provider");
 
     // 415 Unsupported Media Type
     public static final byte[] BYTES_415_CONTENT_TYPE = bytes("Content-Type must be application/json");
+    private static final byte[] BYTES_415_PROVIDER = bytes("Provider does not accept this Content-Type");
 
     // 429 Too Many Requests
     private static final byte[] BYTES_429_BURST = bytes("Per-IP burst rate limit exceeded");
     private static final byte[] BYTES_429_SUSTAINED = bytes("Per-IP sustained rate limit exceeded");
+    private static final byte[] BYTES_429_PROVIDER = bytes("Provider rate limit exceeded");
 
     // 404 Not Found
     private static final byte[] BYTES_404 = bytes("Not found");
+    private static final byte[] BYTES_404_PROVIDER = bytes("Provider endpoint not found");
 
     // 502 Bad Gateway
     private static final byte[] BYTES_502_FAILED = bytes("Upstream request failed");
@@ -86,6 +90,14 @@ public final class ErrorUtil {
         return build(400, BYTES_400_NOT_ALLOWED);
     }
 
+    public static @NonNull Mono<ServerResponse> resp400Provider() {
+        return build(400, BYTES_400_PROVIDER);
+    }
+
+    public static @NonNull Mono<ServerResponse> resp415Provider() {
+        return build(415, BYTES_415_PROVIDER);
+    }
+
     public static @NonNull Mono<ServerResponse> resp429Burst() {
         return build(429, BYTES_429_BURST);
     }
@@ -94,8 +106,16 @@ public final class ErrorUtil {
         return build(429, BYTES_429_SUSTAINED);
     }
 
+    public static @NonNull Mono<ServerResponse> resp429Provider() {
+        return build(429, BYTES_429_PROVIDER);
+    }
+
     public static @NonNull Mono<ServerResponse> resp404() {
         return build(404, BYTES_404);
+    }
+
+    public static @NonNull Mono<ServerResponse> resp404Provider() {
+        return build(404, BYTES_404_PROVIDER);
     }
 
     public static @NonNull Mono<ServerResponse> resp502Failed() {

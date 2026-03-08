@@ -440,8 +440,18 @@ public class ProxyHandler {
                             .bodyValue(bytes);
                 })
                 .onErrorResume(WebClientResponseException.class, e -> {
-                    log.warn("[{}] Upstream request failed", providerName, e);
-                    return ErrorUtil.resp502Failed();
+                    int statusCode = e.getStatusCode().value();
+
+                    return switch (statusCode) {
+                        case 400 -> ErrorUtil.resp400Provider();
+                        case 404 -> ErrorUtil.resp404Provider();
+                        case 415 -> ErrorUtil.resp415Provider();
+                        case 429 -> ErrorUtil.resp429Provider();
+                        default -> {
+                            log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                            yield ErrorUtil.resp502Failed();
+                        }
+                    };
                 })
                 .onErrorResume(Exception.class, e -> {
                     log.error("[{}] Unexpected error during upstream request", providerName, e);
