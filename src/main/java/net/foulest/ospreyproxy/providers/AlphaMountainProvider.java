@@ -29,25 +29,21 @@ import java.util.Map;
 @Component
 public class AlphaMountainProvider implements Provider {
 
-    // API key and URL
+    @NonNull
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
+    private static final String UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
-    // Static fields for request body parameters
+    // Static request body parameters
     private static final String LICENSE = API_KEY;
     private static final int VERSION = 1;
     private static final String TYPE = "partner.info";
 
     @PostConstruct
     public void validateConfig() {
-        if (API_KEY == null || API_KEY.isBlank()) {
-            throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is not set");
-        }
-
-        // Enforce HTTPS to prevent API key exposure in cleartext
-        // noinspection ConstantValue
-        if (!API_URL.startsWith("https://")) {
-            throw new IllegalStateException("AlphaMountain API URL must use HTTPS");
+        // Check if the key is blank or doesn't match UUID spec
+        if (API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN)) {
+            throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is invalid or not set");
         }
     }
 
