@@ -24,6 +24,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -36,6 +37,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -61,6 +63,13 @@ public class SecurityConfig {
     // Path exempted from Content-Type enforcement (read-only GET, no request body)
     private static final String PRIVACY_PATH = "/privacy";
 
+    // HTTP methods that typically carry no request body; exempt from Content-Type enforcement.
+    // DELETE is included because this proxy has no endpoints that accept DELETE with a body;
+    // per RFC 9110, a body on DELETE has no defined semantics and is ignored by this server.
+    private static final Set<HttpMethod> BODYLESS_METHODS = Set.of(
+            HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS, HttpMethod.DELETE
+    );
+
     /**
      * Global security filter that applies to all requests. Sets security headers on every response
      * and enforces that incoming requests have a Content-Type of application/json, rejecting with
@@ -84,14 +93,16 @@ public class SecurityConfig {
             responseHeaders.set("X-Frame-Options", "DENY");
             responseHeaders.set("Content-Security-Policy", "default-src 'none'");
             responseHeaders.set("Referrer-Policy", "no-referrer");
-            responseHeaders.set("X-XSS-Protection", "1; mode=block");
             responseHeaders.set("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
             responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
             String path = request.getPath().value();
+            HttpMethod method = request.getMethod();
 
-            // Skip Content-Type check for the privacy endpoint (read-only GET, no body)
-            if (PRIVACY_PATH.equals(path)) {
+            // Skip Content-Type check for bodyless HTTP methods and the privacy endpoint
+            if (BODYLESS_METHODS.contains(method)
+                    || path.equals(PRIVACY_PATH)
+                    || path.startsWith(PRIVACY_PATH + "/")) {
                 return chain.filter(exchange);
             }
 
@@ -117,6 +128,9 @@ public class SecurityConfig {
     @Order(2)
     public WebFilter bodySizeFilter() {
         return (ServerWebExchange exchange, WebFilterChain chain) -> {
+            // AtomicInteger is used for lambda capture (must be effectively final);
+            // Reactor's handle() operator processes buffers sequentially per
+            // subscription, so there is no concurrent access to the counter.
             AtomicInteger bytesRead = new AtomicInteger(0);
             ServerHttpResponse response = exchange.getResponse();
 
@@ -127,6 +141,11 @@ public class SecurityConfig {
                     return super.getBody().handle((dataBuffer, sink) -> {
                         int count = dataBuffer.readableByteCount();
 
+                        // addAndGet atomically accumulates then checks; the buffer that
+                        // exceeds the limit is released (not forwarded), so at most one
+                        // chunk (~8 KB on Netty) is read beyond MAX_BODY_SIZE before
+                        // rejection. Checking before adding would forward the oversized
+                        // buffer downstream, which is worse.
                         if (bytesRead.addAndGet(count) > MAX_BODY_SIZE) {
                             DataBufferUtils.release(dataBuffer);
                             sink.error(BODY_TOO_LARGE);
