@@ -25,7 +25,10 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
 import net.foulest.ospreyproxy.providers.Provider;
-import net.foulest.ospreyproxy.util.*;
+import net.foulest.ospreyproxy.util.ErrorUtil;
+import net.foulest.ospreyproxy.util.HashUtil;
+import net.foulest.ospreyproxy.util.IPUtil;
+import net.foulest.ospreyproxy.util.StressTestUtil;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
@@ -239,13 +242,12 @@ public class ProxyHandler {
                 : HashUtil.hashIp(realIp);
 
         // Per-IP burst rate limit
-        if (!BucketUtil.getBurstBucket(hashedIp).tryConsume(1)) {
+        if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
             return ErrorUtil.resp429Burst();
         }
 
         // Per-IP sustained rate limit
-        if (!BucketUtil.getSustainedBucket(hashedIp).tryConsume(1)) {
-            log.warn("Sustained rate limit exceeded for IP");
+        if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
             return ErrorUtil.resp429Sustained();
         }
 
