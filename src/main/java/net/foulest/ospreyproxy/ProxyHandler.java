@@ -95,38 +95,6 @@ public class ProxyHandler {
     // Maximum allowed upstream response size in bytes (100 KB)
     private static final int MAX_RESPONSE_SIZE = 100_000;
 
-    // Pre-built JSON error bodies (serialized once at class load)
-    private static final String BODY_400_UNEXPECTED = jsonError("Unexpected fields in request");
-    private static final String BODY_400_MISSING_URL = jsonError("Missing or empty 'url' field");
-    private static final String BODY_400_URL_TOO_LONG = jsonError("URL too long");
-    private static final String BODY_400_MALFORMED = jsonError("Malformed URL");
-    private static final String BODY_400_SCHEME = jsonError("URL scheme not allowed");
-    private static final String BODY_400_NOT_ALLOWED = jsonError("URL not allowed");
-    private static final String BODY_429_BURST = jsonError("Per-IP burst rate limit exceeded");
-    private static final String BODY_429_SUSTAINED = jsonError("Per-IP sustained rate limit exceeded");
-    private static final String BODY_502_FAILED = jsonError("Upstream request failed");
-    private static final String BODY_502_TOO_LARGE = jsonError("Upstream response too large");
-    private static final String BODY_502_INVALID_JSON = jsonError("Invalid JSON in upstream response");
-    private static final String BODY_404 = jsonError("Not found");
-
-    // Pre-built stress test response body
-    private static final String BODY_STRESS_TEST = StressTestUtil.getFakeResponse();
-
-    // Pre-cached Mono<ServerResponse> instances for all error and fast-path responses
-    private static final Mono<ServerResponse> RESP_400_UNEXPECTED = buildResponse(400, BODY_400_UNEXPECTED);
-    private static final Mono<ServerResponse> RESP_400_MISSING_URL = buildResponse(400, BODY_400_MISSING_URL);
-    private static final Mono<ServerResponse> RESP_400_URL_TOO_LONG = buildResponse(400, BODY_400_URL_TOO_LONG);
-    private static final Mono<ServerResponse> RESP_400_MALFORMED = buildResponse(400, BODY_400_MALFORMED);
-    private static final Mono<ServerResponse> RESP_400_SCHEME = buildResponse(400, BODY_400_SCHEME);
-    private static final Mono<ServerResponse> RESP_400_NOT_ALLOWED = buildResponse(400, BODY_400_NOT_ALLOWED);
-    private static final Mono<ServerResponse> RESP_429_BURST = buildResponse(429, BODY_429_BURST);
-    private static final Mono<ServerResponse> RESP_429_SUSTAINED = buildResponse(429, BODY_429_SUSTAINED);
-    private static final Mono<ServerResponse> RESP_502_FAILED = buildResponse(502, BODY_502_FAILED);
-    private static final Mono<ServerResponse> RESP_502_TOO_LARGE = buildResponse(502, BODY_502_TOO_LARGE);
-    private static final Mono<ServerResponse> RESP_502_INVALID_JSON = buildResponse(502, BODY_502_INVALID_JSON);
-    public static final Mono<ServerResponse> RESP_404 = buildResponse(404, BODY_404);
-    private static final Mono<ServerResponse> RESP_STRESS_TEST = buildResponse(200, BODY_STRESS_TEST);
-
     /**
      * Custom Netty DNS resolver that validates resolved IPs against private ranges
      * at connection time to prevent DNS rebinding attacks (TOCTOU).
@@ -267,12 +235,17 @@ public class ProxyHandler {
 
         // Per-IP burst rate limit
         if (!BucketUtil.getBurstBucket(hashedIp).tryConsume(1)) {
-            return RESP_429_BURST;
+            return ErrorUtil.resp429Burst();
         }
 
         // Per-IP sustained rate limit
         if (!BucketUtil.getSustainedBucket(hashedIp).tryConsume(1)) {
-            return RESP_429_SUSTAINED;
+            return ErrorUtil.resp429Sustained();
+        }
+
+        // Skips upstream call and returns fake response for stress tests
+        if (StressTestUtil.isEnabled()) {
+            return ErrorUtil.resp200OK();
         }
 
         // Read body as raw bytes, then deserialize with the synchronous Jackson parser.
@@ -286,24 +259,24 @@ public class ProxyHandler {
             try {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
-                return RESP_400_MALFORMED;
+                return ErrorUtil.resp400Malformed();
             }
 
             // Rejects unexpected fields
             if (incoming.size() > 1) {
-                return RESP_400_UNEXPECTED;
+                return ErrorUtil.resp400Unexpected();
             }
 
             String url = incoming.getOrDefault("url", "").trim();
 
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
-                return RESP_400_MISSING_URL;
+                return ErrorUtil.resp400MissingUrl();
             }
 
             // Rejects excessively long URLs
             if (url.length() > 2048) {
-                return RESP_400_URL_TOO_LONG;
+                return ErrorUtil.resp400UrlTooLong();
             }
 
             URI parsedUri;
@@ -312,7 +285,7 @@ public class ProxyHandler {
             try {
                 parsedUri = new URI(url).normalize();
             } catch (URISyntaxException | IllegalArgumentException e) {
-                return RESP_400_MALFORMED;
+                return ErrorUtil.resp400Malformed();
             }
 
             String scheme = parsedUri.getScheme();
@@ -324,14 +297,14 @@ public class ProxyHandler {
                     parsedUri.toURL();
                     scheme = parsedUri.getScheme();
                 } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
-                    return RESP_400_MALFORMED;
+                    return ErrorUtil.resp400Malformed();
                 }
             }
 
             // Rejects unsupported schemes (only http and https allowed)
             // noinspection NestedMethodCall
             if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
-                return RESP_400_SCHEME;
+                return ErrorUtil.resp400Scheme();
             }
 
             String host = parsedUri.getHost();
@@ -341,7 +314,7 @@ public class ProxyHandler {
                 String authority = parsedUri.getRawAuthority();
 
                 if (authority == null) {
-                    return RESP_400_MALFORMED;
+                    return ErrorUtil.resp400Malformed();
                 }
 
                 int endIndex = authority.lastIndexOf(':');
@@ -350,27 +323,22 @@ public class ProxyHandler {
 
             // Rejects empty hosts
             if (host.isBlank()) {
-                return RESP_400_MALFORMED;
+                return ErrorUtil.resp400Malformed();
             }
 
             host = host.toLowerCase(Locale.ROOT);
 
             // Blocks userinfo to prevent URL parsing differentials
             if (parsedUri.getUserInfo() != null) {
-                return RESP_400_NOT_ALLOWED;
+                return ErrorUtil.resp400NotAllowed();
             }
 
             // Blocks private/internal hosts
             if (IPUtil.isPrivateHost(host)) {
-                return RESP_400_NOT_ALLOWED;
+                return ErrorUtil.resp400NotAllowed();
             }
 
             String normalizedUrl = parsedUri.toString();
-
-            // Skips upstream call and returns fake response for stress tests
-            if (StressTestUtil.isEnabled()) {
-                return RESP_STRESS_TEST;
-            }
             return executeUpstream(provider, normalizedUrl);
         });
     }
@@ -408,11 +376,11 @@ public class ProxyHandler {
         // Retrieves the response body as bytes to enforce size limits before parsing
         return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
                     if (bytes.length == 0) {
-                        return RESP_502_INVALID_JSON;
+                        return ErrorUtil.resp502InvalidJson();
                     }
 
                     if (bytes.length > MAX_RESPONSE_SIZE) {
-                        return RESP_502_TOO_LARGE;
+                        return ErrorUtil.resp502TooLarge();
                     }
 
                     // Validate that the response is well-formed JSON using a streaming parser.
@@ -427,14 +395,14 @@ public class ProxyHandler {
                                 depth++;
 
                                 if (depth > MAX_NESTING_DEPTH) {
-                                    return RESP_502_INVALID_JSON;
+                                    return ErrorUtil.resp502InvalidJson();
                                 }
                             } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
                                 depth--;
                             }
                         }
                     } catch (JacksonException e) {
-                        return RESP_502_INVALID_JSON;
+                        return ErrorUtil.resp502InvalidJson();
                     }
 
                     // Pass through the validated raw bytes directly
@@ -442,37 +410,7 @@ public class ProxyHandler {
                             .contentType(MediaType.APPLICATION_JSON)
                             .bodyValue(bytes);
                 })
-                .onErrorResume(WebClientResponseException.class, e -> RESP_502_FAILED)
-                .onErrorResume(Exception.class, e -> RESP_502_FAILED);
-    }
-
-    // -------------------------------------------------------------------------
-    // Helper methods
-    // -------------------------------------------------------------------------
-
-    /**
-     * Serializes an error message to JSON.
-     */
-    private static @NonNull String jsonError(@NonNull String message) {
-        try {
-            return MAPPER.writeValueAsString(Map.of("error", message));
-        } catch (JacksonException e) {
-            return "{\"error\": \"Internal server error\"}";
-        }
-    }
-
-    /**
-     * Builds a cached Mono&lt;ServerResponse&gt; with the given status and body.
-     * The .cache() ensures the ServerResponse is built once and reused.
-     *
-     * @param status The HTTP status code for the response.
-     * @param body The JSON body string for the response.
-     * @return A cached Mono emitting the ServerResponse with the specified status and body.
-     */
-    private static @NonNull Mono<ServerResponse> buildResponse(int status, @NonNull String body) {
-        return ServerResponse.status(status)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .cache();
+                .onErrorResume(WebClientResponseException.class, e -> ErrorUtil.resp502Failed())
+                .onErrorResume(Exception.class, e -> ErrorUtil.resp502Failed());
     }
 }

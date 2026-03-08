@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.config;
 
-import org.jspecify.annotations.NonNull;
+import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -111,7 +111,7 @@ public class SecurityConfig {
             // Reject requests without application/json Content-Type
             if (contentType == null || !contentType.equalsTypeAndSubtype(MediaType.APPLICATION_JSON)) {
                 response.setStatusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-                return response.writeWith(Mono.just(response.bufferFactory().wrap(CONTENT_TYPE_ERROR_BYTES)));
+                return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415_CONTENT_TYPE)));
             }
             return chain.filter(exchange);
         };

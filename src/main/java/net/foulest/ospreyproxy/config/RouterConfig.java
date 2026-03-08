@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.config;
 
 import net.foulest.ospreyproxy.PrivacyHandler;
 import net.foulest.ospreyproxy.ProxyHandler;
+import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.server.RequestPredicates;
@@ -52,6 +53,6 @@ public class RouterConfig {
         return RouterFunctions.route(RequestPredicates.POST("/alphamountain"), proxyHandler::handleAlphaMountain)
                 .andRoute(RequestPredicates.POST("/precisionsec"), proxyHandler::handlePrecisionSec)
                 .andRoute(RequestPredicates.GET("/privacy"), privacyHandler::handlePrivacy)
-                .andRoute(RequestPredicates.path("/**"), ignored -> ProxyHandler.RESP_404);
+                .andRoute(RequestPredicates.path("/**"), ignored -> ErrorUtil.resp404());
     }
 }
