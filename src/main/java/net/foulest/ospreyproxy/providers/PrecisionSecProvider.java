@@ -35,7 +35,6 @@ import java.util.Map;
 /**
  * Provider implementation for PrecisionSec.
  */
-@SuppressWarnings("NestedMethodCall")
 @Component
 public class PrecisionSecProvider implements Provider {
 
@@ -150,16 +149,19 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getBurstBucket(@NonNull String ip) {
         return BURST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
         return SUSTAINED_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
         return INVALID_REQUEST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(INVALID_REQUEST_BANDWIDTH).build());
     }
@@ -183,6 +185,7 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public void blockBurst(@NonNull String ip) {
         int violations = BURST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         BURST_VIOLATION_COUNT.put(ip, violations);
@@ -192,6 +195,7 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public void blockSustained(@NonNull String ip) {
         int violations = SUSTAINED_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         SUSTAINED_VIOLATION_COUNT.put(ip, violations);
@@ -201,6 +205,7 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    @SuppressWarnings("NestedMethodCall")
     public void blockInvalidRequest(@NonNull String ip) {
         int violations = INVALID_REQUEST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         INVALID_REQUEST_VIOLATION_COUNT.put(ip, violations);
