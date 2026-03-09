@@ -189,6 +189,7 @@ public class AlphaMountainProvider implements Provider {
 
         long blockSeconds = Math.min(BURST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
         BURST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
+        BURST_BUCKET_CACHE.invalidate(ip);
     }
 
     @Override
@@ -199,6 +200,7 @@ public class AlphaMountainProvider implements Provider {
 
         long blockSeconds = Math.min(SUSTAINED_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
         SUSTAINED_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
+        SUSTAINED_BUCKET_CACHE.invalidate(ip);
     }
 
     @Override
@@ -209,5 +211,6 @@ public class AlphaMountainProvider implements Provider {
 
         long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
         INVALID_REQUEST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
+        INVALID_REQUEST_BUCKET_CACHE.invalidate(ip);
     }
 }
