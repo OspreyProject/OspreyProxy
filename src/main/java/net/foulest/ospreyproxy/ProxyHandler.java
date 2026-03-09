@@ -243,25 +243,13 @@ public class ProxyHandler {
 
         String providerName = provider.getName();
 
-        // Per-IP burst rate limit
-        if (provider.isBurstBlocked(hashedIp)) {
-            log.warn("[{}] Burst block duration active for IP", providerName);
-            return ErrorUtil.resp429Proxy();
-        }
-        if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Burst rate limit exceeded for IP", providerName);
-            provider.blockBurst(hashedIp);
+        // Checks if the IP is burst-blocked (consumes one token)
+        if (isBurstBlocked(provider, hashedIp, providerName)) {
             return ErrorUtil.resp429Proxy();
         }
 
-        // Per-IP sustained rate limit
-        if (provider.isSustainedBlocked(hashedIp)) {
-            log.warn("[{}] Sustained block duration active for IP", providerName);
-            return ErrorUtil.resp429Proxy();
-        }
-        if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Sustained rate limit exceeded for IP", providerName);
-            provider.blockSustained(hashedIp);
+        // Checks if the IP is invalid-request-blocked (consumes one token)
+        if (isSustainedBlocked(provider, hashedIp, providerName)) {
             return ErrorUtil.resp429Proxy();
         }
 
@@ -282,12 +270,22 @@ public class ProxyHandler {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
                 log.warn("[{}] Blocked request with malformed JSON body", providerName, e);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400Malformed();
             }
 
             // Rejects unexpected fields
             if (incoming.size() > 1) {
                 log.warn("[{}] Blocked request with unexpected fields", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400Unexpected();
             }
 
@@ -296,12 +294,22 @@ public class ProxyHandler {
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
                 log.warn("[{}] Blocked request with missing or empty URL", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400MissingUrl();
             }
 
             // Rejects excessively long URLs
             if (url.length() > 2048) {
                 log.warn("[{}] Blocked request with excessively long URL", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400UrlTooLong();
             }
 
@@ -312,6 +320,11 @@ public class ProxyHandler {
                 parsedUri = new URI(url).normalize();
             } catch (URISyntaxException | IllegalArgumentException e) {
                 log.warn("[{}] Blocked request with malformed URL", providerName, e);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -325,6 +338,11 @@ public class ProxyHandler {
                     scheme = parsedUri.getScheme();
                 } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
                     log.warn("[{}] Blocked request with malformed schemeless URL", providerName, e);
+
+                    // Checks if the IP is invalid-request-blocked (consumes one token)
+                    if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                        return ErrorUtil.resp429Proxy();
+                    }
                     return ErrorUtil.resp400Malformed();
                 }
             }
@@ -333,6 +351,11 @@ public class ProxyHandler {
             // noinspection NestedMethodCall
             if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
                 log.warn("[{}] Blocked request with disallowed scheme", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400Scheme();
             }
 
@@ -344,6 +367,11 @@ public class ProxyHandler {
 
                 if (authority == null) {
                     log.warn("[{}] Blocked request with no host", providerName);
+
+                    // Checks if the IP is invalid-request-blocked (consumes one token)
+                    if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                        return ErrorUtil.resp429Proxy();
+                    }
                     return ErrorUtil.resp400Malformed();
                 }
 
@@ -354,6 +382,11 @@ public class ProxyHandler {
             // Rejects empty hosts
             if (host.isBlank()) {
                 log.warn("[{}] Blocked request with empty host", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -362,15 +395,26 @@ public class ProxyHandler {
             // Blocks userinfo to prevent URL parsing differentials
             if (parsedUri.getUserInfo() != null) {
                 log.warn("[{}] Blocked request with userinfo in URL", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400NotAllowed();
             }
 
             // Blocks private/internal hosts
             if (IPUtil.isPrivateHost(host)) {
                 log.warn("[{}] Blocked request to private/internal host", providerName);
+
+                // Checks if the IP is invalid-request-blocked (consumes one token)
+                if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
+                    return ErrorUtil.resp429Proxy();
+                }
                 return ErrorUtil.resp400NotAllowed();
             }
 
+            // Sends the normalized URL string to the upstream provider
             String normalizedUrl = parsedUri.toString();
             return executeUpstream(provider, normalizedUrl);
         });
@@ -467,5 +511,83 @@ public class ProxyHandler {
                     log.error("[{}] Unexpected error during upstream request", providerName, e);
                     return ErrorUtil.resp502Failed();
                 });
+    }
+
+    /**
+     * Checks if the given IP is currently burst-blocked for the provider, and if not,
+     * attempts to consume a token from the burst bucket. If the IP is burst-blocked
+     * or the burst bucket is exhausted, returns a Mono emitting a 429 response. Otherwise,
+     * returns null to indicate the request can proceed.
+     *
+     * @param provider The provider to check the burst block and bucket for.
+     * @param hashedIp The hashed IP address to check and consume from the burst bucket.
+     * @param providerName The provider name for logging purposes.
+     * @return A Mono emitting a 429 ServerResponse if the IP is burst-blocked or exceeds the burst rate limit,
+     *         or null if the request can proceed.
+     */
+    private static boolean isBurstBlocked(@NonNull Provider provider, String hashedIp, String providerName) {
+        if (provider.isBurstBlocked(hashedIp)) {
+            log.warn("[{}] Burst block duration active for IP", providerName);
+            return true;
+        }
+
+        if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
+            log.warn("[{}] Burst rate limit exceeded for IP", providerName);
+            provider.blockBurst(hashedIp);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the given IP is currently sustained-blocked for the provider, and if not,
+     * attempts to consume a token from the sustained bucket. If the IP is sustained-blocked
+     * or the sustained bucket is exhausted, returns a Mono emitting a 429 response. Otherwise,
+     * returns null to indicate the request can proceed.
+     *
+     * @param provider The provider to check the sustained block and bucket for.
+     * @param hashedIp The hashed IP address to check and consume from the sustained bucket.
+     * @param providerName The provider name for logging purposes.
+     * @return A Mono emitting a 429 ServerResponse if the IP is sustained-blocked or exceeds the sustained rate limit,
+     *         or null if the request can proceed.
+     */
+    private static boolean isSustainedBlocked(@NonNull Provider provider, String hashedIp, String providerName) {
+        if (provider.isSustainedBlocked(hashedIp)) {
+            log.warn("[{}] Sustained block duration active for IP", providerName);
+            return true;
+        }
+
+        if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
+            log.warn("[{}] Sustained rate limit exceeded for IP", providerName);
+            provider.blockSustained(hashedIp);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the given IP is currently invalid-request-blocked for the provider, and if not,
+     * attempts to consume a token from the invalid request bucket. If the IP is invalid-request
+     * blocked or the invalid request bucket is exhausted, returns a Mono emitting a 429 response.
+     * Otherwise, returns null to indicate the request can proceed.
+     *
+     * @param provider The provider to check the invalid request block and bucket for.
+     * @param hashedIp The hashed IP address to check and consume from the invalid request bucket.
+     * @param providerName The provider name for logging purposes.
+     * @return A Mono emitting a 429 ServerResponse if the IP is invalid-request-blocked or exceeds the invalid request
+     *         rate limit, or null if the request can proceed.
+     */
+    private static boolean isInvalidRequestBlocked(@NonNull Provider provider, String hashedIp, String providerName) {
+        if (provider.isInvalidRequestBlocked(hashedIp)) {
+            log.warn("[{}] Invalid request block duration active for IP", providerName);
+            return true;
+        }
+
+        if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
+            log.warn("[{}] Invalid request rate limit exceeded for IP", providerName);
+            provider.blockInvalidRequest(hashedIp);
+            return true;
+        }
+        return false;
     }
 }

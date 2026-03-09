@@ -40,22 +40,33 @@ public class AlphaMountainProvider implements Provider {
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
     private static final String UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
-    // Rate limiting configuration
+    // Rate limiting capacity
     private static final int BURST_CAPACITY = 11;
     private static final int SUSTAINED_CAPACITY = 400;
-    private static final Duration BURST_DURATION = Duration.ofSeconds(1);
-    private static final Duration SUSTAINED_DURATION = Duration.ofMinutes(1);
+    private static final int INVALID_REQUEST_CAPACITY = 5;
+
+    // Rate limiting windows
+    private static final Duration BURST_WINDOW = Duration.ofSeconds(1);
+    private static final Duration SUSTAINED_WINDOW = Duration.ofMinutes(1);
+    private static final Duration INVALID_REQUEST_WINDOW = Duration.ofMinutes(1);
+
+    // Rate limiting block durations
     private static final Duration BURST_BLOCK_DURATION = Duration.ofSeconds(5);
     private static final Duration SUSTAINED_BLOCK_DURATION = Duration.ofMinutes(1);
+    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofMinutes(5);
 
     // Bandwidth definitions for Bucket4j
     private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
             .capacity(BURST_CAPACITY)
-            .refillIntervally(BURST_CAPACITY, BURST_DURATION)
+            .refillIntervally(BURST_CAPACITY, BURST_WINDOW)
             .build();
     private static final Bandwidth SUSTAINED_BANDWIDTH = Bandwidth.builder()
             .capacity(SUSTAINED_CAPACITY)
-            .refillIntervally(SUSTAINED_CAPACITY, SUSTAINED_DURATION)
+            .refillIntervally(SUSTAINED_CAPACITY, SUSTAINED_WINDOW)
+            .build();
+    private static final Bandwidth INVALID_REQUEST_BANDWIDTH = Bandwidth.builder()
+            .capacity(INVALID_REQUEST_CAPACITY)
+            .refillIntervally(INVALID_REQUEST_CAPACITY, INVALID_REQUEST_WINDOW)
             .build();
 
     // Caches for storing buckets per IP address
@@ -67,6 +78,10 @@ public class AlphaMountainProvider implements Provider {
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
+    private static final Cache<String, Bucket> INVALID_REQUEST_BUCKET_CACHE = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
+            .maximumSize(100_000)
+            .build();
 
     // Caches for tracking temporarily blocked IPs; entries expire after their block duration
     private static final Cache<String, Boolean> BURST_BLOCKED_CACHE = Caffeine.newBuilder()
@@ -75,6 +90,24 @@ public class AlphaMountainProvider implements Provider {
             .build();
     private static final Cache<String, Boolean> SUSTAINED_BLOCKED_CACHE = Caffeine.newBuilder()
             .expireAfterWrite(SUSTAINED_BLOCK_DURATION)
+            .maximumSize(100_000)
+            .build();
+    private static final Cache<String, Boolean> INVALID_REQUEST_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(INVALID_REQUEST_BLOCK_DURATION)
+            .maximumSize(100_000)
+            .build();
+
+    // Caches for counting violations to implement exponential backoff blocking
+    private static final Cache<String, Integer> BURST_VIOLATION_COUNT = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(1))
+            .maximumSize(100_000)
+            .build();
+    private static final Cache<String, Integer> SUSTAINED_VIOLATION_COUNT = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(1))
+            .maximumSize(100_000)
+            .build();
+    private static final Cache<String, Integer> INVALID_REQUEST_VIOLATION_COUNT = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
 
@@ -112,46 +145,6 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
-    public int getBurstCapacity() {
-        return BURST_CAPACITY;
-    }
-
-    @Override
-    public int getSustainedCapacity() {
-        return SUSTAINED_CAPACITY;
-    }
-
-    @Override
-    public @NonNull Duration getBurstDuration() {
-        return BURST_DURATION;
-    }
-
-    @Override
-    public @NonNull Duration getSustainedDuration() {
-        return SUSTAINED_DURATION;
-    }
-
-    @Override
-    public @NonNull Bandwidth getBurstBandwidth() {
-        return BURST_BANDWIDTH;
-    }
-
-    @Override
-    public @NonNull Bandwidth getSustainedBandwidth() {
-        return SUSTAINED_BANDWIDTH;
-    }
-
-    @Override
-    public @NonNull Cache<String, Bucket> getBurstBucketCache() {
-        return BURST_BUCKET_CACHE;
-    }
-
-    @Override
-    public @NonNull Cache<String, Bucket> getSustainedBucketCache() {
-        return SUSTAINED_BUCKET_CACHE;
-    }
-
-    @Override
     public @NonNull Bucket getBurstBucket(@NonNull String ip) {
         return BURST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
     }
@@ -162,23 +155,8 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
-    public @NonNull Duration getBurstBlockDuration() {
-        return BURST_BLOCK_DURATION;
-    }
-
-    @Override
-    public @NonNull Duration getSustainedBlockDuration() {
-        return SUSTAINED_BLOCK_DURATION;
-    }
-
-    @Override
-    public @NonNull Cache<String, Boolean> getBurstBlockedCache() {
-        return BURST_BLOCKED_CACHE;
-    }
-
-    @Override
-    public @NonNull Cache<String, Boolean> getSustainedBlockedCache() {
-        return SUSTAINED_BLOCKED_CACHE;
+    public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
+        return INVALID_REQUEST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(INVALID_REQUEST_BANDWIDTH).build());
     }
 
     @Override
@@ -192,12 +170,46 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
+    public boolean isInvalidRequestBlocked(@NonNull String ip) {
+        return INVALID_REQUEST_BLOCKED_CACHE.getIfPresent(ip) != null;
+    }
+
+    @Override
     public void blockBurst(@NonNull String ip) {
-        BURST_BLOCKED_CACHE.put(ip, Boolean.TRUE);
+        int violations = BURST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
+        BURST_VIOLATION_COUNT.put(ip, violations);
+        long durationSeconds = BURST_BLOCK_DURATION.getSeconds();
+        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
+
+        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
+        BURST_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
+                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
+        );
     }
 
     @Override
     public void blockSustained(@NonNull String ip) {
-        SUSTAINED_BLOCKED_CACHE.put(ip, Boolean.TRUE);
+        int violations = SUSTAINED_VIOLATION_COUNT.get(ip, k -> 0) + 1;
+        SUSTAINED_VIOLATION_COUNT.put(ip, violations);
+        long durationSeconds = SUSTAINED_BLOCK_DURATION.getSeconds();
+        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
+
+        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
+        SUSTAINED_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
+                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
+        );
+    }
+
+    @Override
+    public void blockInvalidRequest(@NonNull String ip) {
+        int violations = INVALID_REQUEST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
+        INVALID_REQUEST_VIOLATION_COUNT.put(ip, violations);
+        long durationSeconds = INVALID_REQUEST_BLOCK_DURATION.getSeconds();
+        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
+
+        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
+        INVALID_REQUEST_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
+                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
+        );
     }
 }

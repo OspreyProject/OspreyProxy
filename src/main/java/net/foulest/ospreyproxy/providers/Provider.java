@@ -96,64 +96,6 @@ public interface Provider {
     }
 
     /**
-     * Gets the capacity for the burst rate limit bucket.
-     * This is the maximum number of requests allowed per IP address in the burst rate limit window.
-     *
-     * @return The capacity for the burst rate limit bucket.
-     */
-    int getBurstCapacity();
-
-    /**
-     * Gets the capacity for the sustained rate limit bucket.
-     * This is the maximum number of requests allowed per IP address in the sustained rate limit window.
-     *
-     * @return The capacity for the sustained rate limit bucket.
-     */
-    int getSustainedCapacity();
-
-    /**
-     * Duration for burst rate limiting. This is the interval at which the burst bucket refills.
-     *
-     * @return A Duration object representing the burst rate limit refill interval.
-     */
-    @NonNull Duration getBurstDuration();
-
-    /**
-     * Duration for sustained rate limiting. This is the interval at which the sustained bucket refills.
-     *
-     * @return A Duration object representing the sustained rate limit refill interval.
-     */
-    @NonNull Duration getSustainedDuration();
-
-    /**
-     * Constructs the Bandwidth object for burst rate limiting based on the provider's parameters.
-     *
-     * @return A Bandwidth instance configured for burst rate limiting according to the provider's settings.
-     */
-    @NonNull Bandwidth getBurstBandwidth();
-
-    /**
-     * Constructs the Bandwidth object for sustained rate limiting based on the provider's parameters.
-     *
-     * @return A Bandwidth instance configured for sustained rate limiting according to the provider's settings.
-     */
-    @NonNull Bandwidth getSustainedBandwidth();
-
-    /**
-     * Provides the Caffeine cache object for burst rate limit buckets.
-     *
-     * @return A Caffeine Cache instance for burst rate limit buckets.
-     */
-    @NonNull Cache<String, Bucket> getBurstBucketCache();
-
-    /**
-     * Provides the Caffeine cache object for sustained rate limit buckets.
-     *
-     * @return A Caffeine Cache instance for sustained rate limit buckets.
-     */
-    @NonNull Cache<String, Bucket> getSustainedBucketCache();
-
-    /**
      * Gets the burst rate limit bucket for the given IP address, creating it if it doesn't exist.
      *
      * @param ip The IP address to get the burst bucket for.
@@ -169,35 +111,7 @@ public interface Provider {
      */
     @NonNull Bucket getSustainedBucket(@NonNull String ip);
 
-    /**
-     * Duration for which an IP should be blocked after exceeding the burst rate limit.
-     *
-     * @return A Duration object representing how long to block an IP after a burst limit violation.
-     */
-    @NonNull Duration getBurstBlockDuration();
-
-    /**
-     * Duration for which an IP should be blocked after exceeding the sustained rate limit.
-     *
-     * @return A Duration object representing how long to block an IP after a sustained limit violation.
-     */
-    @NonNull Duration getSustainedBlockDuration();
-
-    /**
-     * Provides the Caffeine cache object for tracking IP addresses
-     * that are currently blocked due to burst limit violations.
-     *
-     * @return A Caffeine Cache instance for tracking burst-blocked IP addresses.
-     */
-    @NonNull Cache<String, Boolean> getBurstBlockedCache();
-
-    /**
-     * Provides the Caffeine cache object for tracking IP addresses
-     * that are currently blocked due to sustained limit violations.
-     *
-     * @return A Caffeine Cache instance for tracking sustained-blocked IP addresses.
-     */
-    @NonNull Cache<String, Boolean> getSustainedBlockedCache();
+    @NonNull Bucket getInvalidRequestBucket(@NonNull String ip);
 
     /**
      * Checks if the given IP address is currently blocked due to exceeding the burst rate limit.
@@ -215,6 +129,8 @@ public interface Provider {
      */
     boolean isSustainedBlocked(@NonNull String ip);
 
+    boolean isInvalidRequestBlocked(@NonNull String ip);
+
     /**
      * Blocks the given IP address due to a burst rate limit
      * violation by adding it to the burst blocked cache.
@@ -230,4 +146,6 @@ public interface Provider {
      * @param ip The IP address to block for sustained violations.
      */
     void blockSustained(@NonNull String ip);
+
+    void blockInvalidRequest(@NonNull String ip);
 }
