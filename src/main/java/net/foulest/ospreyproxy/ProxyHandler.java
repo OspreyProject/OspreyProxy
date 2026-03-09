@@ -229,6 +229,11 @@ public class ProxyHandler {
             realIp = remote != null ? remote.getAddress().getHostAddress() : "unknown";
         }
 
+        // Log a warning if we couldn't determine the client's IP address
+        if (realIp.equals("unknown")) {
+            log.warn("Could not determine client IP address; applying rate limits to 'unknown' IP");
+        }
+
         // Hash the IP for rate limiting, or use a synthetic IP in stress test mode
         String hashedIp = StressTestUtil.isEnabled()
                 ? StressTestUtil.syntheticIp()
