@@ -29,6 +29,7 @@ import org.springframework.stereotype.Component;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -86,16 +87,16 @@ public class PrecisionSecProvider implements Provider {
             .build();
 
     // Caches for tracking temporarily blocked IPs; entries expire after their block duration
-    private static final Cache<String, Boolean> BURST_BLOCKED_CACHE = Caffeine.newBuilder()
-            .expireAfterWrite(BURST_BLOCK_DURATION)
+    private static final Cache<String, Instant> BURST_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Boolean> SUSTAINED_BLOCKED_CACHE = Caffeine.newBuilder()
-            .expireAfterWrite(SUSTAINED_BLOCK_DURATION)
+    private static final Cache<String, Instant> SUSTAINED_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(2))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Boolean> INVALID_REQUEST_BLOCKED_CACHE = Caffeine.newBuilder()
-            .expireAfterWrite(INVALID_REQUEST_BLOCK_DURATION)
+    private static final Cache<String, Instant> INVALID_REQUEST_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(2))
             .maximumSize(100_000)
             .build();
 
@@ -164,17 +165,20 @@ public class PrecisionSecProvider implements Provider {
 
     @Override
     public boolean isBurstBlocked(@NonNull String ip) {
-        return BURST_BLOCKED_CACHE.getIfPresent(ip) != null;
+        Instant unblockTime = BURST_BLOCKED_CACHE.getIfPresent(ip);
+        return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isSustainedBlocked(@NonNull String ip) {
-        return SUSTAINED_BLOCKED_CACHE.getIfPresent(ip) != null;
+        Instant unblockTime = SUSTAINED_BLOCKED_CACHE.getIfPresent(ip);
+        return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isInvalidRequestBlocked(@NonNull String ip) {
-        return INVALID_REQUEST_BLOCKED_CACHE.getIfPresent(ip) != null;
+        Instant unblockTime = INVALID_REQUEST_BLOCKED_CACHE.getIfPresent(ip);
+        return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
