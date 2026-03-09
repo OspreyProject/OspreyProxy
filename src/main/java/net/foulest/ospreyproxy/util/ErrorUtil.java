@@ -36,93 +36,42 @@ public final class ErrorUtil {
     private static final byte[] BYTES_200_OK = bytes("OK");
 
     // 400 Bad Request
-    private static final byte[] BYTES_400_UNEXPECTED = bytes("Unexpected fields in request");
-    private static final byte[] BYTES_400_MISSING_URL = bytes("Missing or empty 'url' field");
-    private static final byte[] BYTES_400_URL_TOO_LONG = bytes("URL too long");
-    private static final byte[] BYTES_400_MALFORMED = bytes("Malformed URL");
-    private static final byte[] BYTES_400_SCHEME = bytes("URL scheme not allowed");
-    private static final byte[] BYTES_400_NOT_ALLOWED = bytes("URL not allowed");
-    private static final byte[] BYTES_400_PROVIDER = bytes("Rejected by provider");
-
-    // 415 Unsupported Media Type
-    public static final byte[] BYTES_415_CONTENT_TYPE = bytes("Content-Type must be application/json");
-    private static final byte[] BYTES_415_PROVIDER = bytes("Provider does not accept this Content-Type");
-
-    // 429 Too Many Requests
-    private static final byte[] BYTES_429_PROXY = bytes("Proxy rate limit exceeded");
-    private static final byte[] BYTES_429_PROVIDER = bytes("Provider rate limit exceeded");
+    private static final byte[] BYTES_400 = bytes("Bad Request");
 
     // 404 Not Found
     private static final byte[] BYTES_404 = bytes("Not found");
-    private static final byte[] BYTES_404_PROVIDER = bytes("Provider endpoint not found");
+
+    // 415 Unsupported Media Type
+    public static final byte[] BYTES_415 = bytes("Unsupported Media Type");
+
+    // 429 Too Many Requests
+    private static final byte[] BYTES_429 = bytes("Too Many Requests");
 
     // 502 Bad Gateway
-    private static final byte[] BYTES_502_FAILED = bytes("Upstream request failed");
-    private static final byte[] BYTES_502_TOO_LARGE = bytes("Upstream response too large");
-    private static final byte[] BYTES_502_INVALID_JSON = bytes("Invalid JSON in upstream response");
+    private static final byte[] BYTES_502 = bytes("Bad Gateway");
 
-    public static @NonNull Mono<ServerResponse> resp200OK() {
+    public static @NonNull Mono<ServerResponse> resp200() {
         return build(200, BYTES_200_OK);
     }
 
-    public static @NonNull Mono<ServerResponse> resp400Unexpected() {
-        return build(400, BYTES_400_UNEXPECTED);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400MissingUrl() {
-        return build(400, BYTES_400_MISSING_URL);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400UrlTooLong() {
-        return build(400, BYTES_400_URL_TOO_LONG);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400Malformed() {
-        return build(400, BYTES_400_MALFORMED);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400Scheme() {
-        return build(400, BYTES_400_SCHEME);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400NotAllowed() {
-        return build(400, BYTES_400_NOT_ALLOWED);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400Provider() {
-        return build(400, BYTES_400_PROVIDER);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp415Provider() {
-        return build(415, BYTES_415_PROVIDER);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp429Proxy() {
-        return build(429, BYTES_429_PROXY);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp429Provider() {
-        return build(429, BYTES_429_PROVIDER);
+    public static @NonNull Mono<ServerResponse> resp400() {
+        return build(400, BYTES_400);
     }
 
     public static @NonNull Mono<ServerResponse> resp404() {
         return build(404, BYTES_404);
     }
 
-    public static @NonNull Mono<ServerResponse> resp404Provider() {
-        return build(404, BYTES_404_PROVIDER);
+    public static @NonNull Mono<ServerResponse> resp415() {
+        return build(415, BYTES_415);
     }
 
-    public static @NonNull Mono<ServerResponse> resp502Failed() {
-        return build(502, BYTES_502_FAILED);
+    public static @NonNull Mono<ServerResponse> resp429() {
+        return build(429, BYTES_429);
     }
 
-    public static @NonNull Mono<ServerResponse> resp502TooLarge() {
-        return build(502, BYTES_502_TOO_LARGE);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp502InvalidJson() {
-        return build(502, BYTES_502_INVALID_JSON);
+    public static @NonNull Mono<ServerResponse> resp502() {
+        return build(502, BYTES_502);
     }
 
     /**

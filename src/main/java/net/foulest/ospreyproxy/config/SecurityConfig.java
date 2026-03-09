@@ -98,7 +98,7 @@ public class SecurityConfig {
 
             if (!valid) {
                 response.setStatusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-                return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415_CONTENT_TYPE)));
+                return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415)));
             }
             return chain.filter(exchange);
         };

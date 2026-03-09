@@ -80,10 +80,7 @@ public class ProxyHandler {
                     .build())
             .build();
 
-    // Pre-resolved JavaType for synchronous body deserialization (Map<String, String>).
-    // Resolving once at class-load avoids per-request TypeFactory.constructType() overhead.
-    // The TypeReference overload of readValue() calls constructType() on every invocation,
-    // walking the generic type hierarchy through _fromAny → _fromParamType → _fromClass.
+    // Pre-resolved JavaType for synchronous body deserialization
     private static final JavaType MAP_TYPE = MAPPER.constructType(
             new TypeReference<Map<String, String>>() {
             }
@@ -241,12 +238,12 @@ public class ProxyHandler {
 
         // Checks if the IP is burst-blocked (consumes one token)
         if (isBurstBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.resp429Proxy();
+            return ErrorUtil.resp429();
         }
 
         // Checks if the IP is sustained-blocked (consumes one token)
         if (isSustainedBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.resp429Proxy();
+            return ErrorUtil.resp429();
         }
 
         // Checks if the IP is invalid-request-blocked (doesn't consume token, only checks block)
@@ -255,12 +252,12 @@ public class ProxyHandler {
         // and only consume a token when we actually identify an invalid request.
         if (provider.isInvalidRequestBlocked(hashedIp)) {
             log.warn("[{}] Invalid request block duration active for IP", providerName);
-            return ErrorUtil.resp429Proxy();
+            return ErrorUtil.resp429();
         }
 
         // Skips upstream call and returns fake response for stress tests
         if (StressTestUtil.isEnabled()) {
-            return ErrorUtil.resp200OK();
+            return ErrorUtil.resp200();
         }
 
         // Read body as raw bytes, then deserialize with the synchronous Jackson parser.
@@ -274,7 +271,7 @@ public class ProxyHandler {
             // Rejects empty bodies
             if (bytes.length == 0) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with empty body", ErrorUtil.resp400MissingUrl());
+                        "Blocked request with empty body", ErrorUtil.resp400());
             }
 
             // Parse the request body as JSON
@@ -282,13 +279,13 @@ public class ProxyHandler {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed JSON body", ErrorUtil.resp400Malformed());
+                        "Blocked request with malformed JSON body", ErrorUtil.resp400());
             }
 
             // Rejects unexpected fields
             if (incoming.size() > 1) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with unexpected fields", ErrorUtil.resp400Unexpected());
+                        "Blocked request with unexpected fields", ErrorUtil.resp400());
             }
 
             String url = incoming.getOrDefault("url", "").trim();
@@ -296,13 +293,13 @@ public class ProxyHandler {
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with missing or empty URL", ErrorUtil.resp400MissingUrl());
+                        "Blocked request with missing or empty URL", ErrorUtil.resp400());
             }
 
             // Rejects excessively long URLs
             if (url.length() > 8192) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with excessively long URL", ErrorUtil.resp400UrlTooLong());
+                        "Blocked request with excessively long URL", ErrorUtil.resp400());
             }
 
             URI parsedUri;
@@ -312,7 +309,7 @@ public class ProxyHandler {
                 parsedUri = new URI(url).normalize();
             } catch (URISyntaxException | IllegalArgumentException e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed URL", ErrorUtil.resp400Malformed());
+                        "Blocked request with malformed URL", ErrorUtil.resp400());
             }
 
             String scheme = parsedUri.getScheme();
@@ -320,12 +317,12 @@ public class ProxyHandler {
             // Prepends https:// for schemeless URLs (e.g., example.com)
             if (scheme == null) {
                 try {
-                    parsedUri = new URI("https://" + url).normalize();
+                    parsedUri = new URI("https://" + parsedUri).normalize();
                     parsedUri.toURL();
                     scheme = parsedUri.getScheme();
                 } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with malformed schemeless URL", ErrorUtil.resp400Malformed());
+                            "Blocked request with malformed schemeless URL", ErrorUtil.resp400());
                 }
             }
 
@@ -334,7 +331,7 @@ public class ProxyHandler {
             // Rejects unsupported schemes (only http and https allowed)
             if (!ALLOWED_SCHEMES.contains(scheme)) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with disallowed URL scheme", ErrorUtil.resp400Scheme());
+                        "Blocked request with disallowed URL scheme", ErrorUtil.resp400());
             }
 
             String host = parsedUri.getHost();
@@ -345,7 +342,7 @@ public class ProxyHandler {
 
                 if (authority == null) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with no host", ErrorUtil.resp400Malformed());
+                            "Blocked request with no host", ErrorUtil.resp400());
                 }
 
                 // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
@@ -354,7 +351,7 @@ public class ProxyHandler {
 
                     if (closingBracket < 0) {
                         return rejectInvalidRequest(provider, hashedIp, providerName,
-                                "Blocked request with malformed IPv6 host", ErrorUtil.resp400Malformed());
+                                "Blocked request with malformed IPv6 host", ErrorUtil.resp400());
                     }
 
                     host = authority.substring(1, closingBracket);
@@ -367,7 +364,7 @@ public class ProxyHandler {
             // Rejects empty hosts
             if (host.isBlank()) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with empty host", ErrorUtil.resp400Malformed());
+                        "Blocked request with empty host", ErrorUtil.resp400());
             }
 
             host = host.toLowerCase(Locale.ROOT);
@@ -383,14 +380,14 @@ public class ProxyHandler {
                     parsedUri = new URI(scheme, null, host, port, path, query, fragment);
                 } catch (URISyntaxException e) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with unstrippable userinfo in URL", ErrorUtil.resp400Malformed());
+                            "Blocked request with unstrippable userinfo in URL", ErrorUtil.resp400());
                 }
             }
 
             // Blocks private/internal hosts
             if (IPUtil.isPrivateHost(host)) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request to private/internal host", ErrorUtil.resp400NotAllowed());
+                        "Blocked request to private/internal host", ErrorUtil.resp400());
             }
 
             // Sends the normalized URL string to the upstream provider
@@ -435,12 +432,12 @@ public class ProxyHandler {
         return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
                     if (bytes.length == 0) {
                         log.warn("[{}] Upstream response was empty", providerName);
-                        return ErrorUtil.resp502InvalidJson();
+                        return ErrorUtil.resp502();
                     }
 
                     if (bytes.length > MAX_RESPONSE_SIZE) {
                         log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, bytes.length);
-                        return ErrorUtil.resp502TooLarge();
+                        return ErrorUtil.resp502();
                     }
 
                     // Validate that the response is well-formed JSON using a streaming parser.
@@ -456,7 +453,7 @@ public class ProxyHandler {
 
                                 if (depth > MAX_NESTING_DEPTH) {
                                     log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
-                                    return ErrorUtil.resp502InvalidJson();
+                                    return ErrorUtil.resp502();
                                 }
                             } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
                                 depth--;
@@ -464,7 +461,7 @@ public class ProxyHandler {
                         }
                     } catch (JacksonException e) {
                         log.warn("[{}] Failed to parse upstream response as JSON", providerName, e);
-                        return ErrorUtil.resp502InvalidJson();
+                        return ErrorUtil.resp502();
                     }
 
                     // Pass through the validated raw bytes directly
@@ -474,21 +471,19 @@ public class ProxyHandler {
                 })
                 .onErrorResume(WebClientResponseException.class, e -> {
                     int statusCode = e.getStatusCode().value();
+                    log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
 
                     return switch (statusCode) {
-                        case 400 -> ErrorUtil.resp400Provider();
-                        case 404 -> ErrorUtil.resp404Provider();
-                        case 415 -> ErrorUtil.resp415Provider();
-                        case 429 -> ErrorUtil.resp429Provider();
-                        default -> {
-                            log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
-                            yield ErrorUtil.resp502Failed();
-                        }
+                        case 400 -> ErrorUtil.resp400();
+                        case 404 -> ErrorUtil.resp404();
+                        case 415 -> ErrorUtil.resp415();
+                        case 429 -> ErrorUtil.resp429();
+                        default -> ErrorUtil.resp502();
                     };
                 })
                 .onErrorResume(Exception.class, e -> {
                     log.error("[{}] Unexpected error during upstream request", providerName, e);
-                    return ErrorUtil.resp502Failed();
+                    return ErrorUtil.resp502();
                 });
     }
 
@@ -569,7 +564,7 @@ public class ProxyHandler {
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] Invalid request rate limit exceeded for IP", providerName);
             provider.blockInvalidRequest(hashedIp);
-            return ErrorUtil.resp429Proxy();
+            return ErrorUtil.resp429();
         }
 
         // If the IP is not yet blocked, log the reason and return the provided error response
