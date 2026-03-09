@@ -52,9 +52,7 @@ public final class IPUtil {
             return true;
         }
 
-        // Block carrier-grade NAT range (100.64.0.0/10) and the
-        // limited broadcast address (255.255.255.255), which Java's
-        // standard InetAddress checks do not flag as private/special
+        // Block IPv4 ranges not covered by the standard InetAddress checks above
         if (addr instanceof Inet4Address v4) {
             byte[] bytes = v4.getAddress();
             int first = bytes[0] & 0xFF;
@@ -65,7 +63,14 @@ public final class IPUtil {
                     && bytes[2] == (byte) 0xFF && bytes[3] == (byte) 0xFF) {
                 return true;
             }
-            return first == 100 && second >= 64 && second <= 127;
+
+            // Carrier-grade NAT range (100.64.0.0/10)
+            if (first == 100 && second >= 64 && second <= 127) {
+                return true;
+            }
+
+            // Class E reserved range (240.0.0.0/4)
+            return (first & 0xF0) == 0xF0;
         }
 
         // Block IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1, ::ffff:169.254.169.254)
