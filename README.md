@@ -5,11 +5,12 @@ for [Osprey: Browser Protection](https://osprey.ac).
 
 ## Features
 
-- **Multi-provider proxy**: Routes URL-checking requests to [AlphaMountain](https://alphamountain.ai)
-  and [PrecisionSec](https://precisionsec.com) through a single API, hiding upstream credentials from clients
-- **Per-IP rate limiting**: Dual-layer burst + sustained token
+- **Multi-provider proxy**: Routes URL-checking requests to multiple protection providers through a single API, hiding
+  upstream credentials from clients
+- **Per-IP, per-provider rate limiting**: Dual-layer burst + sustained token
   buckets ([Bucket4j](https://github.com/bucket4j/bucket4j) + [Caffeine](https://github.com/ben-manes/caffeine))
-  tracking up to 100K IPs with salted SHA-256 hashing
+  tracking up to 100K IPs per cache with salted SHA-256 hashing. Each provider can have custom rate limit settings
+  (capacity, refill interval, etc.), allowing fine-grained control over request limits for different upstreams
 - **SSRF-hardened**: Custom DNS resolver blocks private IPs at connection time (not just before the request), preventing
   DNS rebinding attacks. Covers IPv4, IPv6, IPv4-mapped IPv6, Teredo, 6to4, and carrier-grade NAT ranges
 - **Input & output validation**: Enforces URL scheme/length/format, 10 KB request body streaming limit, 100 KB upstream
@@ -54,27 +55,7 @@ cookies, and no user accounts.
   4. Match against:      curl -s https://api.osprey.ac/privacy | jq .buildJarSha256
   ```
 
-## VPS Specs
-
-- CPU: 2 vCPU (AMD Ryzen 5950X)
-- RAM: 4 GB DDR4 (2 GB swap)
-- SSD: 80 GB NVMe
-
 ## Performance
 
-These synthetic tests were conducted using OspreyProxy's built-in stress testing tools and a PowerShell script using
-`hey` for requests. The server is hosted in Frankfurt, DE and the tests were conducted from a machine in San Diego, CA.
-These numbers are the most the server can handle before it starts to struggle and the response times reach 2,000 ms or
-more.
-
-- Peak concurrent connections: ~**6,500**
-- Peak requests per second: ~**3,000**
-- Peak req/min (estimated): ~**70,000**
-- Peak req/day (estimated): ~**100 million**
-
-The following are (generous) real-time estimates based on the active weekly users of Osprey:
-
-- Estimated average concurrent connections: ~**10**
-- Estimated average requests per second: ~**10**
-- Estimated average requests per minute: ~**625**
-- Estimated average requests per day: ~**900,000**
+TODO: Conduct performance tests on 127.0.0.1 with varying levels of concurrency and rate limit settings,
+and document results here.
