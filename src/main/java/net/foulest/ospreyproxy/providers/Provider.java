@@ -17,13 +17,10 @@
  */
 package net.foulest.ospreyproxy.providers;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.time.Duration;
 import java.util.Map;
 
 /**
