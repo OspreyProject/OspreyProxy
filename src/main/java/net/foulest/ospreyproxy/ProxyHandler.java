@@ -383,7 +383,7 @@ public class ProxyHandler {
                 }
 
                 // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
-                if (!authority.isEmpty() && authority.charAt(0) == '[') {
+                if (authority.charAt(0) == '[' && authority.contains("]")) {
                     int closingBracket = authority.indexOf(']');
 
                     if (closingBracket < 0) {
