@@ -86,10 +86,15 @@ public final class ErrorUtil {
      * Builds a fresh {@link Mono}{@code <}{@link ServerResponse}{@code >} from
      * pre-existing bytes. Safe to call on any thread, including Netty event loop
      * threads — no blocking, no shared mutable state.
+     * <p>
+     * Uses {@code bodyValue(String)} rather than {@code bodyValue(byte[])} because
+     * Spring WebFlux's functional {@link ServerResponse} routes {@code byte[]} through
+     * {@code Jackson2JsonEncoder}, which base64-encodes it. A {@code String} value is
+     * handled by {@code CharSequenceEncoder} and written verbatim.
      */
     private static @NonNull Mono<ServerResponse> build(int status, byte @NonNull [] body) {
         return ServerResponse.status(status)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body);
+                .bodyValue(new String(body, StandardCharsets.UTF_8));
     }
 }
