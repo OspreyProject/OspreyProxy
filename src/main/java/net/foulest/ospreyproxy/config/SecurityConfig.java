@@ -97,12 +97,14 @@ public class SecurityConfig implements WebFluxConfigurer {
             ServerHttpResponse response = exchange.getResponse();
 
             if (response.isCommitted()) {
-                return Mono.error(ex);
+                return Mono.empty();
             }
 
             response.setStatusCode(HttpStatus.BAD_REQUEST);
             response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-            return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_400)));
+
+            return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_400)))
+                    .onErrorResume(IllegalStateException.class, ise -> Mono.empty());
         };
     }
 
