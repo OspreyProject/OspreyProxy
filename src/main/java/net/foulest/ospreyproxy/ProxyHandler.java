@@ -407,11 +407,9 @@ public class ProxyHandler {
             // Sends the normalized URL string to the upstream provider
             String normalizedUrl = parsedUri.toString();
             return executeUpstream(provider, normalizedUrl);
-        }).onErrorResume(Exception.class, e -> {
-            log.warn("[{}] Failed to read request body", providerName, e);
-            return rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with unreadable body", ErrorUtil.resp400());
-        });
+        }).onErrorResume(Exception.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
+                "Blocked request with unreadable body", ErrorUtil.resp400())
+        );
     }
 
     /**
