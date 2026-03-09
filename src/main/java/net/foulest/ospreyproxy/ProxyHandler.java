@@ -367,10 +367,19 @@ public class ProxyHandler {
 
             host = host.toLowerCase(Locale.ROOT);
 
-            // Blocks userinfo to prevent URL parsing differentials
+            // Strips userinfo from URL to prevent URL parsing differentials (e.g., https://paypal.com@evil.com)
+            // The userinfo component is not relevant to threat scanning; only the host matters
             if (parsedUri.getUserInfo() != null) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with userinfo in URL", ErrorUtil.resp400NotAllowed());
+                try {
+                    int port = parsedUri.getPort();
+                    String path = parsedUri.getPath();
+                    String query = parsedUri.getQuery();
+                    String fragment = parsedUri.getFragment();
+                    parsedUri = new URI(scheme, null, host, port, path, query, fragment);
+                } catch (URISyntaxException e) {
+                    return rejectInvalidRequest(provider, hashedIp, providerName,
+                            "Blocked request with unstrippable userinfo in URL", ErrorUtil.resp400Malformed());
+                }
             }
 
             // Blocks private/internal hosts
