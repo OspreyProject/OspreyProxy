@@ -294,6 +294,27 @@ public class ProxyHandler {
                         "Blocked request with unexpected fields", ErrorUtil.resp400());
             }
 
+            // Rejects non-string url values
+            try (JsonParser validator = MAPPER.createParser(bytes)) {
+                JsonToken token;
+                boolean inUrlValue = false;
+
+                while ((token = validator.nextToken()) != null) {
+                    if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
+                        inUrlValue = true;
+                    } else if (inUrlValue) {
+                        if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
+                            return rejectInvalidRequest(provider, hashedIp, providerName,
+                                    "Blocked request with non-string url value", ErrorUtil.resp400());
+                        }
+                        break;
+                    }
+                }
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with malformed JSON body", ErrorUtil.resp400());
+            }
+
             // Rejects a null url value (e.g., {"url": null}); getOrDefault returns null
             // when the key is present but mapped to null, so guard before calling .trim()
             String rawUrl = incoming.getOrDefault("url", "");
