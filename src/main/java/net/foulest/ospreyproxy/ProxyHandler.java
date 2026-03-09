@@ -254,6 +254,9 @@ public class ProxyHandler {
         }
 
         // Checks if the IP is invalid-request-blocked (doesn't consume token, only checks block)
+        // The asymmetry here is intentional: invalid requests can only be determined after parsing the body,
+        // so we don't want to consume a token on every request upfront. Instead, we check for an active block first,
+        // and only consume a token when we actually identify an invalid request.
         if (provider.isInvalidRequestBlocked(hashedIp)) {
             log.warn("[{}] Invalid request block duration active for IP", providerName);
             return ErrorUtil.resp429Proxy();
@@ -465,18 +468,20 @@ public class ProxyHandler {
     }
 
     /**
-     * Checks if the given IP is currently burst-blocked for the provider, and if not,
-     * attempts to consume a token from the burst bucket. If the IP is burst-blocked
-     * or the burst bucket is exhausted, returns a Mono emitting a 429 response. Otherwise,
-     * returns null to indicate the request can proceed.
+     * Checks if the given IP is currently burst-blocked or has exceeded the burst rate limit,
+     * consuming one token from the burst bucket. If the IP is burst-blocked, logs a warning and returns true.
+     * If the IP has exceeded the burst rate limit, logs a warning, applies the burst block, and returns true.
+     * Otherwise, returns false to allow the request to proceed.
      *
      * @param provider The provider to check the burst block and bucket for.
      * @param hashedIp The hashed IP address to check and consume from the burst bucket.
      * @param providerName The provider name for logging purposes.
-     * @return A Mono emitting a 429 ServerResponse if the IP is burst-blocked or exceeds the burst rate limit,
-     *         or null if the request can proceed.
+     * @return A boolean indicating whether the IP is currently burst-blocked or has exceeded the burst rate limit
+     *         (true if blocked, false if allowed).
      */
-    private static boolean isBurstBlocked(@NonNull Provider provider, String hashedIp, String providerName) {
+    private static boolean isBurstBlocked(@NonNull Provider provider,
+                                          @NonNull String hashedIp,
+                                          @NonNull String providerName) {
         if (provider.isBurstBlocked(hashedIp)) {
             log.warn("[{}] Burst block duration active for IP", providerName);
             return true;
@@ -491,18 +496,20 @@ public class ProxyHandler {
     }
 
     /**
-     * Checks if the given IP is currently sustained-blocked for the provider, and if not,
-     * attempts to consume a token from the sustained bucket. If the IP is sustained-blocked
-     * or the sustained bucket is exhausted, returns a Mono emitting a 429 response. Otherwise,
-     * returns null to indicate the request can proceed.
+     * Checks if the given IP is currently sustained-blocked or has exceeded the sustained rate limit,
+     * consuming one token from the sustained bucket. If the IP is sustained-blocked, logs a warning and returns true.
+     * If the IP has exceeded the sustained rate limit, logs a warning, applies the sustained block, and returns true.
+     * Otherwise, returns false to allow the request to proceed.
      *
      * @param provider The provider to check the sustained block and bucket for.
      * @param hashedIp The hashed IP address to check and consume from the sustained bucket.
      * @param providerName The provider name for logging purposes.
-     * @return A Mono emitting a 429 ServerResponse if the IP is sustained-blocked or exceeds the sustained rate limit,
-     *         or null if the request can proceed.
+     * @return A boolean indicating whether the IP is currently sustained-blocked or has exceeded the sustained
+     *         rate limit (true if blocked, false if allowed).
      */
-    private static boolean isSustainedBlocked(@NonNull Provider provider, String hashedIp, String providerName) {
+    private static boolean isSustainedBlocked(@NonNull Provider provider,
+                                              @NonNull String hashedIp,
+                                              @NonNull String providerName) {
         if (provider.isSustainedBlocked(hashedIp)) {
             log.warn("[{}] Sustained block duration active for IP", providerName);
             return true;
