@@ -373,7 +373,7 @@ public class ProxyHandler {
             String host = parsedUri.getHost();
 
             // Extracts host from authority if getHost() is null
-            if (host == null) {
+            if (host == null || host.isBlank()) {
                 String authority = parsedUri.getRawAuthority();
 
                 if (authority == null) {
