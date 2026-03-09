@@ -228,6 +228,10 @@ public class ProxyHandler {
     private Mono<ServerResponse> proxyRequest(@NonNull ServerRequest request,
                                               @NonNull Provider provider) {
         // Resolve client IP from X-Real-IP header
+        // NOTE: Make sure whatever VPS you use is behind Cloudflare, Nginx, and a solid firewall!
+        // Prevent all direct connections entirely except for Cloudflare's IP ranges, and ensure the
+        // X-Real-IP header is set correctly by your reverse proxy. Otherwise, an attacker could bypass
+        // rate limits and blocks by connecting directly with spoofed IPs. Not good!
         String realIp = request.headers().firstHeader("X-Real-IP");
 
         // Fallback to remote address if X-Real-IP is missing or empty
