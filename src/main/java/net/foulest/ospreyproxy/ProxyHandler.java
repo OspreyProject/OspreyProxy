@@ -337,9 +337,10 @@ public class ProxyHandler {
                 }
             }
 
+            scheme = scheme.toLowerCase(Locale.ROOT);
+
             // Rejects unsupported schemes (only http and https allowed)
-            // noinspection NestedMethodCall
-            if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
+            if (!ALLOWED_SCHEMES.contains(scheme)) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request with disallowed URL scheme", ErrorUtil.resp400Scheme());
             }
