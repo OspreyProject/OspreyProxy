@@ -35,6 +35,7 @@ import java.util.Map;
 /**
  * Provider implementation for PrecisionSec.
  */
+@SuppressWarnings("NestedMethodCall")
 @Component
 public class PrecisionSecProvider implements Provider {
 
@@ -185,38 +186,26 @@ public class PrecisionSecProvider implements Provider {
     public void blockBurst(@NonNull String ip) {
         int violations = BURST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         BURST_VIOLATION_COUNT.put(ip, violations);
-        long durationSeconds = BURST_BLOCK_DURATION.getSeconds();
-        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
 
-        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
-        BURST_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
-                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
-        );
+        long blockSeconds = Math.min(BURST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+        BURST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
     }
 
     @Override
     public void blockSustained(@NonNull String ip) {
         int violations = SUSTAINED_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         SUSTAINED_VIOLATION_COUNT.put(ip, violations);
-        long durationSeconds = SUSTAINED_BLOCK_DURATION.getSeconds();
-        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
 
-        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
-        SUSTAINED_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
-                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
-        );
+        long blockSeconds = Math.min(SUSTAINED_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+        SUSTAINED_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
     }
 
     @Override
     public void blockInvalidRequest(@NonNull String ip) {
         int violations = INVALID_REQUEST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
         INVALID_REQUEST_VIOLATION_COUNT.put(ip, violations);
-        long durationSeconds = INVALID_REQUEST_BLOCK_DURATION.getSeconds();
-        long blockSeconds = Math.min(durationSeconds * (1L << (violations - 1)), 3600L);
 
-        // Use expireVariably to set a custom expiration time for this entry based on the number of violations
-        INVALID_REQUEST_BLOCKED_CACHE.policy().expireVariably().ifPresent(e ->
-                e.put(ip, Boolean.TRUE, Duration.ofSeconds(blockSeconds))
-        );
+        long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+        INVALID_REQUEST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
     }
 }
