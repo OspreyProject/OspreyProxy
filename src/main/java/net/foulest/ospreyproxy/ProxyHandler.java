@@ -248,7 +248,7 @@ public class ProxyHandler {
             return ErrorUtil.resp429Proxy();
         }
 
-        // Checks if the IP is invalid-request-blocked (consumes one token)
+        // Checks if the IP is sustained-blocked (consumes one token)
         if (isSustainedBlocked(provider, hashedIp, providerName)) {
             return ErrorUtil.resp429Proxy();
         }
@@ -269,23 +269,21 @@ public class ProxyHandler {
             try {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
-                log.warn("[{}] Blocked request with malformed JSON body", providerName, e);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with malformed JSON body", providerName, e);
                 return ErrorUtil.resp400Malformed();
             }
 
             // Rejects unexpected fields
             if (incoming.size() > 1) {
-                log.warn("[{}] Blocked request with unexpected fields", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with unexpected fields", providerName);
                 return ErrorUtil.resp400Unexpected();
             }
 
@@ -293,23 +291,21 @@ public class ProxyHandler {
 
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
-                log.warn("[{}] Blocked request with missing or empty URL", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with missing or empty URL", providerName);
                 return ErrorUtil.resp400MissingUrl();
             }
 
             // Rejects excessively long URLs
             if (url.length() > 2048) {
-                log.warn("[{}] Blocked request with excessively long URL", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with excessively long URL", providerName);
                 return ErrorUtil.resp400UrlTooLong();
             }
 
@@ -319,12 +315,11 @@ public class ProxyHandler {
             try {
                 parsedUri = new URI(url).normalize();
             } catch (URISyntaxException | IllegalArgumentException e) {
-                log.warn("[{}] Blocked request with malformed URL", providerName, e);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with malformed URL", providerName, e);
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -337,12 +332,11 @@ public class ProxyHandler {
                     parsedUri.toURL();
                     scheme = parsedUri.getScheme();
                 } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
-                    log.warn("[{}] Blocked request with malformed schemeless URL", providerName, e);
-
-                    // Checks if the IP is invalid-request-blocked (consumes one token)
                     if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                         return ErrorUtil.resp429Proxy();
                     }
+
+                    log.warn("[{}] Blocked request with malformed schemeless URL", providerName, e);
                     return ErrorUtil.resp400Malformed();
                 }
             }
@@ -350,12 +344,11 @@ public class ProxyHandler {
             // Rejects unsupported schemes (only http and https allowed)
             // noinspection NestedMethodCall
             if (!ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
-                log.warn("[{}] Blocked request with disallowed scheme", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with disallowed scheme", providerName);
                 return ErrorUtil.resp400Scheme();
             }
 
@@ -366,12 +359,11 @@ public class ProxyHandler {
                 String authority = parsedUri.getRawAuthority();
 
                 if (authority == null) {
-                    log.warn("[{}] Blocked request with no host", providerName);
-
-                    // Checks if the IP is invalid-request-blocked (consumes one token)
                     if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                         return ErrorUtil.resp429Proxy();
                     }
+
+                    log.warn("[{}] Blocked request with no host", providerName);
                     return ErrorUtil.resp400Malformed();
                 }
 
@@ -381,12 +373,11 @@ public class ProxyHandler {
 
             // Rejects empty hosts
             if (host.isBlank()) {
-                log.warn("[{}] Blocked request with empty host", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with empty host", providerName);
                 return ErrorUtil.resp400Malformed();
             }
 
@@ -394,23 +385,21 @@ public class ProxyHandler {
 
             // Blocks userinfo to prevent URL parsing differentials
             if (parsedUri.getUserInfo() != null) {
-                log.warn("[{}] Blocked request with userinfo in URL", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request with userinfo in URL", providerName);
                 return ErrorUtil.resp400NotAllowed();
             }
 
             // Blocks private/internal hosts
             if (IPUtil.isPrivateHost(host)) {
-                log.warn("[{}] Blocked request to private/internal host", providerName);
-
-                // Checks if the IP is invalid-request-blocked (consumes one token)
                 if (isInvalidRequestBlocked(provider, hashedIp, providerName)) {
                     return ErrorUtil.resp429Proxy();
                 }
+
+                log.warn("[{}] Blocked request to private/internal host", providerName);
                 return ErrorUtil.resp400NotAllowed();
             }
 
