@@ -308,7 +308,7 @@ public class ProxyHandler {
             }
 
             // Rejects excessively long URLs
-            if (url.length() > 2048) {
+            if (url.length() > 8192) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request with excessively long URL", ErrorUtil.resp400UrlTooLong());
             }
