@@ -149,17 +149,13 @@ public final class IPUtil {
             return true;
         }
 
-        // Block raw IP addresses used directly as hostnames.
-        // Uses numeric format detection to avoid DNS resolution (which would
-        // reintroduce the TOCTOU window this method is designed to avoid).
-        // IPv4 literals (e.g., "192.168.1.1") and IPv6 literals (e.g., "::1")
-        // are detected by format and then checked against private ranges.
+        // Block raw IP addresses used directly as hostnames
         if (isIpLiteral(host)) {
             try {
                 InetAddress addr = InetAddress.getByName(host);
                 return isPrivateAddress(addr);
             } catch (UnknownHostException e) {
-                log.warn("Invalid IP literal", e);
+                log.warn("[{}] Blocked request with invalid IP literal", providerName);
                 return true;
             }
         }
