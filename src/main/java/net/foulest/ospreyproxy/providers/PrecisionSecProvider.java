@@ -103,15 +103,15 @@ public class PrecisionSecProvider implements Provider {
 
     // Caches for counting violations to implement exponential backoff blocking
     private static final Cache<String, Integer> BURST_VIOLATION_COUNT = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofHours(1))
+            .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
     private static final Cache<String, Integer> SUSTAINED_VIOLATION_COUNT = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofHours(1))
+            .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
     private static final Cache<String, Integer> INVALID_REQUEST_VIOLATION_COUNT = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofHours(1))
+            .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
 
