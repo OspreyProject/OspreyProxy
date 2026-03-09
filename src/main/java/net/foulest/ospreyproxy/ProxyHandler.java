@@ -255,11 +255,6 @@ public class ProxyHandler {
             return ErrorUtil.resp429();
         }
 
-        // Skips upstream call and returns fake response for stress tests
-        if (StressTestUtil.isEnabled()) {
-            return ErrorUtil.resp200();
-        }
-
         // Read body as raw bytes, then deserialize with the synchronous Jackson parser.
         // Spring WebFlux's default bodyToMono(MAP_TYPE_REF) uses the non-blocking (async)
         // JSON parser, which bypasses maxNumberLength validation (CVE GHSA-72hv-8253-57qq).
@@ -388,6 +383,11 @@ public class ProxyHandler {
             if (IPUtil.isPrivateHost(host)) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request to private/internal host", ErrorUtil.resp400());
+            }
+
+            // Skips upstream call and returns fake response for stress tests
+            if (StressTestUtil.isEnabled()) {
+                return ErrorUtil.resp200();
             }
 
             // Sends the normalized URL string to the upstream provider
