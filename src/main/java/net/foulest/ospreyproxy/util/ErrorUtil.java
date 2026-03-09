@@ -49,8 +49,7 @@ public final class ErrorUtil {
     private static final byte[] BYTES_415_PROVIDER = bytes("Provider does not accept this Content-Type");
 
     // 429 Too Many Requests
-    private static final byte[] BYTES_429_BURST = bytes("Per-IP burst rate limit exceeded");
-    private static final byte[] BYTES_429_SUSTAINED = bytes("Per-IP sustained rate limit exceeded");
+    private static final byte[] BYTES_429_PROXY = bytes("Proxy rate limit exceeded");
     private static final byte[] BYTES_429_PROVIDER = bytes("Provider rate limit exceeded");
 
     // 404 Not Found
@@ -98,11 +97,7 @@ public final class ErrorUtil {
         return build(415, BYTES_415_PROVIDER);
     }
 
-    public static @NonNull Mono<ServerResponse> resp429Burst() {
-        return build(429, BYTES_429_BURST);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp429Sustained() {
+    public static @NonNull Mono<ServerResponse> resp429Proxy() {
         return build(429, BYTES_429_SUSTAINED);
     }
 
