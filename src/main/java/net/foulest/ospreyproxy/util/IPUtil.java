@@ -161,6 +161,8 @@ public final class IPUtil {
 
         // Block known internal hostnames by name
         if (host.equals("localhost")
+                || host.equals("local")
+                || host.equals("internal")
                 || host.endsWith(".local")
                 || host.endsWith(".internal")
                 || host.endsWith(".localhost")) {
@@ -203,14 +205,19 @@ public final class IPUtil {
             return true;
         }
 
-        // IPv4 heuristic: contains a dot and only digits/dots. Intentionally loose;
-        // malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught by
-        // InetAddress.getByName() in the caller and treated as blocked.
+        // IPv4 heuristic: contains a dot and all chars are hex-digits, dots, or hex prefix markers
+        // (0-9, a-f, A-F, x, X). This catches both standard decimal dotted-quad notation
+        // (e.g., "192.168.1.1") and hex-octet notation (e.g., "0x7f.0.0.1").
+        // Intentionally loose — malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught
+        // by InetAddress.getByName() in the caller and treated as blocked.
         if (host.contains(".")) {
             for (int i = 0; i < host.length(); i++) {
                 char c = host.charAt(i);
 
-                if (c != '.' && (c < '0' || c > '9')) {
+                if (c != '.' && c != 'x' && c != 'X'
+                        && !(c >= '0' && c <= '9')
+                        && !(c >= 'a' && c <= 'f')
+                        && !(c >= 'A' && c <= 'F')) {
                     return false;
                 }
             }
