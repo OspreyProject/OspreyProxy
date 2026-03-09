@@ -253,6 +253,12 @@ public class ProxyHandler {
             return ErrorUtil.resp429Proxy();
         }
 
+        // Checks if the IP is invalid-request-blocked (doesn't consume token, only checks block)
+        if (provider.isInvalidRequestBlocked(hashedIp)) {
+            log.warn("[{}] Invalid request block duration active for IP", providerName);
+            return ErrorUtil.resp429Proxy();
+        }
+
         // Skips upstream call and returns fake response for stress tests
         if (StressTestUtil.isEnabled()) {
             return ErrorUtil.resp200OK();
