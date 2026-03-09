@@ -376,7 +376,8 @@ public class ProxyHandler {
             if (host == null || host.isBlank()) {
                 String authority = parsedUri.getRawAuthority();
 
-                if (authority == null) {
+                // Rejects requests with no authority/host component
+                if (authority == null || authority.isBlank()) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
                             "Blocked request with no host", ErrorUtil.resp400());
                 }
