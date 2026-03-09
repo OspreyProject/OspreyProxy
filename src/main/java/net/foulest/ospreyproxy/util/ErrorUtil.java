@@ -36,7 +36,7 @@ public final class ErrorUtil {
     private static final byte[] BYTES_200_OK = bytes("OK");
 
     // 400 Bad Request
-    private static final byte[] BYTES_400 = bytes("Bad Request");
+    public static final byte[] BYTES_400 = bytes("Bad Request");
 
     // 404 Not Found
     private static final byte[] BYTES_404 = bytes("Not found");
