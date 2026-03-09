@@ -111,6 +111,12 @@ public interface Provider {
      */
     @NonNull Bucket getSustainedBucket(@NonNull String ip);
 
+    /**
+     * Gets the invalid request bucket for the given IP address, creating it if it doesn't exist.
+     *
+     * @param ip The IP address to get the invalid request bucket for.
+     * @return The Bucket object representing the invalid request limit for the given IP.
+     */
     @NonNull Bucket getInvalidRequestBucket(@NonNull String ip);
 
     /**
@@ -129,6 +135,12 @@ public interface Provider {
      */
     boolean isSustainedBlocked(@NonNull String ip);
 
+    /**
+     * Checks if the given IP address is currently blocked due to making invalid requests.
+     *
+     * @param ip The IP address to check for invalid request block status.
+     * @return True if the IP is currently blocked for invalid requests, false otherwise.
+     */
     boolean isInvalidRequestBlocked(@NonNull String ip);
 
     /**
@@ -147,5 +159,11 @@ public interface Provider {
      */
     void blockSustained(@NonNull String ip);
 
+    /**
+     * Blocks the given IP address due to an invalid request by
+     * adding it to the invalid request blocked cache.
+     *
+     * @param ip The IP address to block for invalid requests.
+     */
     void blockInvalidRequest(@NonNull String ip);
 }
