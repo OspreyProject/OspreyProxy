@@ -272,9 +272,15 @@ public class ProxyHandler {
             // Parse the request body as JSON
             try {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
-            } catch (JacksonException e) {
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request with malformed JSON body", ErrorUtil.resp400());
+            }
+
+            // Rejects a null parse result (e.g., body was the JSON literal "null")
+            if (incoming == null) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with null JSON body", ErrorUtil.resp400());
             }
 
             // Rejects unexpected fields
@@ -283,7 +289,10 @@ public class ProxyHandler {
                         "Blocked request with unexpected fields", ErrorUtil.resp400());
             }
 
-            String url = incoming.getOrDefault("url", "").trim();
+            // Rejects a null url value (e.g., {"url": null}); getOrDefault returns null
+            // when the key is present but mapped to null, so guard before calling .trim()
+            String rawUrl = incoming.getOrDefault("url", "");
+            String url = rawUrl != null ? rawUrl.trim() : "";
 
             // Rejects missing or empty URLs
             if (url.isEmpty()) {
