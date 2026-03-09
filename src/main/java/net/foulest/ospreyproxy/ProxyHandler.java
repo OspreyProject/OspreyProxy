@@ -41,10 +41,7 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.JsonParser;
-import tools.jackson.core.JsonToken;
-import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.*;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JavaType;
@@ -69,22 +66,17 @@ public class ProxyHandler {
     private final AlphaMountainProvider alphaMountainProvider;
     private final PrecisionSecProvider precisionSecProvider;
 
-    // Maximum nesting depth enforced during upstream response validation.
-    // Mirrors the StreamReadConstraints limit above; applied manually during
-    // the streaming token-walk to catch any parser that fails to enforce it.
+    // Maximum nesting depth enforced during upstream response validation
     private static final int MAX_NESTING_DEPTH = 50;
 
-    // JSON mapper for parsing upstream responses and serializing error bodies.
-    // Explicit StreamReadConstraints harden against CVE GHSA-72hv-8253-57qq
-    // (async parser maxNumberLength bypass) and CVE-2026-29062 (nesting depth
-    // bypass in UTF8DataInputJsonParser / ReaderBasedJsonParser) at the
-    // application level, regardless of which internal parser Jackson selects.
+    // JSON mapper for parsing upstream responses and serializing error bodies
     private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
                             .maxNumberLength(1000)
                             .maxNestingDepth(MAX_NESTING_DEPTH)
                             .maxStringLength(500_000)
                             .build())
+                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                     .build())
             .build();
 
