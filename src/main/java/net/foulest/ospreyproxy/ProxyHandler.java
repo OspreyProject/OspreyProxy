@@ -245,7 +245,7 @@ public class ProxyHandler {
 
         // Per-IP burst rate limit
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Sustained rate limit exceeded for IP", providerName);
+            log.warn("[{}] Burst rate limit exceeded for IP", providerName);
             return ErrorUtil.resp429Burst();
         }
 
