@@ -158,16 +158,16 @@ public class SecurityConfig implements WebFluxConfigurer {
                 return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_400)));
             }
 
-            // Fast-path: compare raw header string before allocating a MediaType object.
-            // The vast majority of valid clients send exactly "application/json"; only
-            // fall back to full MIME parsing for values with parameters (e.g., charset).
             String rawContentType = request.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
 
+            // Validate Content-Type against an exact allowlist
             boolean valid = rawContentType != null
-                    && (rawContentType.equals("application/json")
-                    || (rawContentType.startsWith("application/json")
+                    && (rawContentType.equalsIgnoreCase("application/json")
+                    || (rawContentType.contains(";")
+                    && rawContentType.regionMatches(true, 0, "application/json", 0, "application/json".length())
                     && MediaType.parseMediaType(rawContentType).equalsTypeAndSubtype(MediaType.APPLICATION_JSON)));
 
+            // If invalid, respond with 415 Unsupported Media Type
             if (!valid) {
                 response.setStatusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
                 return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415)));
