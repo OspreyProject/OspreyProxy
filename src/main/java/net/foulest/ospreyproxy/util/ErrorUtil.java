@@ -85,7 +85,7 @@ public final class ErrorUtil {
     /**
      * Builds a fresh {@link Mono}{@code <}{@link ServerResponse}{@code >} from
      * pre-existing bytes. Safe to call on any thread, including Netty event loop
-     * threads — no blocking, no shared mutable state.
+     * threads: no blocking, no shared mutable state.
      * <p>
      * Uses {@code bodyValue(String)} rather than {@code bodyValue(byte[])} because
      * Spring WebFlux's functional {@link ServerResponse} routes {@code byte[]} through

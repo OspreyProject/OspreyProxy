@@ -208,7 +208,7 @@ public final class IPUtil {
         // IPv4 heuristic: contains a dot and all chars are hex-digits, dots, or hex prefix markers
         // (0-9, a-f, A-F, x, X). This catches both standard decimal dotted-quad notation
         // (e.g., "192.168.1.1") and hex-octet notation (e.g., "0x7f.0.0.1").
-        // Intentionally loose — malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught
+        // Intentionally loose: malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught
         // by InetAddress.getByName() in the caller and treated as blocked.
         if (host.contains(".")) {
             for (int i = 0; i < host.length(); i++) {
