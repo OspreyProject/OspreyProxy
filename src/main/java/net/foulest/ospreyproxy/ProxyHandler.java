@@ -272,9 +272,16 @@ public class ProxyHandler {
         // JSON parser, which bypasses maxNumberLength validation (CVE GHSA-72hv-8253-57qq).
         // By parsing raw bytes with MAPPER.readValue() we use the synchronous parser,
         // which correctly enforces StreamReadConstraints (maxNumberLength, maxNestingDepth, etc.).
-        return request.bodyToMono(byte[].class).flatMap(bytes -> {
+        return request.bodyToMono(byte[].class).defaultIfEmpty(new byte[0]).flatMap(bytes -> {
             Map<String, String> incoming;
 
+            // Rejects empty bodies
+            if (bytes.length == 0) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with empty body", ErrorUtil.resp400MissingUrl());
+            }
+
+            // Parse the request body as JSON
             try {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (JacksonException e) {
