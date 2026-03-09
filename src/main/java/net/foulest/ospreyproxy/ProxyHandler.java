@@ -406,19 +406,27 @@ public class ProxyHandler {
 
             host = host.toLowerCase(Locale.ROOT);
 
-            // Strips userinfo from URL to prevent URL parsing differentials (e.g., https://paypal.com@evil.com)
-            // The userinfo component is not relevant to threat scanning; only the host matters
-            if (parsedUri.getUserInfo() != null) {
-                try {
-                    int port = parsedUri.getPort();
-                    String path = parsedUri.getPath();
-                    String query = parsedUri.getQuery();
-                    String fragment = parsedUri.getFragment();
-                    parsedUri = new URI(scheme, null, host, port, path, query, fragment);
-                } catch (URISyntaxException e) {
-                    return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with unstrippable userinfo in URL", ErrorUtil.resp400());
-                }
+            // Remove trailing dot(s)
+            while (!host.isEmpty() && host.charAt(host.length() - 1) == '.') {
+                host = host.substring(0, host.length() - 1);
+            }
+
+            // Rejects hosts that are empty after normalization
+            if (host.isEmpty()) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with empty host after normalization", ErrorUtil.resp400());
+            }
+
+            // Reconstructs the URI with the normalized host and scheme
+            try {
+                int port = parsedUri.getPort();
+                String path = parsedUri.getPath();
+                String query = parsedUri.getQuery();
+                String fragment = parsedUri.getFragment();
+                parsedUri = new URI(scheme, null, host, port, path, query, fragment);
+            } catch (URISyntaxException e) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request due to error during URI reconstruction", ErrorUtil.resp400());
             }
 
             // Blocks private/internal hosts
