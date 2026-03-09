@@ -98,7 +98,7 @@ public final class ErrorUtil {
     }
 
     public static @NonNull Mono<ServerResponse> resp429Proxy() {
-        return build(429, BYTES_429_SUSTAINED);
+        return build(429, BYTES_429_PROXY);
     }
 
     public static @NonNull Mono<ServerResponse> resp429Provider() {
