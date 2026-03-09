@@ -229,17 +229,17 @@ public class ProxyHandler {
             realIp = remote != null ? remote.getAddress().getHostAddress() : "unknown";
         }
 
+        String providerName = provider.getName();
+
         // Log a warning if we couldn't determine the client's IP address
         if (realIp.equals("unknown")) {
-            log.warn("Could not determine client IP address; applying rate limits to 'unknown' IP");
+            log.warn("{} Could not determine client IP address; applying rate limits to 'unknown' IP", providerName);
         }
 
         // Hash the IP for rate limiting, or use a synthetic IP in stress test mode
         String hashedIp = StressTestUtil.isEnabled()
                 ? StressTestUtil.syntheticIp()
                 : HashUtil.hashIp(realIp);
-
-        String providerName = provider.getName();
 
         // Checks if the IP is burst-blocked (consumes one token)
         if (isBurstBlocked(provider, hashedIp, providerName)) {
@@ -394,7 +394,7 @@ public class ProxyHandler {
             }
 
             // Blocks private/internal hosts
-            if (IPUtil.isPrivateHost(host)) {
+            if (IPUtil.isPrivateHost(host, providerName)) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request to private/internal host", ErrorUtil.resp400());
             }
