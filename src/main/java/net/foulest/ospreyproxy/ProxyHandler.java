@@ -355,8 +355,20 @@ public class ProxyHandler {
                             "Blocked request with no host", ErrorUtil.resp400Malformed());
                 }
 
-                int endIndex = authority.lastIndexOf(':');
-                host = authority.contains(":") ? authority.substring(0, endIndex) : authority;
+                // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
+                if (!authority.isEmpty() && authority.charAt(0) == '[') {
+                    int closingBracket = authority.indexOf(']');
+
+                    if (closingBracket < 0) {
+                        return rejectInvalidRequest(provider, hashedIp, providerName,
+                                "Blocked request with malformed IPv6 host", ErrorUtil.resp400Malformed());
+                    }
+
+                    host = authority.substring(1, closingBracket);
+                } else {
+                    int lastColon = authority.lastIndexOf(':');
+                    host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
+                }
             }
 
             // Rejects empty hosts
