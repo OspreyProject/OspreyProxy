@@ -120,8 +120,8 @@ public class PrivacyHandler {
 
         // Spring error detail suppression
         privacy.put("includeStacktrace", environment.getProperty("spring.web.error.include-stacktrace", "never"));
-        privacy.put("includeMessage", getSystemProperty("spring.web.error.include-message", "never"));
-        privacy.put("includeBindingErrors", getSystemProperty("spring.web.error.include-binding-errors", "never"));
+        privacy.put("includeMessage", environment.getProperty("spring.web.error.include-message", "never"));
+        privacy.put("includeBindingErrors", environment.getProperty("spring.web.error.include-binding-errors", "never"));
 
         // Whether any database driver implementation is on the classpath.
         // Note: java.sql.DriverManager is part of the JDK itself, so we check
