@@ -140,7 +140,25 @@ public final class IPUtil {
      * @param host The hostname to check.
      * @return True if the host is considered private/internal, false otherwise.
      */
-    public static boolean isPrivateHost(@NonNull String host) {
+    public static boolean isPrivateHost(@NonNull String host, @NonNull String providerName) {
+        // Strip trailing DNS root dot(s)
+        int end = host.length();
+
+        while (end > 0 && host.charAt(end - 1) == '.') {
+            end--;
+        }
+
+        // If the host was entirely dots, treat it as invalid/private
+        if (end == 0) {
+            return true;
+        }
+
+        // Work with the stripped host for all subsequent checks
+        // host is already lowercase at call sites; no re-lowercasing needed
+        if (end < host.length()) {
+            host = host.substring(0, end);
+        }
+
         // Block known internal hostnames by name
         if (host.equals("localhost")
                 || host.endsWith(".local")
