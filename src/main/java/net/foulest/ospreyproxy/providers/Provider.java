@@ -168,4 +168,66 @@ public interface Provider {
      * @return The Bucket object representing the sustained rate limit for the given IP.
      */
     @NonNull Bucket getSustainedBucket(@NonNull String ip);
+
+    /**
+     * Duration for which an IP should be blocked after exceeding the burst rate limit.
+     *
+     * @return A Duration object representing how long to block an IP after a burst limit violation.
+     */
+    @NonNull Duration getBurstBlockDuration();
+
+    /**
+     * Duration for which an IP should be blocked after exceeding the sustained rate limit.
+     *
+     * @return A Duration object representing how long to block an IP after a sustained limit violation.
+     */
+    @NonNull Duration getSustainedBlockDuration();
+
+    /**
+     * Provides the Caffeine cache object for tracking IP addresses
+     * that are currently blocked due to burst limit violations.
+     *
+     * @return A Caffeine Cache instance for tracking burst-blocked IP addresses.
+     */
+    @NonNull Cache<String, Boolean> getBurstBlockedCache();
+
+    /**
+     * Provides the Caffeine cache object for tracking IP addresses
+     * that are currently blocked due to sustained limit violations.
+     *
+     * @return A Caffeine Cache instance for tracking sustained-blocked IP addresses.
+     */
+    @NonNull Cache<String, Boolean> getSustainedBlockedCache();
+
+    /**
+     * Checks if the given IP address is currently blocked due to exceeding the burst rate limit.
+     *
+     * @param ip The IP address to check for burst block status.
+     * @return True if the IP is currently blocked for burst violations, false otherwise.
+     */
+    boolean isBurstBlocked(@NonNull String ip);
+
+    /**
+     * Checks if the given IP address is currently blocked due to exceeding the sustained rate limit.
+     *
+     * @param ip The IP address to check for sustained block status.
+     * @return True if the IP is currently blocked for sustained violations, false otherwise.
+     */
+    boolean isSustainedBlocked(@NonNull String ip);
+
+    /**
+     * Blocks the given IP address due to a burst rate limit
+     * violation by adding it to the burst blocked cache.
+     *
+     * @param ip The IP address to block for burst violations.
+     */
+    void blockBurst(@NonNull String ip);
+
+    /**
+     * Blocks the given IP address due to a sustained rate limit
+     * violation by adding it to the sustained blocked cache.
+     *
+     * @param ip The IP address to block for sustained violations.
+     */
+    void blockSustained(@NonNull String ip);
 }

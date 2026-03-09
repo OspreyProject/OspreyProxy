@@ -244,15 +244,25 @@ public class ProxyHandler {
         String providerName = provider.getName();
 
         // Per-IP burst rate limit
+        if (provider.isBurstBlocked(hashedIp)) {
+            log.warn("[{}] Burst block duration active for IP", providerName);
+            return ErrorUtil.resp429Proxy();
+        }
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] Burst rate limit exceeded for IP", providerName);
-            return ErrorUtil.resp429Burst();
+            provider.blockBurst(hashedIp);
+            return ErrorUtil.resp429Proxy();
         }
 
         // Per-IP sustained rate limit
+        if (provider.isSustainedBlocked(hashedIp)) {
+            log.warn("[{}] Sustained block duration active for IP", providerName);
+            return ErrorUtil.resp429Proxy();
+        }
         if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] Sustained rate limit exceeded for IP", providerName);
-            return ErrorUtil.resp429Sustained();
+            provider.blockSustained(hashedIp);
+            return ErrorUtil.resp429Proxy();
         }
 
         // Skips upstream call and returns fake response for stress tests

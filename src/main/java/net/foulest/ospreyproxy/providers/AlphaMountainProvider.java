@@ -45,6 +45,8 @@ public class AlphaMountainProvider implements Provider {
     private static final int SUSTAINED_CAPACITY = 400;
     private static final Duration BURST_DURATION = Duration.ofSeconds(1);
     private static final Duration SUSTAINED_DURATION = Duration.ofMinutes(1);
+    private static final Duration BURST_BLOCK_DURATION = Duration.ofSeconds(5);
+    private static final Duration SUSTAINED_BLOCK_DURATION = Duration.ofMinutes(1);
 
     // Bandwidth definitions for Bucket4j
     private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
@@ -63,6 +65,16 @@ public class AlphaMountainProvider implements Provider {
             .build();
     private static final Cache<String, Bucket> SUSTAINED_BUCKET_CACHE = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
+            .maximumSize(100_000)
+            .build();
+
+    // Caches for tracking temporarily blocked IPs; entries expire after their block duration
+    private static final Cache<String, Boolean> BURST_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(BURST_BLOCK_DURATION)
+            .maximumSize(100_000)
+            .build();
+    private static final Cache<String, Boolean> SUSTAINED_BLOCKED_CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(SUSTAINED_BLOCK_DURATION)
             .maximumSize(100_000)
             .build();
 
@@ -147,5 +159,45 @@ public class AlphaMountainProvider implements Provider {
     @Override
     public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
         return SUSTAINED_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
+    }
+
+    @Override
+    public @NonNull Duration getBurstBlockDuration() {
+        return BURST_BLOCK_DURATION;
+    }
+
+    @Override
+    public @NonNull Duration getSustainedBlockDuration() {
+        return SUSTAINED_BLOCK_DURATION;
+    }
+
+    @Override
+    public @NonNull Cache<String, Boolean> getBurstBlockedCache() {
+        return BURST_BLOCKED_CACHE;
+    }
+
+    @Override
+    public @NonNull Cache<String, Boolean> getSustainedBlockedCache() {
+        return SUSTAINED_BLOCKED_CACHE;
+    }
+
+    @Override
+    public boolean isBurstBlocked(@NonNull String ip) {
+        return BURST_BLOCKED_CACHE.getIfPresent(ip) != null;
+    }
+
+    @Override
+    public boolean isSustainedBlocked(@NonNull String ip) {
+        return SUSTAINED_BLOCKED_CACHE.getIfPresent(ip) != null;
+    }
+
+    @Override
+    public void blockBurst(@NonNull String ip) {
+        BURST_BLOCKED_CACHE.put(ip, Boolean.TRUE);
+    }
+
+    @Override
+    public void blockSustained(@NonNull String ip) {
+        SUSTAINED_BLOCKED_CACHE.put(ip, Boolean.TRUE);
     }
 }
