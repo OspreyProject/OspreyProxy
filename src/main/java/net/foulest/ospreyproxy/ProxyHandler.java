@@ -216,6 +216,10 @@ public class ProxyHandler {
      */
     private Mono<ServerResponse> proxyRequest(@NonNull ServerRequest request,
                                               @NonNull Provider provider) {
+        // ------------------------------------------------
+        // IP Extraction and Rate Limiting
+        // ------------------------------------------------
+
         // Resolve client IP from X-Real-IP header
         // NOTE: Make sure whatever VPS you use is behind Cloudflare, Nginx, and a solid firewall!
         // Prevent all direct connections entirely except for Cloudflare's IP ranges, and ensure the
@@ -260,11 +264,11 @@ public class ProxyHandler {
             return ErrorUtil.resp429();
         }
 
-        // Read body as raw bytes, then deserialize with the synchronous Jackson parser.
-        // Spring WebFlux's default bodyToMono(MAP_TYPE_REF) uses the non-blocking (async)
-        // JSON parser, which bypasses maxNumberLength validation (CVE GHSA-72hv-8253-57qq).
-        // By parsing raw bytes with MAPPER.readValue() we use the synchronous parser,
-        // which correctly enforces StreamReadConstraints (maxNumberLength, maxNestingDepth, etc.).
+        // ------------------------------------------------
+        // Request Body Parsing and Validation
+        // ------------------------------------------------
+
+        // Read body as raw bytes, then deserialize with the synchronous Jackson parser
         return request.bodyToMono(byte[].class).defaultIfEmpty(new byte[0]).flatMap(bytes -> {
             Map<String, String> incoming;
 
@@ -315,8 +319,10 @@ public class ProxyHandler {
                         "Blocked request with malformed JSON body", ErrorUtil.resp400());
             }
 
-            // Rejects a null url value (e.g., {"url": null}); getOrDefault returns null
-            // when the key is present but mapped to null, so guard before calling .trim()
+            // ------------------------------------------------
+            // URL Normalization and Validation
+            // ------------------------------------------------
+
             String rawUrl = incoming.getOrDefault("url", "");
             String url = rawUrl != null ? rawUrl.trim() : "";
 
@@ -419,6 +425,10 @@ public class ProxyHandler {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request to private/internal host", ErrorUtil.resp400());
             }
+
+            // ------------------------------------------------
+            // Upstream Request Execution
+            // ------------------------------------------------
 
             // Skips upstream call and returns fake response for stress tests
             if (StressTestUtil.isEnabled()) {
