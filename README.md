@@ -73,5 +73,5 @@ cookies, and no user accounts.
 ##
 
 <p align="center">
-  <a href="https://heavynode.com/?utm_source=osprey" title="HeavyNode"><img src="https://i.imgur.com/7cF1yaL.png" alt="HeavyNode"></a>
+  <a href="https://heavynode.com/vps/performance-compute" title="HeavyNode"><img src="https://i.imgur.com/7cF1yaL.png" alt="HeavyNode"></a>
 </p>
