@@ -69,3 +69,9 @@ cookies, and no user accounts.
   3. Compare checksum:   sha256sum build/libs/OspreyProxy.jar
   4. Match against:      curl -s https://api.osprey.ac/privacy | jq .buildJarSha256
   ```
+
+##
+
+<p align="center">
+  <a href="https://heavynode.com/?utm_source=osprey" title="HeavyNode"><img src="https://i.imgur.com/7cF1yaL.png" alt="HeavyNode"></a>
+</p>
