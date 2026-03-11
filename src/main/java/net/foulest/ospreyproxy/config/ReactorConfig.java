@@ -60,7 +60,7 @@ public class ReactorConfig {
         ResourceLeakDetector.Level level;
         try {
             level = ResourceLeakDetector.Level.valueOf(leakDetectionLevel);
-        } catch (IllegalArgumentException ex) {
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("Invalid leak detection level '{}'; falling back to DISABLED", leakDetectionLevel);
             level = ResourceLeakDetector.Level.DISABLED;
         }

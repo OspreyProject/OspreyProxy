@@ -50,7 +50,7 @@ public final class HashUtil {
     private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
         try {
             return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
     });

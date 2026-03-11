@@ -214,6 +214,7 @@ public class ProxyHandler {
      * @return A Mono emitting the ServerResponse to return to the client, which may be an error
      *         response or the proxied upstream response.
      */
+    @SuppressWarnings({"NestedAssignment", "NestedMethodCall"})
     private Mono<ServerResponse> proxyRequest(@NonNull ServerRequest request,
                                               @NonNull Provider provider) {
         // ------------------------------------------------
@@ -343,7 +344,7 @@ public class ProxyHandler {
             // Normalizes and validates URL syntax
             try {
                 parsedUri = new URI(url).normalize();
-            } catch (URISyntaxException | IllegalArgumentException e) {
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request with malformed URL", ErrorUtil.resp400());
             }
@@ -356,7 +357,7 @@ public class ProxyHandler {
                     parsedUri = new URI("https://" + parsedUri).normalize();
                     parsedUri.toURL();
                     scheme = parsedUri.getScheme();
-                } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
                             "Blocked request with malformed schemeless URL", ErrorUtil.resp400());
                 }
@@ -424,7 +425,7 @@ public class ProxyHandler {
                 String query = parsedUri.getQuery();
                 String fragment = parsedUri.getFragment();
                 parsedUri = new URI(scheme, null, host, port, path, query, fragment);
-            } catch (URISyntaxException e) {
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request due to error during URI reconstruction", ErrorUtil.resp400());
             }
@@ -515,7 +516,7 @@ public class ProxyHandler {
                                 depth--;
                             }
                         }
-                    } catch (JacksonException e) {
+                    } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                         log.warn("[{}] Failed to parse upstream response as JSON", providerName, e);
                         return ErrorUtil.resp502();
                     }
