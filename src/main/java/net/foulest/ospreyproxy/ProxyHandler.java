@@ -41,19 +41,30 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
-import tools.jackson.core.*;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.net.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Functional request handler for all proxy endpoints.
@@ -91,6 +102,41 @@ public class ProxyHandler {
 
     // Maximum allowed upstream response size in bytes (100 KB)
     private static final int MAX_RESPONSE_SIZE = 100_000;
+
+    // Request statistics per provider
+    private static final class RequestStats {
+
+        final AtomicLong totalRequestCount = new AtomicLong(0);
+        final AtomicLong secondBucket = new AtomicLong(0);
+        final AtomicLong minuteBucket = new AtomicLong(0);
+    }
+
+    private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
+
+    // Scheduler for periodic request statistics printing
+    private static final ScheduledExecutorService REQUEST_STATS_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "RequestStats");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    static {
+        // Snapshot and reset each provider's secondBucket every second; accumulate into minuteBucket
+        REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> {
+            for (RequestStats stats : PROVIDER_STATS.values()) {
+                long reqThisSec = stats.secondBucket.getAndSet(0);
+                stats.minuteBucket.addAndGet(reqThisSec);
+            }
+        }, 1, 1, TimeUnit.SECONDS);
+
+        // Every 60 seconds: log per-provider avg req/sec and total req/min, then reset minuteBucket
+        REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> PROVIDER_STATS.forEach((name, stats) -> {
+            long reqThisMin = stats.minuteBucket.getAndSet(0);
+            double avgPerSec = reqThisMin / 60.0;
+            log.warn("[{}] Req/min: {} | Avg req/sec: {} | Total: {}",
+                    name, reqThisMin, String.format("%.2f", avgPerSec), stats.totalRequestCount.get());
+        }), 60, 60, TimeUnit.SECONDS);
+    }
 
     /**
      * Custom Netty DNS resolver that validates resolved IPs against private ranges
@@ -451,6 +497,14 @@ public class ProxyHandler {
                             "Blocked request due to error during PrecisionSec URI reconstruction", ErrorUtil.resp400());
                 }
             }
+
+            // ------------------------------------------------
+            // Request Statistics
+            // ------------------------------------------------
+
+            RequestStats stats = PROVIDER_STATS.computeIfAbsent(providerName, k -> new RequestStats());
+            stats.totalRequestCount.incrementAndGet();
+            stats.secondBucket.incrementAndGet();
 
             // ------------------------------------------------
             // Upstream Request Execution
