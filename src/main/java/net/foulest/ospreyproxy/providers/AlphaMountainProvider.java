@@ -59,15 +59,15 @@ public class AlphaMountainProvider implements Provider {
     // Bandwidth definitions for Bucket4j
     private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
             .capacity(BURST_CAPACITY)
-            .refillIntervally(BURST_CAPACITY, BURST_WINDOW)
+            .refillGreedy(BURST_CAPACITY, BURST_WINDOW)
             .build();
     private static final Bandwidth SUSTAINED_BANDWIDTH = Bandwidth.builder()
             .capacity(SUSTAINED_CAPACITY)
-            .refillIntervally(SUSTAINED_CAPACITY, SUSTAINED_WINDOW)
+            .refillGreedy(SUSTAINED_CAPACITY, SUSTAINED_WINDOW)
             .build();
     private static final Bandwidth INVALID_REQUEST_BANDWIDTH = Bandwidth.builder()
             .capacity(INVALID_REQUEST_CAPACITY)
-            .refillIntervally(INVALID_REQUEST_CAPACITY, INVALID_REQUEST_WINDOW)
+            .refillGreedy(INVALID_REQUEST_CAPACITY, INVALID_REQUEST_WINDOW)
             .build();
 
     // Caches for storing buckets per IP address
