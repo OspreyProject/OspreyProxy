@@ -122,7 +122,7 @@ public class ProxyHandler {
     }
 
     // The provider's greedy window capacity to simulate, in req/min
-    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 840;
+    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_080;
 
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
 
