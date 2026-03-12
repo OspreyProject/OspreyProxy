@@ -437,6 +437,22 @@ public class ProxyHandler {
             }
 
             // ------------------------------------------------
+            // Provider-Specific URL Modifications
+            // ------------------------------------------------
+
+            // If the provider is PrecisionSec, reconstruct the URI to only use domain, no scheme
+            // Example: https://example.com/some/path?query=1#fragment -> example.com
+
+            if (providerName.equals("PrecisionSec")) {
+                try {
+                    parsedUri = new URI(parsedUri.getHost());
+                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                    return rejectInvalidRequest(provider, hashedIp, providerName,
+                            "Blocked request due to error during PrecisionSec URI reconstruction", ErrorUtil.resp400());
+                }
+            }
+
+            // ------------------------------------------------
             // Upstream Request Execution
             // ------------------------------------------------
 

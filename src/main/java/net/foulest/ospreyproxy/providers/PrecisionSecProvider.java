@@ -40,7 +40,7 @@ public class PrecisionSecProvider implements Provider {
 
     // API Key and URL configuration
     private static final String API_KEY = System.getenv("PRECISIONSEC_API_KEY");
-    private static final String API_URL = "https://api.precisionsec.com/check_url/";
+    private static final String API_URL = "https://api.precisionsec.com/check_domain/";
     private static final String UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
     // Rate limiting capacity
