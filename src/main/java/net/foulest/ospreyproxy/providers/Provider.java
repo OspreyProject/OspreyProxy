@@ -163,4 +163,15 @@ public interface Provider {
      * @param ip The IP address to block for invalid requests.
      */
     void blockInvalidRequest(@NonNull String ip);
+
+    /**
+     * Returns a stable, non-PII violator ID for the given IP address.
+     * The ID is an incrementing integer assigned on first violation and
+     * reused on subsequent violations by the same IP within this session.
+     * Resets on restart, cannot be reversed to an IP address.
+     *
+     * @param ip The hashed IP address to get or assign a violator ID for.
+     * @return A short numeric string identifying this violator (e.g., "#42").
+     */
+    @NonNull String getViolatorId(@NonNull String ip);
 }

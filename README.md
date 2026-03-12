@@ -32,17 +32,18 @@ for [Osprey: Browser Protection](https://osprey.ac).
 
 ## Privacy
 
-OspreyProxy does not log, store, or persist any user data. There is no database, no disk writes, no analytics, no
-cookies, and no user accounts.
+OspreyProxy does not log, store, or persist any user data. There is no database, no disk writes, no user-identifiable
+analytics, no cookies, and no user accounts.
 
 - **IP addresses** are held in memory only for rate limiting, hashed with SHA-256 and a random salt that changes every
   restart. Raw IPs are never logged or sent upstream.
 - **URLs** submitted for checking are forwarded to the upstream providers and then discarded. Refer to each provider's
   privacy policy for how they handle submitted URLs.
 - **No request logging**: The application contains zero logging calls that record user-supplied content (such as IPs,
-  URLs, hosts, and request bodies). All `log.warn` calls contain no user data and only log internal events or errors.
-  The root log level is set to `WARN`, the Reactor Netty access log is explicitly disabled via both property and system
-  property, and no log file path is configured. These are verifiable in
+  URLs, hosts, and request bodies). All `log.warn` calls contain no user data and only log internal events, errors, or
+  aggregate request counts (total requests and requests per minute, per provider, excluding IPs, URLs, or any
+  user-supplied content). The root log level is set to `WARN`, the Reactor Netty access log is explicitly disabled via
+  both property and system property, and no log file path is configured. These are verifiable in
   [`application.properties`](src/main/resources/application.properties) and
   [`ReactorConfig.java`](src/main/java/net/foulest/ospreyproxy/config/ReactorConfig.java).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,

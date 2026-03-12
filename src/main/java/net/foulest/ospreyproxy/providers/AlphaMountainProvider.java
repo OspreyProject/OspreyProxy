@@ -29,6 +29,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Provider implementation for AlphaMountain.
@@ -108,6 +109,14 @@ public class AlphaMountainProvider implements Provider {
             .maximumSize(100_000)
             .build();
     private static final Cache<String, Integer> INVALID_REQUEST_VIOLATION_COUNT = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(24))
+            .maximumSize(100_000)
+            .build();
+
+    // Assigns a stable, session-scoped numeric ID to each violating IP for log correlation
+    // without logging the hashed IP itself. Resets on restart.
+    private static final AtomicInteger VIOLATOR_COUNTER = new AtomicInteger(0);
+    private static final Cache<String, String> VIOLATOR_ID_CACHE = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
@@ -212,5 +221,11 @@ public class AlphaMountainProvider implements Provider {
         long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
         INVALID_REQUEST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
         INVALID_REQUEST_BUCKET_CACHE.invalidate(ip);
+    }
+
+    @Override
+    @SuppressWarnings("NestedMethodCall")
+    public @NonNull String getViolatorId(@NonNull String ip) {
+        return VIOLATOR_ID_CACHE.get(ip, k -> "#" + VIOLATOR_COUNTER.incrementAndGet());
     }
 }

@@ -357,12 +357,14 @@ public class ProxyHandler {
             return ErrorUtil.resp429();
         }
 
+        String violatorId = provider.getViolatorId(hashedIp);
+
         // Checks if the IP is invalid-request-blocked (doesn't consume token, only checks block)
         // The asymmetry here is intentional: invalid requests can only be determined after parsing the body,
         // so we don't want to consume a token on every request upfront. Instead, we check for an active block first,
         // and only consume a token when we actually identify an invalid request.
         if (provider.isInvalidRequestBlocked(hashedIp)) {
-            log.warn("[{}] Invalid request block duration active for IP", providerName);
+            log.warn("[{}] RATE LIMIT ACTIVE: Invalid request | {}", providerName, violatorId);
             return ErrorUtil.resp429();
         }
 
@@ -690,13 +692,15 @@ public class ProxyHandler {
     private static boolean isBurstBlocked(@NonNull Provider provider,
                                           @NonNull String hashedIp,
                                           @NonNull String providerName) {
+        String violatorId = provider.getViolatorId(hashedIp);
+
         if (provider.isBurstBlocked(hashedIp)) {
-            log.warn("[{}] Burst block duration active for IP", providerName);
+            log.warn("[{}] RATE LIMIT ACTIVE: Burst | {}", providerName, violatorId);
             return true;
         }
 
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Burst rate limit exceeded for IP", providerName);
+            log.warn("[{}] RATE LIMIT HIT: Burst | {}", providerName, violatorId);
             provider.blockBurst(hashedIp);
             return true;
         }
@@ -718,13 +722,15 @@ public class ProxyHandler {
     private static boolean isSustainedBlocked(@NonNull Provider provider,
                                               @NonNull String hashedIp,
                                               @NonNull String providerName) {
+        String violatorId = provider.getViolatorId(hashedIp);
+
         if (provider.isSustainedBlocked(hashedIp)) {
-            log.warn("[{}] Sustained block duration active for IP", providerName);
+            log.warn("[{}] RATE LIMIT ACTIVE: Sustained | {}", providerName, violatorId);
             return true;
         }
 
         if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Sustained rate limit exceeded for IP", providerName);
+            log.warn("[{}] RATE LIMIT HIT: Sustained | {}", providerName, violatorId);
             provider.blockSustained(hashedIp);
             return true;
         }
@@ -750,7 +756,8 @@ public class ProxyHandler {
                                                                       @NonNull Mono<ServerResponse> errorResponse) {
         // Consumes a token from the invalid request bucket, blocking the IP if the bucket is exhausted
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] Invalid request rate limit exceeded for IP", providerName);
+            String violatorId = provider.getViolatorId(hashedIp);
+            log.warn("[{}] RATE LIMIT HIT: Invalid request | {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);
             return ErrorUtil.resp429();
         }
