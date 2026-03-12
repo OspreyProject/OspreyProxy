@@ -663,8 +663,11 @@ public class ProxyHandler {
                 default -> ErrorUtil.resp502();
             };
         }).onErrorResume(ReadTimeoutException.class, e -> {
-            log.error("[{}] Upstream request timed out: {}", providerName, e.getMessage());
+            log.error("[{}] Upstream request timed out: ReadTimeoutException", providerName);
             return ErrorUtil.resp504();
+        }).onErrorResume(WebClientRequestException.class, e -> {
+            log.error("[{}] Upstream request failed: WebClientRequestException", providerName);
+            return ErrorUtil.resp502();
         }).onErrorResume(Exception.class, e -> {
             log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.resp502();
