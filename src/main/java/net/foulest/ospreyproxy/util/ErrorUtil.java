@@ -50,6 +50,9 @@ public final class ErrorUtil {
     // 502 Bad Gateway
     private static final byte[] BYTES_502 = bytes("Bad Gateway");
 
+    // 504 Gateway Timeout
+    private static final byte[] BYTES_504 = bytes("Gateway Timeout");
+
     public static @NonNull Mono<ServerResponse> resp200() {
         return build(200, BYTES_200_OK);
     }
@@ -72,6 +75,10 @@ public final class ErrorUtil {
 
     public static @NonNull Mono<ServerResponse> resp502() {
         return build(502, BYTES_502);
+    }
+
+    public static @NonNull Mono<ServerResponse> resp504() {
+        return build(504, BYTES_504);
     }
 
     /**
