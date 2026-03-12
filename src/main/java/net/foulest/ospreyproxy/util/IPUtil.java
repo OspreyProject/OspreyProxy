@@ -94,7 +94,7 @@ public final class IPUtil {
                     InetAddress v4Addr = InetAddress.getByAddress(v4Bytes);
                     return isPrivateAddress(v4Addr);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.warn("Invalid IPv4-mapped IPv6 address", e);
+                    log.warn("Invalid IPv4-mapped IPv6 address ({})", e.getClass().getName(), e);
                     return true;
                 }
             }
@@ -123,7 +123,7 @@ public final class IPUtil {
                         return true;
                     }
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.warn("Invalid 6to4 IPv6 address", e);
+                    log.warn("Invalid 6to4 IPv6 address ({})", e.getClass().getName(), e);
                     return true;
                 }
             }
@@ -175,7 +175,7 @@ public final class IPUtil {
                 InetAddress addr = InetAddress.getByName(host);
                 return isPrivateAddress(addr);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.warn("[{}] Blocked request with invalid IP literal", providerName);
+                log.warn("[{}] Blocked request with invalid IP literal ({})", providerName, e.getClass().getName());
                 return true;
             }
         }

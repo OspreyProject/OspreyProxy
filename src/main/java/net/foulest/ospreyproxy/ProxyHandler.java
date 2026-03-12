@@ -387,7 +387,7 @@ public class ProxyHandler {
                 incoming = MAPPER.readValue(bytes, MAP_TYPE);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed JSON body", ErrorUtil.resp400());
+                        "Blocked request with malformed JSON body (" + e.getClass().getName() + ")", ErrorUtil.resp400());
             }
 
             // Rejects a null parse result (e.g., body was the JSON literal "null")
@@ -420,7 +420,7 @@ public class ProxyHandler {
                 }
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed JSON body", ErrorUtil.resp400());
+                        "Blocked request with malformed JSON body (" + e.getClass().getName() + ")", ErrorUtil.resp400());
             }
 
             // ------------------------------------------------
@@ -449,7 +449,7 @@ public class ProxyHandler {
                 parsedUri = new URI(url).normalize();
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed URL", ErrorUtil.resp400());
+                        "Blocked request with malformed URL (" + e.getClass().getName() + ")", ErrorUtil.resp400());
             }
 
             String scheme = parsedUri.getScheme();
@@ -462,7 +462,7 @@ public class ProxyHandler {
                     scheme = parsedUri.getScheme();
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with malformed schemeless URL", ErrorUtil.resp400());
+                            "Blocked request with malformed schemeless URL (" + e.getClass().getName() + ")", ErrorUtil.resp400());
                 }
             }
 
@@ -530,7 +530,7 @@ public class ProxyHandler {
                 parsedUri = new URI(scheme, null, host, port, path, query, fragment);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request due to error during URI reconstruction", ErrorUtil.resp400());
+                        "Blocked request due to error during URI reconstruction (" + e.getClass().getName() + ")", ErrorUtil.resp400());
             }
 
             // Blocks private/internal hosts
@@ -551,7 +551,7 @@ public class ProxyHandler {
                     parsedUri = new URI(parsedUri.getHost());
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request due to error during PrecisionSec URI reconstruction", ErrorUtil.resp400());
+                            "Blocked request due to error during PrecisionSec URI reconstruction (" + e.getClass().getName() + ")", ErrorUtil.resp400());
                 }
             }
 
@@ -646,7 +646,7 @@ public class ProxyHandler {
                     }
                 }
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.warn("[{}] Failed to parse upstream response as JSON", providerName, e);
+                log.warn("[{}] Failed to parse upstream response as JSON ({})", providerName, e.getClass().getName(), e);
                 return ErrorUtil.resp502();
             }
 
