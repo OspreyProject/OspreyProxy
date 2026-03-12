@@ -518,8 +518,10 @@ public class ProxyHandler {
             // Sends the normalized URL string to the upstream provider
             String normalizedUrl = parsedUri.toString();
             return executeUpstream(provider, normalizedUrl);
-        }).onErrorResume(Exception.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
-                "Blocked request with unreadable body", ErrorUtil.resp400())
+        }).onErrorResume(AbortedException.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
+                "Blocked aborted request: " + e.getMessage(), ErrorUtil.resp400())
+        ).onErrorResume(Exception.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
+                "Blocked invalid request: " + e.getMessage() + " | " + e.getClass().getName(), ErrorUtil.resp400())
         );
     }
 
