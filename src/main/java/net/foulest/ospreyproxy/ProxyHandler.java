@@ -559,61 +559,62 @@ public class ProxyHandler {
 
         // Retrieves the response body as bytes to enforce size limits before parsing
         return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
-                    if (bytes.length == 0) {
-                        log.warn("[{}] Upstream response was empty", providerName);
-                        return ErrorUtil.resp502();
-                    }
+            if (bytes.length == 0) {
+                log.warn("[{}] Upstream response was empty", providerName);
+                return ErrorUtil.resp502();
+            }
 
-                    if (bytes.length > MAX_RESPONSE_SIZE) {
-                        log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, bytes.length);
-                        return ErrorUtil.resp502();
-                    }
+            if (bytes.length > MAX_RESPONSE_SIZE) {
+                log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, bytes.length);
+                return ErrorUtil.resp502();
+            }
 
-                    // Validate that the response is well-formed JSON using a streaming parser.
-                    // Manually tracks nesting depth as defense-in-depth against CVE-2026-29062
-                    // (nesting depth bypass in certain Jackson parser implementations).
-                    try (JsonParser parser = MAPPER.createParser(bytes)) {
-                        int depth = 0;
-                        JsonToken token;
+            // Validate that the response is well-formed JSON using a streaming parser.
+            // Manually tracks nesting depth as defense-in-depth against CVE-2026-29062
+            // (nesting depth bypass in certain Jackson parser implementations).
+            try (JsonParser parser = MAPPER.createParser(bytes)) {
+                int depth = 0;
+                JsonToken token;
 
-                        while ((token = parser.nextToken()) != null) {
-                            if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
-                                depth++;
+                while ((token = parser.nextToken()) != null) {
+                    if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
+                        depth++;
 
-                                if (depth > MAX_NESTING_DEPTH) {
-                                    log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
-                                    return ErrorUtil.resp502();
-                                }
-                            } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
-                                depth--;
-                            }
+                        if (depth > MAX_NESTING_DEPTH) {
+                            log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
+                            return ErrorUtil.resp502();
                         }
-                    } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                        log.warn("[{}] Failed to parse upstream response as JSON", providerName, e);
-                        return ErrorUtil.resp502();
+                    } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                        depth--;
                     }
+                }
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                log.warn("[{}] Failed to parse upstream response as JSON", providerName, e);
+                return ErrorUtil.resp502();
+            }
 
-                    // Pass through the validated raw bytes directly
-                    return ServerResponse.ok()
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .bodyValue(bytes);
-                })
-                .onErrorResume(WebClientResponseException.class, e -> {
-                    int statusCode = e.getStatusCode().value();
-                    log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+            // Pass through the validated raw bytes directly
+            return ServerResponse.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(bytes);
+        }).onErrorResume(WebClientResponseException.class, e -> {
+            int statusCode = e.getStatusCode().value();
+            log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
 
-                    return switch (statusCode) {
-                        case 400 -> ErrorUtil.resp400();
-                        case 404 -> ErrorUtil.resp404();
-                        case 415 -> ErrorUtil.resp415();
-                        case 429 -> ErrorUtil.resp429();
-                        default -> ErrorUtil.resp502();
-                    };
-                })
-                .onErrorResume(Exception.class, e -> {
-                    log.error("[{}] Unexpected error during upstream request", providerName, e);
-                    return ErrorUtil.resp502();
-                });
+            return switch (statusCode) {
+                case 400 -> ErrorUtil.resp400();
+                case 404 -> ErrorUtil.resp404();
+                case 415 -> ErrorUtil.resp415();
+                case 429 -> ErrorUtil.resp429();
+                default -> ErrorUtil.resp502();
+            };
+        }).onErrorResume(ReadTimeoutException.class, e -> {
+            log.error("[{}] Upstream request timed out: {}", providerName, e.getMessage());
+            return ErrorUtil.resp504();
+        }).onErrorResume(Exception.class, e -> {
+            log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
+            return ErrorUtil.resp502();
+        });
     }
 
     /**
