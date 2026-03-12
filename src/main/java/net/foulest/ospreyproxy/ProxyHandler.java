@@ -18,6 +18,7 @@
 package net.foulest.ospreyproxy;
 
 import io.netty.channel.ChannelOption;
+import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.resolver.*;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Promise;
@@ -39,6 +40,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
+import reactor.netty.channel.AbortedException;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.core.JsonParser;
@@ -109,7 +111,18 @@ public class ProxyHandler {
         final AtomicLong totalRequestCount = new AtomicLong(0);
         final AtomicLong secondBucket = new AtomicLong(0);
         final AtomicLong minuteBucket = new AtomicLong(0);
+        final AtomicLong peakReqPerSec = new AtomicLong(0);
+        final AtomicLong highestReqPerMin = new AtomicLong(0);
+        final AtomicLong highestPeakReqPerSec = new AtomicLong(0);
+
+        // Greedy window simulation: simulated token pool (scaled x100 to avoid floats in an AtomicLong)
+        // Represents how a provider's greedy bucket of SIMULATED_PROVIDER_WINDOW_PER_MIN/min would look
+        final AtomicLong simulatedTokenPoolScaled = new AtomicLong(SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L);
+        final AtomicLong highestMinWindowNeeded = new AtomicLong(0);
     }
+
+    // The provider's greedy window capacity to simulate, in req/min
+    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 840;
 
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
 
@@ -121,20 +134,61 @@ public class ProxyHandler {
     });
 
     static {
-        // Snapshot and reset each provider's secondBucket every second; accumulate into minuteBucket
+        // Every second: drain secondBucket into minuteBucket, update peakReqPerSec, and simulate greedy window
         REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> {
-            for (RequestStats stats : PROVIDER_STATS.values()) {
+            for (Map.Entry<String, RequestStats> entry : PROVIDER_STATS.entrySet()) {
+                String name = entry.getKey();
+                RequestStats stats = entry.getValue();
                 long reqThisSec = stats.secondBucket.getAndSet(0);
                 stats.minuteBucket.addAndGet(reqThisSec);
+
+                long current = stats.peakReqPerSec.get();
+                if (reqThisSec > current) {
+                    stats.peakReqPerSec.set(reqThisSec);
+                }
+
+                // Simulate the provider's greedy token pool:
+                // refill rate = SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0 tokens/sec (scaled x100)
+                long refillScaled = Math.round((SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0) * 100);
+                long consumeScaled = reqThisSec * 100L;
+                long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;
+
+                // Apply refill then consume, clamping pool between 0 and cap
+                long pool = stats.simulatedTokenPoolScaled.get();
+                pool = Math.min(pool + refillScaled, capScaled);
+                pool = Math.max(pool - consumeScaled, 0);
+                stats.simulatedTokenPoolScaled.set(pool);
+
+                // Net drift this second: negative means we're consuming faster than the window refills
+                double netDriftPerSec = (refillScaled - consumeScaled) / 100.0;
+
+                if (netDriftPerSec < 0) {
+                    // Minimum window (req/min) needed so refill rate >= consume rate: ceil(reqThisSec * 60)
+                    long minWindowNeeded = (long) Math.ceil(reqThisSec * 60.0);
+
+                    if (minWindowNeeded > stats.highestMinWindowNeeded.get()) {
+                        stats.highestMinWindowNeeded.set(minWindowNeeded);
+                        log.warn("[{}] Greedy window deficit — Consume vs refill: {}/sec | Min window needed to break even: {}/min",
+                                name, String.format("%.2f", netDriftPerSec), minWindowNeeded);
+                    }
+                }
             }
         }, 1, 1, TimeUnit.SECONDS);
 
-        // Every 60 seconds: log per-provider avg req/sec and total req/min, then reset minuteBucket
+        // Every 60 seconds: check per-provider highs and log only when a new record is set
         REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> PROVIDER_STATS.forEach((name, stats) -> {
             long reqThisMin = stats.minuteBucket.getAndSet(0);
-            double avgPerSec = reqThisMin / 60.0;
-            log.warn("[{}] Req/min: {} | Avg req/sec: {} | Total: {}",
-                    name, reqThisMin, String.format("%.2f", avgPerSec), stats.totalRequestCount.get());
+            long peakThisMin = stats.peakReqPerSec.getAndSet(0);
+
+            if (reqThisMin > stats.highestReqPerMin.get()) {
+                stats.highestReqPerMin.set(reqThisMin);
+                log.warn("[{}] New highest req/min: {}", name, reqThisMin);
+            }
+
+            if (peakThisMin > stats.highestPeakReqPerSec.get()) {
+                stats.highestPeakReqPerSec.set(peakThisMin);
+                log.warn("[{}] New highest req/sec: {}", name, peakThisMin);
+            }
         }), 60, 60, TimeUnit.SECONDS);
     }
 
