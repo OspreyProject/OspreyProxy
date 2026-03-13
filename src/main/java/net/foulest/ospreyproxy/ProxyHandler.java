@@ -576,7 +576,7 @@ public class ProxyHandler {
             String normalizedUrl = parsedUri.toString();
             return executeUpstream(provider, normalizedUrl);
         }).onErrorResume(AbortedException.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
-                "Blocked aborted request: " + e.getMessage(), ErrorUtil.resp400())
+                "Cancelled inbound request: " + e.getMessage(), ErrorUtil.resp400())
         ).onErrorResume(Exception.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
                 "Blocked invalid request: " + e.getMessage() + " | " + e.getClass().getName(), ErrorUtil.resp400())
         );
@@ -665,11 +665,12 @@ public class ProxyHandler {
                 case 429 -> ErrorUtil.resp429();
                 default -> ErrorUtil.resp502();
             };
-        }).onErrorResume(ReadTimeoutException.class, e -> {
-            log.error("[{}] Upstream request timed out: ReadTimeoutException", providerName);
-            return ErrorUtil.resp504();
         }).onErrorResume(WebClientRequestException.class, e -> {
-            log.error("[{}] Upstream request failed: WebClientRequestException", providerName);
+            if (e.getCause() instanceof ReadTimeoutException) {
+                log.error("[{}] Upstream request timed out: ReadTimeoutException", providerName);
+            } else {
+                log.error("[{}] Upstream request failed: WebClientRequestException", providerName);
+            }
             return ErrorUtil.resp502();
         }).onErrorResume(Exception.class, e -> {
             log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
