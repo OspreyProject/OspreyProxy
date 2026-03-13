@@ -42,9 +42,7 @@ public final class HashUtil {
     private static final byte[] IP_SALT = generateSalt();
 
     // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call.
-    // This is a static final field intended to live for the application's lifetime;
-    // remove() is not needed because Netty event loop threads are long-lived and
-    // terminated at shutdown, at which point the ThreadLocal is cleaned up.
+    // This is a static final field intended to live for the application's lifetime.
     @SuppressWarnings("java:S5164")
     private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
         try {
