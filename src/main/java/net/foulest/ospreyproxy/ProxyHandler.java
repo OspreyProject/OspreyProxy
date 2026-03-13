@@ -556,7 +556,7 @@ public class ProxyHandler {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(responseBody);
             });
-        } catch (SocketTimeoutException | ConnectionRequestTimeoutException e) {
+        } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             log.error("[{}] Upstream request timed out: {}", providerName, e.getClass().getName());
             CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_504;
