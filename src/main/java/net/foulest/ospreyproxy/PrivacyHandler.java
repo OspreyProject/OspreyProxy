@@ -20,6 +20,8 @@ package net.foulest.ospreyproxy;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.core.FileAppender;
+import ch.qos.logback.core.rolling.RollingFileAppender;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
@@ -137,7 +139,7 @@ public class PrivacyHandler {
     // -------------------------------------------------------------------------
 
     /**
-     * Reads the root logger's level from Logback at runtime. If the level is null (inherited),
+     * Reads the root logger's level from Logback at runtime. If the level is {@code null} (inherited),
      * returns "UNKNOWN" since we can't determine the effective level without inspecting the entire logger hierarchy.
      *
      * @return The root log level.
@@ -170,9 +172,9 @@ public class PrivacyHandler {
      * <p>
      * Uses {@code getSimpleName().contains("File")} rather than {@code instanceof}
      * to avoid a compile-time dependency on Logback's internal API. This catches
-     * FileAppender, RollingFileAppender, and future subclasses. A false positive
-     * would only make the privacy report more conservative (reporting potential
-     * disk logging), which is the safe direction for a privacy audit tool.
+     * {@link FileAppender}, {@link RollingFileAppender}, and future subclasses.
+     * A false positive would only make the privacy report more conservative
+     * (reporting potential disk logging), which is the safest direction to take.
      */
     private static int getLogbackFileAppenderCount() {
         try {
@@ -200,7 +202,7 @@ public class PrivacyHandler {
     /**
      * Checks if any common database drivers are present on the classpath.
      *
-     * @return True if any common DB drivers are found, false otherwise.
+     * @return {@code true} if any common DB drivers are found, {@code false} otherwise.
      */
     private static boolean hasDatabaseDriver() {
         String[] driverClasses = {
@@ -230,6 +232,11 @@ public class PrivacyHandler {
     // OS-level checks
     // -------------------------------------------------------------------------
 
+    /**
+     * Reads Nginx config files to determine if access logging is disabled.
+     *
+     * @return The string value of the access log status.
+     */
     @SuppressWarnings("NestedMethodCall")
     private static @NonNull String getNginxAccessLogStatus() {
         // Check site-specific config first, then the global config
@@ -340,6 +347,8 @@ public class PrivacyHandler {
      * If the storage mode is "auto", checks whether /var/log/journal/ exists
      * to determine the effective behavior. In auto mode, systemd persists
      * journals only if that directory exists; otherwise journals are volatile.
+     *
+     * @param storageValue The storage value to resolve.
      */
     private static @NonNull String resolveAutoStorage(@NonNull String storageValue) {
         if ("auto".equals(storageValue)) {
@@ -387,7 +396,10 @@ public class PrivacyHandler {
 
     /**
      * Parses a journald config file for the Storage= directive.
-     * Returns the value if found, or null if not present.
+     * Returns the value if found, or {@code null} if not present.
+     *
+     * @param path The path to the journald config file to parse.
+     * @return The storage value if found, or {@code null} if not present or file is unreadable.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @Nullable String parseJournaldStorage(@NonNull Path path) {
@@ -423,8 +435,9 @@ public class PrivacyHandler {
     /**
      * Computes the SHA-256 checksum of the running JAR file.
      * Locates the JAR via this class's ProtectionDomain code source.
-     * Returns "unknown" if not running from a JAR (e.g., during development via bootRun).
      * Uses streaming to avoid loading the entire fat JAR into memory at once.
+     *
+     * @return A hexadecimal string of the JAR's SHA-256 checksum, or "unknown" if not running from a JAR or on error.
      */
     private static @NonNull String computeOwnJarSha256() {
         try {

@@ -61,12 +61,12 @@ public final class ErrorUtil {
     }
 
     /**
-     * Builds a {@link ResponseEntity} with the given status and pre-serialized body.
+     * Builds a {@link ResponseEntity} with the given {@code status} and pre-serialized {@code body}.
      * Content-Type is always {@code application/json; charset=UTF-8}.
      *
      * @param status The HTTP status code for the response.
      * @param body The pre-serialized JSON body string.
-     * @return A ResponseEntity with the given status and body,
+     * @return A {@link ResponseEntity} with the given status and body,
      *         ready to return from a controller method.
      */
     private static @NonNull ResponseEntity<String> build(@NonNull HttpStatus status,

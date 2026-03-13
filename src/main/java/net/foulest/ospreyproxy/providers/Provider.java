@@ -72,10 +72,10 @@ public interface Provider {
 
     /**
      * Builds the request body for POST providers.
-     * Returns null for GET providers.
+     * Returns {@code null} for GET providers.
      *
      * @param url The validated URL to check.
-     * @return The request body map, or null for GET providers.
+     * @return The request body map, or {@code null} for GET providers.
      */
     default @Nullable Map<String, Object> buildBody(@NonNull String url) {
         return null;
@@ -97,7 +97,7 @@ public interface Provider {
      * Gets the burst rate limit bucket for the given IP address, creating it if it doesn't exist.
      *
      * @param ip The IP address to get the burst bucket for.
-     * @return The Bucket object representing the burst rate limit for the given IP.
+     * @return The {@link Bucket} object representing the burst rate limit for the given IP.
      */
     @NonNull Bucket getBurstBucket(@NonNull String ip);
 
@@ -105,7 +105,7 @@ public interface Provider {
      * Gets the sustained rate limit bucket for the given IP address, creating it if it doesn't exist.
      *
      * @param ip The IP address to get the sustained bucket for.
-     * @return The Bucket object representing the sustained rate limit for the given IP.
+     * @return The {@link Bucket} object representing the sustained rate limit for the given IP.
      */
     @NonNull Bucket getSustainedBucket(@NonNull String ip);
 
@@ -113,7 +113,7 @@ public interface Provider {
      * Gets the invalid request bucket for the given IP address, creating it if it doesn't exist.
      *
      * @param ip The IP address to get the invalid request bucket for.
-     * @return The Bucket object representing the invalid request limit for the given IP.
+     * @return The {@link Bucket} object representing the invalid request limit for the given IP.
      */
     @NonNull Bucket getInvalidRequestBucket(@NonNull String ip);
 
@@ -121,7 +121,7 @@ public interface Provider {
      * Checks if the given IP address is currently blocked due to exceeding the burst rate limit.
      *
      * @param ip The IP address to check for burst block status.
-     * @return True if the IP is currently blocked for burst violations, false otherwise.
+     * @return {@code true} if the IP is currently blocked for burst violations, {@code false} otherwise.
      */
     boolean isBurstBlocked(@NonNull String ip);
 
@@ -129,7 +129,7 @@ public interface Provider {
      * Checks if the given IP address is currently blocked due to exceeding the sustained rate limit.
      *
      * @param ip The IP address to check for sustained block status.
-     * @return True if the IP is currently blocked for sustained violations, false otherwise.
+     * @return {@code true} if the IP is currently blocked for sustained violations, {@code false} otherwise.
      */
     boolean isSustainedBlocked(@NonNull String ip);
 
@@ -137,7 +137,7 @@ public interface Provider {
      * Checks if the given IP address is currently blocked due to making invalid requests.
      *
      * @param ip The IP address to check for invalid request block status.
-     * @return True if the IP is currently blocked for invalid requests, false otherwise.
+     * @return {@code true} if the IP is currently blocked for invalid requests, {@code false} otherwise.
      */
     boolean isInvalidRequestBlocked(@NonNull String ip);
 

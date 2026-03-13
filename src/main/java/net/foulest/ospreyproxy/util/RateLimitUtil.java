@@ -32,7 +32,7 @@ import org.springframework.http.ResponseEntity;
 public final class RateLimitUtil {
 
     /**
-     * Checks if the given IP is burst-blocked or has exceeded the burst rate limit.
+     * Checks if the given {@code hashedIp} is burst-blocked or has exceeded the burst rate limit.
      * Consumes one token from the burst bucket if not already blocked.
      *
      * @param provider The provider to check the burst bucket from.
@@ -61,7 +61,7 @@ public final class RateLimitUtil {
     }
 
     /**
-     * Checks if the given IP is sustained-blocked or has exceeded the sustained rate limit.
+     * Checks if the given {@code hashedIp} is sustained-blocked or has exceeded the sustained rate limit.
      * Consumes one token from the sustained bucket if not already blocked.
      *
      * @param provider The provider to check the sustained bucket from.
@@ -90,8 +90,8 @@ public final class RateLimitUtil {
     }
 
     /**
-     * Consumes one token from the invalid-request bucket for the given IP.
-     * Blocks the IP if the bucket is exhausted. Logs the rejection reason.
+     * Consumes one token from the invalid-request bucket for the given {@code hashedIp}.
+     * Blocks the {@code hashedIp} if the bucket is exhausted. Logs the rejection reason.
      *
      * @param provider The provider to consume the invalid request token from.
      * @param hashedIp The hashed IP address to check and consume from.

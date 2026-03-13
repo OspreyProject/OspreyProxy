@@ -58,7 +58,7 @@ public final class StressTestUtil {
      * This exercises the Caffeine rate limiter cache with distinct keys rather than
      * all requests sharing the same IP, which would not reflect real-world behavior.
      *
-     * @return A string that will be treated as a distinct IP by the rate limiter.
+     * @return A {@code String} that will be treated as a distinct IP by the rate limiter.
      */
     public static @NonNull String syntheticIp() {
         long bits = ThreadLocalRandom.current().nextLong();
@@ -92,6 +92,9 @@ public final class StressTestUtil {
     /**
      * Writes an integer octet (0-255) into the char buffer at the given position.
      *
+     * @param buf The character buffer to write into.
+     * @param pos The current position in the buffer to write at.
+     * @param value The integer value of the octet to write (0-255).
      * @return The new position after writing.
      */
     @SuppressWarnings("CharUsedInArithmeticContext")

@@ -23,10 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.DnsResolver;
 import org.jspecify.annotations.NonNull;
 
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,10 +38,6 @@ public final class IPUtil {
     /**
      * Custom {@link DnsResolver} that validates every resolved IP against the private/internal
      * address blocklist in {@link IPUtil} before returning it to the connection manager.
-     * <p>
-     * Because resolution happens at connection time (not during URL parsing), this approach
-     * is not vulnerable to DNS rebinding (TOCTOU): the address we check is exactly the address
-     * that will be used for the connection.
      */
     public static final DnsResolver SSRF_SAFE_DNS_RESOLVER = new DnsResolver() {
 
@@ -53,7 +46,7 @@ public final class IPUtil {
          * Called by the connection manager before opening a socket.
          *
          * @param host The hostname to resolve.
-         * @return An array of safe InetAddress objects for the given host.
+         * @return An array of safe {@link InetAddress} objects for the given host.
          */
         @Override
         public InetAddress @NonNull [] resolve(String host) throws UnknownHostException {
@@ -75,7 +68,7 @@ public final class IPUtil {
         }
 
         /**
-         * Returns the canonical (fully-qualified) hostname for the given host.
+         * Returns the canonical (fully-qualified) hostname for the given {@code host}.
          * Delegates to the JVM's standard resolver; no SSRF risk here since
          * this performs a reverse lookup on a name, not a forward lookup that
          * could return a private address for outbound connections.
@@ -91,11 +84,11 @@ public final class IPUtil {
     };
 
     /**
-     * Checks if an InetAddress is private or internal.
+     * Checks if an {@link InetAddress} is private or internal.
      * Used by the SSRF-safe DNS resolver at connection time.
      *
      * @param addr The InetAddress to check.
-     * @return True if the address is private/internal, false otherwise.
+     * @return {@code true} if the address is private/internal, {@code false} otherwise.
      */
     private static boolean isPrivateAddress(@NonNull InetAddress addr) {
         // Block standard private and special-use ranges
@@ -187,13 +180,13 @@ public final class IPUtil {
     }
 
     /**
-     * Checks if the host is private or internal to prevent SSRF attacks.
+     * Checks if the {@code host} is private or internal to prevent SSRF attacks.
      * Only performs string-based hostname checks here; IP-level blocking
-     * is handled by SSRF_SAFE_DNS_RESOLVER at connection time to avoid
+     * is handled by {@code DNS_RESOLVER} at connection time to avoid
      * DNS rebinding (TOCTOU) vulnerabilities from double-resolution.
      *
      * @param host The hostname to check.
-     * @return True if the host is considered private/internal, false otherwise.
+     * @return {@code true} if the host is considered private/internal, {@code false} otherwise.
      */
     public static boolean isPrivateHost(@NonNull String host, @NonNull String providerName) {
         // Strip trailing DNS root dot(s)
@@ -238,18 +231,18 @@ public final class IPUtil {
     }
 
     /**
-     * Checks if the given host string is an IP address literal (IPv4 or IPv6)
+     * Checks if the given {@code host} string is an IP address literal (IPv4 or IPv6)
      * without performing any DNS resolution.
-     *
-     * <p>This is a fast format-detection heuristic, not a full IP validator.
+     * <p>
+     * This is a fast format-detection heuristic, not a full IP validator.
      * Malformed inputs (e.g., "..." or "1.2.3.4.5.6") are intentionally accepted
      * here because the caller ({@link #isPrivateHost}) passes the result to
-     * {@code InetAddress.getByName()}, which performs strict validation and throws
-     * {@code UnknownHostException} on invalid literals (caught and treated as blocked).
+     * {@link InetAddress#getByName}, which performs strict validation and throws
+     * {@link UnknownHostException} on invalid literals (caught and treated as blocked).
      *
-     * @param host The hostname from {@code URI.getHost()}, which never contains a port
+     * @param host The hostname from {@link URI#getHost}, which never contains a port
      *             component (e.g., "example.com:8080" → "example.com", "[::1]:8080" → "::1").
-     * @return True if the host looks like an IP literal, false if it's a domain name.
+     * @return {@code true} if the host looks like an IP literal, {@code false} if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
     private static boolean isIpLiteral(@NonNull String host) {

@@ -28,6 +28,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.function.Function;
 
 /**
  * Utility class for hashing IP addresses with a salt.
@@ -60,7 +61,7 @@ public final class HashUtil {
 
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
-     * Creates a new SecureRandom instance, which is acceptable because this method
+     * Creates a new {@link SecureRandom} instance, which is acceptable because this method
      * is called exactly once at class load time ({@code IP_SALT} initialization).
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
@@ -74,9 +75,9 @@ public final class HashUtil {
 
     /**
      * Hashes the IP address using SHA-256 with a salt to prevent rainbow table attacks.
-     * Caffeine's get() uses an optimistic fast-path for cache hits internally
-     * without locking, so no manual getIfPresent() check is needed.
-     * Uses ThreadLocal MessageDigest to avoid getInstance() overhead on misses.
+     * Caffeine's {@link Cache#get(Object, Function)} uses an optimistic fast-path for cache
+     * hits internally without locking, so no manual {@code getIfPresent()} check is needed.
+     * Uses {@code ThreadLocal<MessageDigest>} to avoid getInstance() overhead on misses.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
