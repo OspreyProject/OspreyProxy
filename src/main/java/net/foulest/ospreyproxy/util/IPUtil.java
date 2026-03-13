@@ -20,12 +20,16 @@ package net.foulest.ospreyproxy.util;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.DnsResolver;
 import org.jspecify.annotations.NonNull;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Utility class for checking if an IP address or hostname is private/internal to prevent SSRF attacks.
@@ -35,13 +39,65 @@ import java.util.Arrays;
 public final class IPUtil {
 
     /**
+     * Custom {@link DnsResolver} that validates every resolved IP against the private/internal
+     * address blocklist in {@link IPUtil} before returning it to the connection manager.
+     * <p>
+     * Because resolution happens at connection time (not during URL parsing), this approach
+     * is not vulnerable to DNS rebinding (TOCTOU): the address we check is exactly the address
+     * that will be used for the connection.
+     */
+    public static final DnsResolver SSRF_SAFE_DNS_RESOLVER = new DnsResolver() {
+
+        /**
+         * Resolves {@code host} to a list of safe (non-private) addresses.
+         * Called by the connection manager before opening a socket.
+         *
+         * @param host The hostname to resolve.
+         * @return An array of safe InetAddress objects for the given host.
+         */
+        @Override
+        public InetAddress @NonNull [] resolve(String host) throws UnknownHostException {
+            InetAddress[] resolved = InetAddress.getAllByName(host);
+            List<InetAddress> safe = new ArrayList<>(resolved.length);
+
+            for (InetAddress addr : resolved) {
+                if (isPrivateAddress(addr)) {
+                    throw new UnknownHostException("Blocked: '" + host + "' resolved to private address");
+                }
+
+                safe.add(addr);
+            }
+
+            if (safe.isEmpty()) {
+                throw new UnknownHostException("No safe addresses resolved for: " + host);
+            }
+            return safe.toArray(new InetAddress[0]);
+        }
+
+        /**
+         * Returns the canonical (fully-qualified) hostname for the given host.
+         * Delegates to the JVM's standard resolver; no SSRF risk here since
+         * this performs a reverse lookup on a name, not a forward lookup that
+         * could return a private address for outbound connections.
+         *
+         * @param host The hostname to resolve.
+         * @return The canonical hostname.
+         */
+        @Override
+        public String resolveCanonicalHostname(String host) throws UnknownHostException {
+            InetAddress addr = InetAddress.getByName(host);
+            return addr.getCanonicalHostName();
+        }
+    };
+
+    /**
      * Checks if an InetAddress is private or internal.
      * Used by the SSRF-safe DNS resolver at connection time.
      *
      * @param addr The InetAddress to check.
      * @return True if the address is private/internal, false otherwise.
      */
-    public static boolean isPrivateAddress(@NonNull InetAddress addr) {
+    private static boolean isPrivateAddress(@NonNull InetAddress addr) {
         // Block standard private and special-use ranges
         if (addr.isLoopbackAddress()
                 || addr.isSiteLocalAddress()
