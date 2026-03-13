@@ -36,6 +36,8 @@ public class GlobalExceptionHandler {
     /**
      * Handles requests whose body exceeds the configured size limit.
      * Tomcat rejects these before any controller code runs.
+     *
+     * @param ex The exception to handle.
      */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxUploadSize(@NonNull MaxUploadSizeExceededException ex) {
@@ -47,9 +49,11 @@ public class GlobalExceptionHandler {
      * Handles requests for unmapped paths (the MVC equivalent of 404).
      * Without this, Spring MVC returns its default HTML whitelabel error page
      * for paths that don't match any controller mapping.
+     *
+     * @param ignored The exception to handle (ignored).
      */
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<String> handleNoResource(NoResourceFoundException ex) {
+    public ResponseEntity<String> handleNoResource(NoResourceFoundException ignored) {
         return ErrorUtil.RESP_404;
     }
 
@@ -57,6 +61,8 @@ public class GlobalExceptionHandler {
      * Catch-all for unexpected exceptions not handled elsewhere.
      * Returns 502 (Bad Gateway) since unexpected failures at the proxy layer
      * are most meaningfully represented as an upstream/infrastructure error.
+     *
+     * @param ex The exception to handle.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleUnexpected(Exception ex) {
