@@ -302,15 +302,13 @@ public class ProxyHandler {
                     "Blocked request with excessively long URL", ErrorUtil.RESP_400);
         }
 
-        URI parsedUri;
-
         // Normalizes and validates URL syntax
+        URI parsedUri;
         try {
             parsedUri = new URI(url).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400);
+                    "Blocked request with malformed URL", ErrorUtil.RESP_400);
         }
 
         String scheme = parsedUri.getScheme();
