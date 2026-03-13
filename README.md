@@ -1,6 +1,6 @@
 # OspreyProxy
 
-Backend code for our [proxy server](https://api.osprey.ac) using Spring WebFlux
+Backend code for our [proxy server](https://api.osprey.ac) using Spring MVC
 for [Osprey: Browser Protection](https://osprey.ac).
 
 ## Features
@@ -12,21 +12,20 @@ for [Osprey: Browser Protection](https://osprey.ac).
   tracking up to 100K IPs per cache with salted SHA-256 hashing. Each provider can have custom rate limit settings
   (capacity, refill interval, etc.), allowing fine-grained control over request limits for different upstreams. Repeated
   violations trigger exponential backoff blocking (doubling block duration per violation, capped at 1 hour).
-- **SSRF-hardened**: Custom Netty DNS resolver blocks private IPs at connection time (not just before the request),
-  preventing DNS rebinding attacks. Covers IPv4, IPv6, IPv4-mapped IPv6, Teredo, 6to4, and carrier-grade NAT ranges.
-  Also blocks private hostnames (`localhost`, `.local`, `.internal`, etc.) and raw IP literals before the request is
-  sent.
-- **Input & output validation**: Enforces URL scheme allowlist (http/https only), 8192-character URL length limit, 10 KB
-  request body streaming limit (enforced at both the codec level and via Content-Length pre-check), 100 KB upstream
-  response cap, strict single-field JSON body parsing with non-string value rejection, and JSON re-serialization to
-  strip unexpected content. Upstream responses are also validated as well-formed JSON with a manual nesting depth check
-  (max 50) as defense-in-depth.
-- **Functional routing**: Uses Spring WebFlux's `RouterFunction` API instead of annotation-based `@RestController`
-  routing to eliminate per-request overhead from Spring's annotation processing pipeline.
+- **SSRF-hardened**: Custom Apache HttpClient `DnsResolver` blocks private IPs at connection time (not just before the
+  request), preventing DNS rebinding attacks. Covers IPv4, IPv6, IPv4-mapped IPv6, Teredo, 6to4, and carrier-grade NAT
+  ranges. Also blocks private hostnames (`localhost`, `.local`, `.internal`, etc.) and raw IP literals before the
+  request is sent.
+- **Input & output validation**: Enforces URL scheme allowlist (http/https only), 8192-character URL length limit, 100
+  KB upstream response cap, strict single-field JSON body parsing with non-string value rejection, and JSON
+  re-serialization to strip unexpected content. Upstream responses are also validated as well-formed JSON with a manual
+  nesting depth check (max 50) as defense-in-depth.
+- **Annotation-based routing**: Uses Spring MVC's `@RestController` API for clean, declarative endpoint definitions
+  with virtual thread execution, allowing blocking upstream HTTP calls to park rather than occupy platform threads.
 - **Security by default**: HSTS, CSP, X-Frame-Options, Content-Type enforcement, Referrer-Policy, Permissions-Policy,
   no redirect following, no error detail leakage, server header suppressed, and API keys loaded from environment
-  variables. Bounded upstream connection pool (200 max connections, 500 pending acquire) with 5-second connect and
-  response timeouts.
+  variables. Bounded upstream connection pool (200 max connections) with 5-second connect, response, and connection
+  request timeouts.
 - **Built-in stress testing**: Toggle a single property (`ospreyproxy.stress-test-mode=true`) to bypass upstream
   providers and load test the full request pipeline with synthetic IPs. Must never be enabled in production!
 
@@ -42,10 +41,8 @@ analytics, no cookies, and no user accounts.
 - **No request logging**: The application contains zero logging calls that record user-supplied content (such as IPs,
   URLs, hosts, and request bodies). All `log.warn` calls contain no user data and only log internal events, errors, or
   aggregate request counts (total requests and requests per minute, per provider, excluding IPs, URLs, or any
-  user-supplied content). The root log level is set to `WARN`, the Reactor Netty access log is explicitly disabled via
-  both property and system property, and no log file path is configured. These are verifiable in
-  [`application.properties`](src/main/resources/application.properties) and
-  [`ReactorConfig.java`](src/main/java/net/foulest/ospreyproxy/config/ReactorConfig.java).
+  user-supplied content). The root log level is set to `WARN` and no log file path is configured. These are verifiable
+  in [`application.properties`](src/main/resources/application.properties).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,
   non-persistent, and lost on restart.
 - **Cloudflare**: Requests are proxied through [Cloudflare](https://www.cloudflare.com/) (orange cloud enabled) for
@@ -55,8 +52,7 @@ analytics, no cookies, and no user accounts.
   [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/) for how they handle traffic data.
 - **Live verification**: https://api.osprey.ac/privacy returns a real-time snapshot of privacy-related configuration
   read directly from the running JVM and OS config files. Checks include:
-    - Application root log level, Logback file appender count, Reactor Netty access log, Netty leak detection level,
-      and Spring log file path configuration
+    - Application root log level, Logback file appender count, and Spring log file path configuration
     - Spring error detail suppression settings (`include-stacktrace`, `include-message`, `include-binding-errors`)
     - Whether any JDBC/MongoDB database driver is on the classpath
     - Nginx access log status (reads the actual Nginx config from disk, checks site-specific configs before falling
