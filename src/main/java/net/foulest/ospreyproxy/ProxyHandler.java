@@ -66,6 +66,12 @@ import java.util.Set;
 @RestController
 public class ProxyHandler {
 
+    // Only allow these URI schemes
+    private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
+
+    // Maximum allowed upstream response size in bytes (100 KB)
+    private static final int MAX_RESPONSE_SIZE = 100_000;
+
     // Maximum nesting depth enforced during upstream response validation
     private static final int MAX_NESTING_DEPTH = 50;
 
@@ -85,12 +91,6 @@ public class ProxyHandler {
             new TypeReference<Map<String, String>>() {
             }
     );
-
-    // Only allow these URI schemes
-    private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
-
-    // Maximum allowed upstream response size in bytes (100 KB)
-    private static final int MAX_RESPONSE_SIZE = 100_000;
 
     // Connection manager
     private static final HttpClientConnectionManager CONNECTION_MANAGER = PoolingHttpClientConnectionManagerBuilder.create()
@@ -181,9 +181,9 @@ public class ProxyHandler {
      * @param provider The upstream provider to forward to.
      * @return A {@link ResponseEntity} to return to the client.
      */
-    public ResponseEntity<String> proxyRequest(byte[] bodyBytes,
-                                               @NonNull HttpServletRequest request,
-                                               @NonNull Provider provider) {
+    public static ResponseEntity<String> proxyRequest(byte[] bodyBytes,
+                                                      @NonNull HttpServletRequest request,
+                                                      @NonNull Provider provider) {
         // ------------------------------------------------
         // IP Extraction and Rate Limiting
         // ------------------------------------------------
@@ -454,10 +454,11 @@ public class ProxyHandler {
         String method = provider.getMethod();
         String providerName = provider.getName();
         ClassicRequestBuilder requestBuilder;
+        String requestUrl = provider.buildRequestUrl(normalizedUrl);
 
         // Builds the request based on the provider's specified method (GET or POST).
         if (method.equals("GET")) {
-            requestBuilder = ClassicRequestBuilder.get(provider.buildRequestUrl(normalizedUrl));
+            requestBuilder = ClassicRequestBuilder.get(requestUrl);
         } else {
             Map<String, Object> requestBody = provider.buildBody(normalizedUrl);
             String jsonBody = "";
@@ -471,19 +472,23 @@ public class ProxyHandler {
                 }
             }
 
-            requestBuilder = ClassicRequestBuilder.post(provider.buildRequestUrl(normalizedUrl))
-                    .setEntity(jsonBody, ContentType.APPLICATION_JSON);
+            requestBuilder = ClassicRequestBuilder.post(requestUrl).setEntity(jsonBody, ContentType.APPLICATION_JSON);
         }
 
         // Applies provider-specific headers (e.g., API key headers)
         for (Map.Entry<String, String> header : provider.getHeaders().entrySet()) {
-            requestBuilder.addHeader(header.getKey(), header.getValue());
+            String key = header.getKey();
+            String value = header.getValue();
+            requestBuilder.addHeader(key, value);
         }
 
         try {
-            return HTTP_CLIENT.execute(requestBuilder.build(), (ClassicHttpResponse response) -> {
+            ClassicHttpRequest request = requestBuilder.build();
+
+            return HTTP_CLIENT.execute(request, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
-                byte[] responseBytes = EntityUtils.toByteArray(response.getEntity());
+                HttpEntity entity = response.getEntity();
+                byte[] responseBytes = EntityUtils.toByteArray(entity);
 
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
