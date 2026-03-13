@@ -66,10 +66,6 @@ import java.util.Set;
 @RestController
 public class ProxyHandler {
 
-    // Injected provider instances
-    private final AlphaMountainProvider alphaMountainProvider;
-    private final PrecisionSecProvider precisionSecProvider;
-
     // Maximum nesting depth enforced during upstream response validation
     private static final int MAX_NESTING_DEPTH = 50;
 
@@ -121,9 +117,9 @@ public class ProxyHandler {
             .disableAutomaticRetries()
             .build();
 
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
+    // Injected provider instances
+    private final AlphaMountainProvider alphaMountainProvider;
+    private final PrecisionSecProvider precisionSecProvider;
 
     /**
      * Constructor for ProxyHandler. Spring will automatically inject the provider instances.
