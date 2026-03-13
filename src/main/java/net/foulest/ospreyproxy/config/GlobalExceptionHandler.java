@@ -22,6 +22,7 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.apache.catalina.connector.ClientAbortException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -59,13 +60,10 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles requests where the client closed the connection before the body
-     * was fully received. This is a routine network event (browser navigation,
-     * aggressive client timeout, dropped connection) and carries no action.
+     * Handles I/O errors while reading the request body.
      *
-     * @param ignored The exception to handle (ignored).
+     * @param ex The exception to handle.
      */
-    @ExceptionHandler(ClientAbortException.class)
     public ResponseEntity<String> handleClientAbort(ClientAbortException ignored) {
         return ErrorUtil.RESP_400;
     }
