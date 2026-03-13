@@ -33,9 +33,11 @@ public final class ErrorUtil {
     // Pre-computed response body strings
     private static final String BODY_200 = body("OK");
     public static final String BODY_400 = body("Bad Request");
+    private static final String BODY_401 = body("Unauthorized");
     private static final String BODY_404 = body("Not found");
     public static final String BODY_415 = body("Unsupported Media Type");
     private static final String BODY_429 = body("Too Many Requests");
+    private static final String BODY_498 = body("Invalid Token");
     private static final String BODY_502 = body("Bad Gateway");
     private static final String BODY_503 = body("Service Unavailable");
     private static final String BODY_504 = body("Gateway Timeout");
@@ -43,9 +45,11 @@ public final class ErrorUtil {
     // Pre-built ResponseEntity instances for the most frequently returned errors
     public static final ResponseEntity<String> RESP_200 = build(HttpStatus.OK, BODY_200);
     public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
+    public static final ResponseEntity<String> RESP_401 = build(HttpStatus.BAD_REQUEST, BODY_401);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
     public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);
+    public static final ResponseEntity<String> RESP_498 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_498);
     public static final ResponseEntity<String> RESP_502 = build(HttpStatus.BAD_GATEWAY, BODY_502);
     public static final ResponseEntity<String> RESP_503 = build(HttpStatus.SERVICE_UNAVAILABLE, BODY_503);
     public static final ResponseEntity<String> RESP_504 = build(HttpStatus.GATEWAY_TIMEOUT, BODY_504);
