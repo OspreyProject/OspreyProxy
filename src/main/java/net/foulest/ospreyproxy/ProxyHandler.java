@@ -131,8 +131,8 @@ public class ProxyHandler {
      * @param alphaMountainProvider alphaMountain's provider object.
      * @param precisionSecProvider PrecisionSec's provider object.
      */
-    public ProxyHandler(AlphaMountainProvider alphaMountainProvider,
-                        PrecisionSecProvider precisionSecProvider) {
+    public ProxyHandler(@NonNull AlphaMountainProvider alphaMountainProvider,
+                        @NonNull PrecisionSecProvider precisionSecProvider) {
         this.alphaMountainProvider = alphaMountainProvider;
         this.precisionSecProvider = precisionSecProvider;
 
@@ -153,7 +153,7 @@ public class ProxyHandler {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> handleAlphaMountain(@RequestBody(required = false) byte[] body,
-                                                      HttpServletRequest request) {
+                                                      @NonNull HttpServletRequest request) {
         return proxyRequest(body, request, alphaMountainProvider);
     }
 
@@ -164,7 +164,7 @@ public class ProxyHandler {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> handlePrecisionSec(@RequestBody(required = false) byte[] body,
-                                                     HttpServletRequest request) {
+                                                     @NonNull HttpServletRequest request) {
         return proxyRequest(body, request, precisionSecProvider);
     }
 
