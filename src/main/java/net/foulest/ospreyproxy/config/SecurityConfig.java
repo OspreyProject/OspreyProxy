@@ -43,9 +43,6 @@ import java.util.Set;
 @Configuration
 public class SecurityConfig implements WebMvcConfigurer {
 
-    // Path exempt from Content-Type enforcement (read-only GET, no request body)
-    private static final String PRIVACY_PATH = "/privacy";
-
     // Maximum allowed body size (10 KB). Mirrors server.tomcat.max-http-form-post-size
     private static final int MAX_BODY_SIZE = 10_240;
 
@@ -93,13 +90,10 @@ public class SecurityConfig implements WebMvcConfigurer {
             response.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
             response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-            String path = request.getRequestURI();
             String method = request.getMethod();
 
-            // Skip Content-Type and size checks for bodyless methods and the /privacy endpoint
-            if (BODYLESS_METHODS.contains(method)
-                    || path.equals(PRIVACY_PATH)
-                    || path.startsWith(PRIVACY_PATH + "/")) {
+            // Skip Content-Type and size checks for bodyless methods
+            if (BODYLESS_METHODS.contains(method)) {
                 chain.doFilter(request, response);
                 return;
             }

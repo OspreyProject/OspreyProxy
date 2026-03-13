@@ -50,22 +50,6 @@ analytics, no cookies, and no user accounts.
   traffic before it reaches our origin server. The origin firewall only accepts connections from
   [Cloudflare IP ranges](https://www.cloudflare.com/ips/). Refer to
   [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/) for how they handle traffic data.
-- **Live verification**: https://api.osprey.ac/privacy returns a real-time snapshot of privacy-related configuration
-  read directly from the running JVM and OS config files. Checks include:
-    - Application root log level, Logback file appender count, and Spring log file path configuration
-    - Spring error detail suppression settings (`include-stacktrace`, `include-message`, `include-binding-errors`)
-    - Whether any JDBC/MongoDB database driver is on the classpath
-    - Nginx access log status (reads the actual Nginx config from disk, checks site-specific configs before falling
-      back to `nginx.conf`)
-    - Systemd journal persistence (reads `/etc/systemd/journald.conf` and drop-in configs from disk; resolves `auto`
-      mode by checking whether `/var/log/journal` exists)
-    - Git commit hash and JAR SHA-256 for reproducible build verification:
-  ```
-  1. Check the commit:   curl -s https://api.osprey.ac/privacy | jq .buildCommit
-  2. Clone and build:    git checkout <commit> && ./gradlew bootJar
-  3. Compare checksum:   sha256sum build/libs/OspreyProxy.jar
-  4. Match against:      curl -s https://api.osprey.ac/privacy | jq .buildJarSha256
-  ```
 
 ##
 
