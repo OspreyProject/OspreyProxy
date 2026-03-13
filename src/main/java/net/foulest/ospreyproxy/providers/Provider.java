@@ -18,6 +18,7 @@
 package net.foulest.ospreyproxy.providers;
 
 import io.github.bucket4j.Bucket;
+import net.foulest.ospreyproxy.ProxyHandler;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -29,7 +30,7 @@ import java.util.Map;
  * Each provider implements only the methods relevant to its API style.
  * POST providers override {@link #buildBody}; GET providers override
  * {@link #getMethod} and {@link #buildRequestUrl}.
- * All validation and proxying logic lives in ProxyHandler.proxyRequest().
+ * All validation and proxying logic lives in {@link ProxyHandler#proxyRequest}.
  */
 public interface Provider {
 
