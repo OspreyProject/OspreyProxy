@@ -87,7 +87,7 @@ public final class IPUtil {
      * Checks if an {@link InetAddress} is private or internal.
      * Used by the SSRF-safe DNS resolver at connection time.
      *
-     * @param addr The InetAddress to check.
+     * @param addr The {@link InetAddress} to check.
      * @return {@code true} if the address is private/internal, {@code false} otherwise.
      */
     private static boolean isPrivateAddress(@NonNull InetAddress addr) {
@@ -241,7 +241,7 @@ public final class IPUtil {
      * {@link UnknownHostException} on invalid literals (caught and treated as blocked).
      *
      * @param host The hostname from {@link URI#getHost}, which never contains a port
-     *             component (e.g., "example.com:8080" → "example.com", "[::1]:8080" → "::1").
+     *             component (e.g., "example.com:8080" -> "example.com", "[::1]:8080" -> "::1").
      * @return {@code true} if the host looks like an IP literal, {@code false} if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
