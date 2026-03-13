@@ -64,7 +64,13 @@ public class GlobalExceptionHandler {
      *
      * @param ex The exception to handle.
      */
-    public ResponseEntity<String> handleClientAbort(ClientAbortException ignored) {
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<String> handleNotReadable(@NonNull HttpMessageNotReadableException ex) {
+        Throwable cause = ex.getCause();
+
+        if (!(cause instanceof ClientAbortException)) {
+            log.warn("Could not read request body: {}", ex.getMessage());
+        }
         return ErrorUtil.RESP_400;
     }
 
