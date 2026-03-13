@@ -30,7 +30,7 @@ import org.springframework.http.ResponseEntity;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorUtil {
 
-    // Pre-computed response body strings (UTF-8; content-type is application/json)
+    // Pre-computed response body strings
     private static final String BODY_200 = body("OK");
     public static final String BODY_400 = body("Bad Request");
     private static final String BODY_404 = body("Not found");
@@ -39,8 +39,7 @@ public final class ErrorUtil {
     private static final String BODY_502 = body("Bad Gateway");
     private static final String BODY_504 = body("Gateway Timeout");
 
-    // Pre-built ResponseEntity instances for the most frequently returned errors.
-    // ResponseEntity is immutable once built, so sharing instances across threads is safe.
+    // Pre-built ResponseEntity instances for the most frequently returned errors
     public static final ResponseEntity<String> RESP_200 = build(HttpStatus.OK, BODY_200);
     public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);

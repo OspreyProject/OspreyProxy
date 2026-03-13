@@ -36,14 +36,10 @@ import java.util.function.Function;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HashUtil {
 
-    // Random salt for hashing IPs; intentionally regenerated on each restart.
-    // Hashes are used only for in-memory rate-limit bucket keys (Caffeine cache),
-    // not persisted, so cross-restart consistency is unnecessary. Regeneration
-    // improves privacy by preventing long-term IP correlation.
+    // Random salt for hashing IPs; intentionally regenerated on each restart
     private static final byte[] IP_SALT = generateSalt();
 
-    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call.
-    // This is a static final field intended to live for the application's lifetime.
+    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call
     @SuppressWarnings("java:S5164")
     private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
         try {

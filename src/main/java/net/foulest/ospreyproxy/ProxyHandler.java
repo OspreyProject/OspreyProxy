@@ -188,9 +188,9 @@ public class ProxyHandler {
         // IP Extraction and Rate Limiting
         // ------------------------------------------------
 
-        // Resolve client IP from X-Real-IP header (set by Nginx).
+        // Resolves client IP from X-Real-IP header (set by Nginx)
         // NOTE: Ensure your VPS is behind Cloudflare + Nginx with a firewall
-        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits.
+        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits
         String realIp = request.getHeader("X-Real-IP");
 
         // Fallback to remote address if X-Real-IP is missing or empty
@@ -201,12 +201,12 @@ public class ProxyHandler {
 
         String providerName = provider.getName();
 
-        // Log a warning if we couldn't determine the client's IP address
+        // Logs a warning if we couldn't determine the client's IP address
         if (realIp.equals("unknown")) {
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
         }
 
-        // Hash the IP for rate limiting, or use a synthetic IP in stress test mode
+        // Hashes the IP for rate limiting, or uses a synthetic IP in stress test mode
         String hashedIp = StressTestUtil.isEnabled()
                 ? StressTestUtil.newSyntheticIp()
                 : HashUtil.hashIp(realIp);
@@ -241,7 +241,7 @@ public class ProxyHandler {
 
         Map<String, String> incoming;
 
-        // Parse the request body as JSON
+        // Parses the request body as JSON
         try {
             incoming = MAPPER.readValue(bytes, MAP_TYPE);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
@@ -349,7 +349,7 @@ public class ProxyHandler {
                         "Blocked request with no host", ErrorUtil.RESP_400);
             }
 
-            // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
+            // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
             if (authority.charAt(0) == '[' && authority.contains("]")) {
                 int closingBracket = authority.indexOf(']');
 
@@ -398,7 +398,7 @@ public class ProxyHandler {
         }
 
         // Blocks private/internal hosts (string-based checks; IP-level blocking happens
-        // inside SSRF_SAFE_DNS_RESOLVER at connection time to prevent DNS rebinding)
+        // inside IPUtil's DNS resolver at connection time to prevent DNS rebinding)
         if (IPUtil.isPrivateHost(host, providerName)) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request to private/internal host", ErrorUtil.RESP_400);
