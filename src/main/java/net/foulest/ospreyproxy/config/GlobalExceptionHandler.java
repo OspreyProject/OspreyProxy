@@ -26,6 +26,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -49,13 +50,11 @@ public class GlobalExceptionHandler {
 
     /**
      * Handles requests for unmapped paths (the MVC equivalent of 404).
-     * Without this, Spring MVC returns its default HTML whitelabel error page
-     * for paths that don't match any controller mapping.
      *
      * @param ignored The exception to handle (ignored).
      */
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<String> handleNoResource(NoResourceFoundException ignored) {
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<String> handleNoResource(Exception ignored) {
         return ErrorUtil.RESP_404;
     }
 
