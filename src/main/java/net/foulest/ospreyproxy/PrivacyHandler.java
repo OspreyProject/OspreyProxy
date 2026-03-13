@@ -86,32 +86,32 @@ public class PrivacyHandler {
     public ResponseEntity<String> handlePrivacy() {
         Map<String, Object> privacy = new LinkedHashMap<>();
 
-        // --- Application-level checks (read from running JVM) ---
+        // Root log level
         privacy.put("rootLogLevel", getRootLogLevel());
+
+        // Logback file appender count
         privacy.put("logbackFileAppenders", getLogbackFileAppenderCount());
 
         // Whether a Spring log file is configured (logging.file.name / logging.file.path)
         privacy.put("springLogFileConfigured", isLogFileConfigured());
 
-        // Spring error detail suppression
-        privacy.put("includeStacktrace", environment.getProperty("spring.web.error.include-stacktrace", "never"));
-        privacy.put("includeMessage", environment.getProperty("spring.web.error.include-message", "never"));
-        privacy.put("includeBindingErrors", environment.getProperty("spring.web.error.include-binding-errors", "never"));
+        String includeStacktrace = environment.getProperty("spring.web.error.include-stacktrace", "never");
+        String includeMessage = environment.getProperty("spring.web.error.include-message", "never");
+        String includeBindingErrors = environment.getProperty("spring.web.error.include-binding-errors", "never");
 
-        // Whether any database driver implementation is on the classpath.
-        // Note: java.sql.DriverManager is part of the JDK itself, so we check
-        // for actual driver implementations (H2, MySQL, PostgreSQL, etc.)
+        // Spring error detail suppression
+        privacy.put("includeStacktrace", includeStacktrace);
+        privacy.put("includeMessage", includeMessage);
+        privacy.put("includeBindingErrors", includeBindingErrors);
+
+        // Whether any database driver implementation is on the classpath
         privacy.put("databaseDriverOnClasspath", hasDatabaseDriver());
 
-        // --- OS-level checks (read from config files on disk) ---
-
-        // Nginx access log status: reads the actual Nginx config to verify access_log is off
+        // Reads the actual Nginx config to verify access_log is off
         privacy.put("nginxAccessLog", getNginxAccessLogStatus());
 
-        // Systemd journal persistence: reads journald.conf to verify Storage setting
+        // Reads journald.conf to verify Storage setting
         privacy.put("systemdJournalStorage", getJournaldStorage());
-
-        // --- Build verification ---
 
         // Git commit hash and JAR SHA-256 for reproducible build verification
         privacy.put("buildCommit", BUILD_COMMIT);
@@ -120,8 +120,8 @@ public class PrivacyHandler {
         // Source code link for verification
         privacy.put("sourceCode", "https://github.com/OspreyProject/OspreyProxy");
 
+        // Serializes privacy info to JSON
         String body;
-
         try {
             body = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(privacy);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
@@ -129,14 +129,11 @@ public class PrivacyHandler {
             body = "{\"error\":\"Failed to serialize privacy info\"}";
         }
 
+        // Responds with serialized body
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
     }
-
-    // -------------------------------------------------------------------------
-    // JVM-level checks
-    // -------------------------------------------------------------------------
 
     /**
      * Reads the root logger's level from Logback at runtime. If the level is {@code null} (inherited),
@@ -227,10 +224,6 @@ public class PrivacyHandler {
         }
         return false;
     }
-
-    // -------------------------------------------------------------------------
-    // OS-level checks
-    // -------------------------------------------------------------------------
 
     /**
      * Reads Nginx config files to determine if access logging is disabled.
@@ -427,10 +420,6 @@ public class PrivacyHandler {
         }
         return null;
     }
-
-    // -------------------------------------------------------------------------
-    // Build verification
-    // -------------------------------------------------------------------------
 
     /**
      * Computes the SHA-256 checksum of the running JAR file.
