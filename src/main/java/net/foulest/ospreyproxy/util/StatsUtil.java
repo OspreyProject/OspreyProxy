@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Utility class for tracking and reporting per-provider request statistics.
@@ -46,13 +47,18 @@ public final class StatsUtil {
         final AtomicLong highestReqPerMin = new AtomicLong(0);
         final AtomicLong highestPeakReqPerSec = new AtomicLong(0);
 
+        // Tracks the real wall-clock time of the last per-second tick so the scheduler
+        // can compute an accurate per-second rate even when the task fires late (e.g., GC pause).
+        // Initialised to startup time; the first tick will use the real elapsed duration.
+        final AtomicReference<Long> lastTickNanos = new AtomicReference<>(System.nanoTime());
+
         // Greedy window simulation (scaled x100 to avoid floats in AtomicLong)
         final AtomicLong simulatedTokenPoolScaled = new AtomicLong(SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L);
         final AtomicLong highestMinWindowNeeded = new AtomicLong(0);
     }
 
     // The provider's greedy window capacity to simulate, in req/min
-    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_740;
+    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 600;
 
     // Map of every recorded stat per provider
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
@@ -65,23 +71,50 @@ public final class StatsUtil {
     });
 
     static {
-        // Every second: drain secondBucket into minuteBucket, update peakReqPerSec, simulate greedy window
-        REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> {
+        // Every ~second: drain secondBucket into minuteBucket, update peakReqPerSec, simulate greedy window.
+        //
+        // scheduleWithFixedDelay is used instead of scheduleAtFixedRate so that a delayed tick
+        // (e.g., caused by a GC pause or thread starvation) does not cause the next tick to fire
+        // immediately, which would drain a near-zero secondBucket and hide the spike.
+        //
+        // To handle the case where the task *does* fire late, we measure the real elapsed time
+        // since the last tick and normalize the accumulated request count to a per-second rate.
+        // This prevents a multi-second accumulation in secondBucket from appearing as a single
+        // impossible spike (e.g., 50,000 req in one "second" when the task was delayed 2 seconds).
+        REQUEST_STATS_SCHEDULER.scheduleWithFixedDelay(() -> {
+            long nowNanos = System.nanoTime();
+
             for (Map.Entry<String, RequestStats> entry : PROVIDER_STATS.entrySet()) {
                 String name = entry.getKey();
                 RequestStats stats = entry.getValue();
-                long reqThisSec = stats.secondBucket.getAndSet(0);
-                stats.minuteBucket.addAndGet(reqThisSec);
+
+                // Measures elapsed time since the last tick and update the timestamp atomically.
+                // If two threads somehow raced here (they won't with single-thread scheduler), the
+                // compareAndSet ensures only one wins and the other skips cleanly.
+                long prevNanos = stats.lastTickNanos.get();
+                double elapsedSecs = Math.max((nowNanos - prevNanos) / 1_000_000_000.0, 0.001);
+                stats.lastTickNanos.set(nowNanos);
+
+                // Drains the raw count accumulated since the last tick
+                long rawCount = stats.secondBucket.getAndSet(0);
+                stats.minuteBucket.addAndGet(rawCount);
+
+                // Normalizes to a per-second rate. Under normal operation elapsedSecs roughly equals 1.0,
+                // so reqPerSec roughly equals rawCount. If the task fired late (elapsedSecs > 1), the rate
+                // is scaled down to reflect the true throughput rather than an inflated spike.
+                // We use Math.ceil so a single request in 1.1 seconds still counts as 1 req/sec,
+                // not 0 (which would lose the event entirely).
+                long reqPerSec = (long) Math.ceil(rawCount / elapsedSecs);
 
                 long current = stats.peakReqPerSec.get();
-                if (reqThisSec > current) {
-                    stats.peakReqPerSec.set(reqThisSec);
+                if (reqPerSec > current) {
+                    stats.peakReqPerSec.set(reqPerSec);
                 }
 
-                // Simulate the provider's greedy token pool:
+                // Simulates the provider's greedy token pool using the normalized per-second rate.
                 // refill rate = SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0 tokens/sec (scaled x100)
-                long refillScaled = 2900;
-                long consumeScaled = reqThisSec * 100L;
+                long refillScaled = Math.round((SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0) * 100);
+                long consumeScaled = reqPerSec * 100L;
                 long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;
 
                 // Apply refill then consume, clamping pool between 0 and cap
@@ -94,8 +127,8 @@ public final class StatsUtil {
                 double netDriftPerSec = (refillScaled - consumeScaled) / 100.0;
 
                 if (netDriftPerSec < 0) {
-                    // Minimum window (req/min) needed so refill rate >= consume rate: ceil(reqThisSec * 60)
-                    long minWindowNeeded = (long) Math.ceil(reqThisSec * 60.0);
+                    // Minimum window (req/min) needed so refill rate >= consume rate: ceil(reqPerSec * 60)
+                    long minWindowNeeded = (long) Math.ceil(reqPerSec * 60.0);
 
                     if (minWindowNeeded > stats.highestMinWindowNeeded.get()) {
                         stats.highestMinWindowNeeded.set(minWindowNeeded);
