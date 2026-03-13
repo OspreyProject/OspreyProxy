@@ -39,7 +39,7 @@ public final class IPUtil {
      * Custom {@link DnsResolver} that validates every resolved IP against the private/internal
      * address blocklist in {@link IPUtil} before returning it to the connection manager.
      */
-    public static final DnsResolver SSRF_SAFE_DNS_RESOLVER = new DnsResolver() {
+    public static final DnsResolver DNS_RESOLVER = new DnsResolver() {
 
         /**
          * Resolves {@code host} to a list of safe (non-private) addresses.

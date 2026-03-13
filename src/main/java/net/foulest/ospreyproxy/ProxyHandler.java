@@ -98,7 +98,7 @@ public class ProxyHandler {
 
     // Connection manager
     private static final HttpClientConnectionManager CONNECTION_MANAGER = PoolingHttpClientConnectionManagerBuilder.create()
-            .setDnsResolver(IPUtil.SSRF_SAFE_DNS_RESOLVER)
+            .setDnsResolver(IPUtil.DNS_RESOLVER)
             .setMaxConnTotal(200)
             .setMaxConnPerRoute(200)
             .setDefaultConnectionConfig(ConnectionConfig.custom()
