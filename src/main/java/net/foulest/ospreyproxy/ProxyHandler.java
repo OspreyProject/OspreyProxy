@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,11 +17,7 @@
  */
 package net.foulest.ospreyproxy;
 
-import io.netty.channel.ChannelOption;
-import io.netty.handler.timeout.ReadTimeoutException;
-import io.netty.resolver.*;
-import io.netty.util.concurrent.EventExecutor;
-import io.netty.util.concurrent.Promise;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
@@ -30,20 +26,25 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.HashUtil;
 import net.foulest.ospreyproxy.util.IPUtil;
 import net.foulest.ospreyproxy.util.StressTestUtil;
-import org.jetbrains.annotations.Contract;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.io.HttpClientConnectionManager;
+import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
+import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.springframework.web.reactive.function.server.ServerRequest;
-import org.springframework.web.reactive.function.server.ServerResponse;
-import reactor.core.publisher.Mono;
-import reactor.netty.channel.AbortedException;
-import reactor.netty.http.client.HttpClient;
-import reactor.netty.resources.ConnectionProvider;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 import tools.jackson.core.StreamReadConstraints;
@@ -55,14 +56,11 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.time.Duration;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -70,10 +68,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Functional request handler for all proxy endpoints.
+ * REST controller for all proxy endpoints.
  */
 @Slf4j
-@Component
+@RestController
 public class ProxyHandler {
 
     // Injected provider instances
@@ -83,7 +81,7 @@ public class ProxyHandler {
     // Maximum nesting depth enforced during upstream response validation
     private static final int MAX_NESTING_DEPTH = 50;
 
-    // JSON mapper for parsing upstream responses and serializing error bodies
+    // Jackson mapper for parsing request bodies and validating upstream responses
     private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
                             .maxNumberLength(1000)
@@ -94,7 +92,7 @@ public class ProxyHandler {
                     .build())
             .build();
 
-    // Pre-resolved JavaType for synchronous body deserialization
+    // Pre-resolved JavaType for request body deserialization
     private static final JavaType MAP_TYPE = MAPPER.constructType(
             new TypeReference<Map<String, String>>() {
             }
@@ -116,8 +114,7 @@ public class ProxyHandler {
         final AtomicLong highestReqPerMin = new AtomicLong(0);
         final AtomicLong highestPeakReqPerSec = new AtomicLong(0);
 
-        // Greedy window simulation: simulated token pool (scaled x100 to avoid floats in an AtomicLong)
-        // Represents how a provider's greedy bucket of SIMULATED_PROVIDER_WINDOW_PER_MIN/min would look
+        // Greedy window simulation (scaled x100 to avoid floats in AtomicLong)
         final AtomicLong simulatedTokenPoolScaled = new AtomicLong(SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L);
         final AtomicLong highestMinWindowNeeded = new AtomicLong(0);
     }
@@ -135,7 +132,7 @@ public class ProxyHandler {
     });
 
     static {
-        // Every second: drain secondBucket into minuteBucket, update peakReqPerSec, and simulate greedy window
+        // Every second: drain secondBucket into minuteBucket, update peakReqPerSec, simulate greedy window
         REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> {
             for (Map.Entry<String, RequestStats> entry : PROVIDER_STATS.entrySet()) {
                 String name = entry.getKey();
@@ -150,7 +147,7 @@ public class ProxyHandler {
 
                 // Simulate the provider's greedy token pool:
                 // refill rate = SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0 tokens/sec (scaled x100)
-                long refillScaled = Math.round((SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0) * 100);
+                long refillScaled = 2900;
                 long consumeScaled = reqThisSec * 100L;
                 long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;
 
@@ -169,7 +166,7 @@ public class ProxyHandler {
 
                     if (minWindowNeeded > stats.highestMinWindowNeeded.get()) {
                         stats.highestMinWindowNeeded.set(minWindowNeeded);
-                        log.warn("[{}] Greedy window deficit — Consume vs refill: {}/sec | Min window needed to break even: {}/min",
+                        log.warn("[{}] Greedy window deficit — Consume vs refill: {}/sec | Min window needed: {}/min",
                                 name, String.format("%.2f", netDriftPerSec), minWindowNeeded);
                     }
                 }
@@ -194,75 +191,74 @@ public class ProxyHandler {
     }
 
     /**
-     * Custom Netty DNS resolver that validates resolved IPs against private ranges
-     * at connection time to prevent DNS rebinding attacks (TOCTOU).
+     * Custom {@link DnsResolver} that validates every resolved IP against the private/internal
+     * address blocklist in {@link IPUtil} before returning it to the connection manager.
+     * <p>
+     * Because resolution happens at connection time (not during URL parsing), this approach
+     * is not vulnerable to DNS rebinding (TOCTOU): the address we check is exactly the address
+     * that will be used for the connection.
      */
-    private static final AddressResolverGroup<InetSocketAddress> SSRF_SAFE_RESOLVER = new AddressResolverGroup<>() {
-        @Contract("_ -> new")
+    private static final DnsResolver SSRF_SAFE_DNS_RESOLVER = new DnsResolver() {
+
+        /**
+         * Resolves {@code host} to a list of safe (non-private) addresses.
+         * Called by the connection manager before opening a socket.
+         */
         @Override
-        protected @NonNull AddressResolver<InetSocketAddress> newResolver(EventExecutor executor) {
-            NameResolver<InetAddress> delegate = new DefaultNameResolver(executor);
+        public InetAddress @NonNull [] resolve(String host) throws UnknownHostException {
+            InetAddress[] resolved = InetAddress.getAllByName(host);
+            List<InetAddress> safe = new ArrayList<>(resolved.length);
 
-            return new InetSocketAddressResolver(executor, new InetNameResolver(executor) {
-                @Override
-                protected void doResolve(String hostname, Promise<InetAddress> promise) {
-                    delegate.resolve(hostname).addListener(future -> {
-                        if (!future.isSuccess()) {
-                            promise.setFailure(future.cause());
-                            return;
-                        }
-
-                        InetAddress addr = (InetAddress) future.getNow();
-
-                        if (IPUtil.isPrivateAddress(addr)) {
-                            promise.setFailure(new UnknownHostException("Blocked: resolved to private address"));
-                        } else {
-                            promise.setSuccess(addr);
-                        }
-                    });
+            for (InetAddress addr : resolved) {
+                if (IPUtil.isPrivateAddress(addr)) {
+                    throw new UnknownHostException("Blocked: '" + host + "' resolved to private address");
                 }
 
-                @Override
-                protected void doResolveAll(String hostname, Promise<List<InetAddress>> promise) {
-                    delegate.resolveAll(hostname).addListener(future -> {
-                        if (!future.isSuccess()) {
-                            promise.setFailure(future.cause());
-                            return;
-                        }
+                safe.add(addr);
+            }
 
-                        @SuppressWarnings("unchecked")
-                        List<InetAddress> addrs = (List<InetAddress>) future.getNow();
+            if (safe.isEmpty()) {
+                throw new UnknownHostException("No safe addresses resolved for: " + host);
+            }
+            return safe.toArray(new InetAddress[0]);
+        }
 
-                        for (InetAddress addr : addrs) {
-                            if (IPUtil.isPrivateAddress(addr)) {
-                                promise.setFailure(new UnknownHostException("Blocked: resolved to private address"));
-                                return;
-                            }
-                        }
-
-                        promise.setSuccess(addrs);
-                    });
-                }
-            });
+        /**
+         * Returns the canonical (fully-qualified) hostname for the given host.
+         * Delegates to the JVM's standard resolver; no SSRF risk here since
+         * this performs a reverse lookup on a name, not a forward lookup that
+         * could return a private address for outbound connections.
+         */
+        @Override
+        public String resolveCanonicalHostname(String host) throws UnknownHostException {
+            InetAddress addr = InetAddress.getByName(host);
+            return addr.getCanonicalHostName();
         }
     };
 
-    // Bounded connection pool for the upstream WebClient to prevent resource exhaustion
-    private static final ConnectionProvider CONNECTION_PROVIDER = ConnectionProvider.builder("upstream")
-            .maxConnections(200)
-            .pendingAcquireMaxCount(500)
-            .maxIdleTime(Duration.ofSeconds(30))
-            .maxLifeTime(Duration.ofMinutes(5))
+    // Connection manager
+    private static final HttpClientConnectionManager CONNECTION_MANAGER = PoolingHttpClientConnectionManagerBuilder.create()
+            .setDnsResolver(SSRF_SAFE_DNS_RESOLVER)
+            .setMaxConnTotal(200)
+            .setMaxConnPerRoute(200)
+            .setDefaultConnectionConfig(ConnectionConfig.custom()
+                    .setConnectTimeout(Timeout.ofSeconds(5))
+                    .build())
             .build();
 
-    // WebClient backed by Reactor Netty with SSRF-safe DNS, timeouts, no redirects
-    private static final WebClient WEB_CLIENT = WebClient.builder()
-            .clientConnector(new ReactorClientHttpConnector(
-                    HttpClient.create(CONNECTION_PROVIDER)
-                            .resolver(SSRF_SAFE_RESOLVER)
-                            .followRedirect(false)
-                            .responseTimeout(Duration.ofSeconds(5))
-                            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)))
+    // Custom request config
+    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+            .setConnectionRequestTimeout(Timeout.ofSeconds(5))
+            .setResponseTimeout(Timeout.ofSeconds(5))
+            .setRedirectsEnabled(false)
+            .build();
+
+    // Custom HTTP client
+    private static final CloseableHttpClient HTTP_CLIENT = HttpClients.custom()
+            .setConnectionManager(CONNECTION_MANAGER)
+            .setDefaultRequestConfig(REQUEST_CONFIG)
+            .disableRedirectHandling()
+            .disableAutomaticRetries()
             .build();
 
     // -------------------------------------------------------------------------
@@ -278,27 +274,32 @@ public class ProxyHandler {
         MAPPER.constructType(Map.class);
         MAPPER.constructType(String.class);
         MAPPER.constructType(Object.class);
-        MAPPER.constructType(byte[].class);
     }
 
     // -------------------------------------------------------------------------
-    // Handler methods (called by RouterConfig)
+    // Endpoints
     // -------------------------------------------------------------------------
 
     /**
-     * Handles POST /alphamountain requests.
+     * Handles requests to alphaMountain's API.
      */
-    @NonNull
-    public Mono<ServerResponse> handleAlphaMountain(@NonNull ServerRequest request) {
-        return proxyRequest(request, alphaMountainProvider);
+    @PostMapping(value = "/alphamountain",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> handleAlphaMountain(@RequestBody(required = false) byte[] body,
+                                                      HttpServletRequest request) {
+        return proxyRequest(body, request, alphaMountainProvider);
     }
 
     /**
-     * Handles POST /precisionsec requests.
+     * Handles requests to PrecisionSec's API.
      */
-    @NonNull
-    public Mono<ServerResponse> handlePrecisionSec(@NonNull ServerRequest request) {
-        return proxyRequest(request, precisionSecProvider);
+    @PostMapping(value = "/precisionsec",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> handlePrecisionSec(@RequestBody(required = false) byte[] body,
+                                                     HttpServletRequest request) {
+        return proxyRequest(body, request, precisionSecProvider);
     }
 
     // -------------------------------------------------------------------------
@@ -306,40 +307,41 @@ public class ProxyHandler {
     // -------------------------------------------------------------------------
 
     /**
-     * Core method that implements the proxy logic for both providers. This method
-     * performs IP extraction and rate limiting, request body parsing and validation,
-     * URL normalization and security checks, and finally executes the upstream request.
+     * Core method implementing all proxy logic: IP extraction, rate limiting,
+     * body parsing and validation, URL normalization and SSRF checks, and
+     * upstream request execution.
+     * <p>
+     * Runs sequentially on a virtual thread. All blocking calls (body read,
+     * upstream HTTP) park the virtual thread rather than blocking a platform thread.
      *
-     * @param request The incoming ServerRequest from the client.
-     * @param provider The provider configuration to use for this request (e.g., AlphaMountain).
-     * @return A Mono emitting the ServerResponse to return to the client, which may be an error
-     *         response or the proxied upstream response.
+     * @param bodyBytes Raw request body bytes delivered by Spring MVC.
+     * @param request The incoming servlet request (used for IP extraction).
+     * @param provider The upstream provider to forward to.
+     * @return A {@link ResponseEntity} to return to the client.
      */
-    @SuppressWarnings({"NestedAssignment", "NestedMethodCall"})
-    private Mono<ServerResponse> proxyRequest(@NonNull ServerRequest request,
-                                              @NonNull Provider provider) {
+    public ResponseEntity<String> proxyRequest(byte[] bodyBytes,
+                                                @NonNull HttpServletRequest request,
+                                                @NonNull Provider provider) {
         // ------------------------------------------------
         // IP Extraction and Rate Limiting
         // ------------------------------------------------
 
-        // Resolve client IP from X-Real-IP header
-        // NOTE: Make sure whatever VPS you use is behind Cloudflare, Nginx, and a solid firewall!
-        // Prevent all direct connections entirely except for Cloudflare's IP ranges, and ensure the
-        // X-Real-IP header is set correctly by your reverse proxy. Otherwise, an attacker could bypass
-        // rate limits and blocks by connecting directly with spoofed IPs. Not good!
-        String realIp = request.headers().firstHeader("X-Real-IP");
+        // Resolve client IP from X-Real-IP header (set by Nginx).
+        // NOTE: Ensure your VPS is behind Cloudflare + Nginx with a firewall
+        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits.
+        String realIp = request.getHeader("X-Real-IP");
 
         // Fallback to remote address if X-Real-IP is missing or empty
         if (realIp == null || realIp.isBlank()) {
-            InetSocketAddress remote = request.remoteAddress().orElse(null);
-            realIp = remote != null ? remote.getAddress().getHostAddress() : "unknown";
+            String remoteAddr = request.getRemoteAddr();
+            realIp = (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr : "unknown";
         }
 
         String providerName = provider.getName();
 
         // Log a warning if we couldn't determine the client's IP address
         if (realIp.equals("unknown")) {
-            log.warn("{} Could not determine client IP address; applying rate limits to 'unknown' IP", providerName);
+            log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
         }
 
         // Hash the IP for rate limiting, or use a synthetic IP in stress test mode
@@ -347,348 +349,354 @@ public class ProxyHandler {
                 ? StressTestUtil.syntheticIp()
                 : HashUtil.hashIp(realIp);
 
-        // Checks if the IP is burst-blocked (consumes one token)
+        // Burst rate limit check (consumes one token)
         if (isBurstBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.resp429();
+            return ErrorUtil.RESP_429;
         }
 
-        // Checks if the IP is sustained-blocked (consumes one token)
+        // Sustained rate limit check (consumes one token)
         if (isSustainedBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.resp429();
+            return ErrorUtil.RESP_429;
         }
 
-        String violatorId = provider.getViolatorId(hashedIp);
-
-        // Checks if the IP is invalid-request-blocked (doesn't consume token, only checks block)
-        // The asymmetry here is intentional: invalid requests can only be determined after parsing the body,
-        // so we don't want to consume a token on every request upfront. Instead, we check for an active block first,
-        // and only consume a token when we actually identify an invalid request.
+        // Invalid-request block check (no token consumed here)
         if (provider.isInvalidRequestBlocked(hashedIp)) {
-            log.warn("[{}] RATE LIMIT ACTIVE: Invalid request | {}", providerName, violatorId);
-            return ErrorUtil.resp429();
+            log.warn("[{}] RATE LIMIT ACTIVE: Invalid request | {}", providerName, provider.getViolatorId(hashedIp));
+            return ErrorUtil.RESP_429;
         }
 
         // ------------------------------------------------
         // Request Body Parsing and Validation
         // ------------------------------------------------
 
-        // Read body as raw bytes, then deserialize with the synchronous Jackson parser
-        return request.bodyToMono(byte[].class).defaultIfEmpty(new byte[0]).flatMap(bytes -> {
-            Map<String, String> incoming;
+        byte[] bytes = (bodyBytes != null) ? bodyBytes : new byte[0];
 
-            // Rejects empty bodies
-            if (bytes.length == 0) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with empty body", ErrorUtil.resp400());
-            }
+        // Rejects empty bodies
+        if (bytes.length == 0) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with empty body", ErrorUtil.RESP_400);
+        }
 
-            // Parse the request body as JSON
-            try {
-                incoming = MAPPER.readValue(bytes, MAP_TYPE);
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed JSON body (" + e.getClass().getName() + ")", ErrorUtil.resp400());
-            }
+        Map<String, String> incoming;
 
-            // Rejects a null parse result (e.g., body was the JSON literal "null")
-            if (incoming == null) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with null JSON body", ErrorUtil.resp400());
-            }
+        // Parse the request body as JSON
+        try {
+            incoming = MAPPER.readValue(bytes, MAP_TYPE);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")",
+                    ErrorUtil.RESP_400);
+        }
 
-            // Rejects unexpected fields
-            if (incoming.size() > 1) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with unexpected fields", ErrorUtil.resp400());
-            }
+        // Rejects a null parse result (e.g., body was the JSON literal "null")
+        if (incoming == null) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with null JSON body", ErrorUtil.RESP_400);
+        }
 
-            // Rejects non-string url values
-            try (JsonParser validator = MAPPER.createParser(bytes)) {
-                JsonToken token;
-                boolean inUrlValue = false;
+        // Rejects unexpected fields
+        if (incoming.size() > 1) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with unexpected fields", ErrorUtil.RESP_400);
+        }
 
-                while ((token = validator.nextToken()) != null) {
-                    if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
-                        inUrlValue = true;
-                    } else if (inUrlValue) {
-                        if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
-                            return rejectInvalidRequest(provider, hashedIp, providerName,
-                                    "Blocked request with non-string url value", ErrorUtil.resp400());
-                        }
-                        break;
-                    }
-                }
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed JSON body (" + e.getClass().getName() + ")", ErrorUtil.resp400());
-            }
+        // Rejects non-string url values
+        try (JsonParser validator = MAPPER.createParser(bytes)) {
+            JsonToken token;
+            boolean inUrlValue = false;
 
-            // ------------------------------------------------
-            // URL Normalization and Validation
-            // ------------------------------------------------
-
-            String rawUrl = incoming.getOrDefault("url", "");
-            String url = rawUrl != null ? rawUrl.trim() : "";
-
-            // Rejects missing or empty URLs
-            if (url.isEmpty()) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with missing or empty URL", ErrorUtil.resp400());
-            }
-
-            // Rejects excessively long URLs
-            if (url.length() > 8192) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with excessively long URL", ErrorUtil.resp400());
-            }
-
-            URI parsedUri;
-
-            // Normalizes and validates URL syntax
-            try {
-                parsedUri = new URI(url).normalize();
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed URL (" + e.getClass().getName() + ")", ErrorUtil.resp400());
-            }
-
-            String scheme = parsedUri.getScheme();
-
-            // Prepends https:// for schemeless URLs (e.g., example.com)
-            if (scheme == null) {
-                try {
-                    parsedUri = new URI("https://" + parsedUri).normalize();
-                    parsedUri.toURL();
-                    scheme = parsedUri.getScheme();
-                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with malformed schemeless URL (" + e.getClass().getName() + ")", ErrorUtil.resp400());
-                }
-            }
-
-            scheme = scheme.toLowerCase(Locale.ROOT);
-
-            // Rejects unsupported schemes (only http and https allowed)
-            if (!ALLOWED_SCHEMES.contains(scheme)) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with disallowed URL scheme", ErrorUtil.resp400());
-            }
-
-            String host = parsedUri.getHost();
-
-            // Extracts host from authority if getHost() is null
-            if (host == null || host.isBlank()) {
-                String authority = parsedUri.getRawAuthority();
-
-                // Rejects requests with no authority/host component
-                if (authority == null || authority.isBlank()) {
-                    return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with no host", ErrorUtil.resp400());
-                }
-
-                // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
-                if (authority.charAt(0) == '[' && authority.contains("]")) {
-                    int closingBracket = authority.indexOf(']');
-
-                    if (closingBracket < 0) {
+            while ((token = validator.nextToken()) != null) {
+                if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
+                    inUrlValue = true;
+                } else if (inUrlValue) {
+                    if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
                         return rejectInvalidRequest(provider, hashedIp, providerName,
-                                "Blocked request with malformed IPv6 host", ErrorUtil.resp400());
+                                "Blocked request with non-string url value", ErrorUtil.RESP_400);
                     }
-
-                    host = authority.substring(1, closingBracket);
-                } else {
-                    int lastColon = authority.lastIndexOf(':');
-                    host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
+                    break;
                 }
             }
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")",
+                    ErrorUtil.RESP_400);
+        }
 
-            // Rejects empty hosts
-            if (host.isBlank()) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with empty host", ErrorUtil.resp400());
-            }
+        // ------------------------------------------------
+        // URL Normalization and Validation
+        // ------------------------------------------------
 
-            host = host.toLowerCase(Locale.ROOT);
+        String rawUrl = incoming.getOrDefault("url", "");
+        String url = rawUrl != null ? rawUrl.trim() : "";
 
-            // Remove trailing dot(s)
-            while (!host.isEmpty() && host.charAt(host.length() - 1) == '.') {
-                host = host.substring(0, host.length() - 1);
-            }
+        // Rejects missing or empty URLs
+        if (url.isEmpty()) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with missing or empty URL", ErrorUtil.RESP_400);
+        }
 
-            // Rejects hosts that are empty after normalization
-            if (host.isEmpty()) {
-                return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with empty host after normalization", ErrorUtil.resp400());
-            }
+        // Rejects excessively long URLs
+        if (url.length() > 8192) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with excessively long URL", ErrorUtil.RESP_400);
+        }
 
-            // Reconstructs the URI with the normalized host and scheme
+        URI parsedUri;
+
+        // Normalizes and validates URL syntax
+        try {
+            parsedUri = new URI(url).normalize();
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with malformed URL (" + e.getClass().getName() + ")",
+                    ErrorUtil.RESP_400);
+        }
+
+        String scheme = parsedUri.getScheme();
+
+        // Prepends https:// for schemeless URLs (e.g., example.com)
+        if (scheme == null) {
             try {
-                int port = parsedUri.getPort();
-                String path = parsedUri.getPath();
-                String query = parsedUri.getQuery();
-                String fragment = parsedUri.getFragment();
-                parsedUri = new URI(scheme, null, host, port, path, query, fragment);
+                parsedUri = new URI("https://" + parsedUri).normalize();
+                parsedUri.toURL();
+                scheme = parsedUri.getScheme();
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request due to error during URI reconstruction (" + e.getClass().getName() + ")", ErrorUtil.resp400());
+                        "Blocked request with malformed schemeless URL (" + e.getClass().getName() + ")",
+                        ErrorUtil.RESP_400);
             }
+        }
 
-            // Blocks private/internal hosts
-            if (IPUtil.isPrivateHost(host, providerName)) {
+        scheme = scheme.toLowerCase(Locale.ROOT);
+
+        // Rejects unsupported schemes (only http and https allowed)
+        if (!ALLOWED_SCHEMES.contains(scheme)) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with disallowed URL scheme", ErrorUtil.RESP_400);
+        }
+
+        String host = parsedUri.getHost();
+
+        // Extracts host from authority if getHost() is null
+        if (host == null || host.isBlank()) {
+            String authority = parsedUri.getRawAuthority();
+
+            // Rejects requests with no authority/host component
+            if (authority == null || authority.isBlank()) {
                 return rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request to private/internal host", ErrorUtil.resp400());
+                        "Blocked request with no host", ErrorUtil.RESP_400);
             }
 
-            // ------------------------------------------------
-            // Provider-Specific URL Modifications
-            // ------------------------------------------------
+            // Handle bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
+            if (authority.charAt(0) == '[' && authority.contains("]")) {
+                int closingBracket = authority.indexOf(']');
 
-            // If the provider is PrecisionSec, reconstruct the URI to only use domain, no scheme
-            // Example: https://example.com/some/path?query=1#fragment -> example.com
-
-            if (providerName.equals("PrecisionSec")) {
-                try {
-                    parsedUri = new URI(parsedUri.getHost());
-                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                if (closingBracket < 0) {
                     return rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request due to error during PrecisionSec URI reconstruction (" + e.getClass().getName() + ")", ErrorUtil.resp400());
+                            "Blocked request with malformed IPv6 host", ErrorUtil.RESP_400);
                 }
+
+                host = authority.substring(1, closingBracket);
+            } else {
+                int lastColon = authority.lastIndexOf(':');
+                host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
             }
+        }
 
-            // ------------------------------------------------
-            // Request Statistics
-            // ------------------------------------------------
+        // Rejects empty hosts
+        if (host.isBlank()) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with empty host", ErrorUtil.RESP_400);
+        }
 
-            RequestStats stats = PROVIDER_STATS.computeIfAbsent(providerName, k -> new RequestStats());
-            stats.totalRequestCount.incrementAndGet();
-            stats.secondBucket.incrementAndGet();
+        host = host.toLowerCase(Locale.ROOT);
 
-            // ------------------------------------------------
-            // Upstream Request Execution
-            // ------------------------------------------------
+        // Removes trailing dot(s)
+        while (!host.isEmpty() && host.charAt(host.length() - 1) == '.') {
+            host = host.substring(0, host.length() - 1);
+        }
 
-            // Skips upstream call and returns fake response for stress tests
-            if (StressTestUtil.isEnabled()) {
-                return ErrorUtil.resp200();
+        // Rejects hosts that are empty after normalization
+        if (host.isEmpty()) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with empty host after normalization", ErrorUtil.RESP_400);
+        }
+
+        // Reconstructs the URI with the normalized host and scheme
+        try {
+            int port = parsedUri.getPort();
+            String path = parsedUri.getPath();
+            String query = parsedUri.getQuery();
+            String fragment = parsedUri.getFragment();
+            parsedUri = new URI(scheme, null, host, port, path, query, fragment);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request due to error during URI reconstruction (" + e.getClass().getName() + ")",
+                    ErrorUtil.RESP_400);
+        }
+
+        // Blocks private/internal hosts (string-based checks; IP-level blocking happens
+        // inside SSRF_SAFE_DNS_RESOLVER at connection time to prevent DNS rebinding)
+        if (IPUtil.isPrivateHost(host, providerName)) {
+            return rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request to private/internal host", ErrorUtil.RESP_400);
+        }
+
+        // ------------------------------------------------
+        // Provider-Specific URL Modifications
+        // ------------------------------------------------
+
+        // PrecisionSec only wants the bare domain, no scheme/path/query/fragment
+        // Example: https://example.com/some/path?q=1 -> example.com
+        if ("PrecisionSec".equals(providerName)) {
+            try {
+                parsedUri = new URI(parsedUri.getHost());
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                return rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request due to error during PrecisionSec URI reconstruction (" + e.getClass().getName() + ")",
+                        ErrorUtil.RESP_400);
             }
+        }
 
-            // Sends the normalized URL string to the upstream provider
-            String normalizedUrl = parsedUri.toString();
-            return executeUpstream(provider, normalizedUrl);
-        }).onErrorResume(AbortedException.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
-                "Cancelled inbound request: " + e.getMessage(), ErrorUtil.resp400())
-        ).onErrorResume(Exception.class, e -> rejectInvalidRequest(provider, hashedIp, providerName,
-                "Blocked invalid request: " + e.getMessage() + " | " + e.getClass().getName(), ErrorUtil.resp400())
-        );
+        // ------------------------------------------------
+        // Request Statistics
+        // ------------------------------------------------
+
+        RequestStats stats = PROVIDER_STATS.computeIfAbsent(providerName, k -> new RequestStats());
+        stats.totalRequestCount.incrementAndGet();
+        stats.secondBucket.incrementAndGet();
+
+        // ------------------------------------------------
+        // Upstream Request Execution
+        // ------------------------------------------------
+
+        // Skips upstream call and returns fake response for stress tests
+        if (StressTestUtil.isEnabled()) {
+            return ErrorUtil.RESP_200;
+        }
+
+        // Sends the normalized URL string to the upstream provider
+        String normalizedUrl = parsedUri.toString();
+        return executeUpstream(provider, normalizedUrl);
     }
 
     /**
-     * Executes the upstream request to the provider with the normalized URL.
+     * Executes the upstream request to the provider synchronously.
+     * <p>
+     * Runs on a virtual thread: the blocking {@code HTTP_CLIENT.execute()} call parks
+     * the virtual thread during I/O without blocking any platform thread.
      *
-     * @param provider The provider configuration to use for this request.
-     * @param normalizedUrl The validated and normalized URL to check.
-     * @return A Mono emitting the ServerResponse to return to the client.
+     * @param provider      The provider configuration.
+     * @param normalizedUrl The validated, normalized URL to check.
+     * @return A {@link ResponseEntity} containing either the upstream response body
+     *         or an appropriate error body.
      */
-    @SuppressWarnings("NestedAssignment")
-    private static @NonNull Mono<ServerResponse> executeUpstream(@NonNull Provider provider,
-                                                                 @NonNull String normalizedUrl) {
+    private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
+                                                          @NonNull String normalizedUrl) {
         String method = provider.getMethod();
-        String uri = provider.buildRequestUrl(normalizedUrl);
-        WebClient.RequestHeadersSpec<?> requestSpec;
+        String providerName = provider.getName();
+        ClassicRequestBuilder requestBuilder;
 
-        // Builds the request spec based on the provider's method and body configuration
+        // Builds the request based on the provider's specified method (GET or POST).
         if (method.equals("GET")) {
-            requestSpec = WEB_CLIENT.get().uri(uri);
+            requestBuilder = ClassicRequestBuilder.get(provider.buildRequestUrl(normalizedUrl));
         } else {
             Map<String, Object> requestBody = provider.buildBody(normalizedUrl);
-            WebClient.RequestBodySpec postSpec = WEB_CLIENT.post()
-                    .uri(uri)
-                    .contentType(MediaType.APPLICATION_JSON);
-            requestSpec = requestBody != null ? postSpec.bodyValue(requestBody) : postSpec;
+            String jsonBody = "";
+
+            if (requestBody != null) {
+                try {
+                    jsonBody = MAPPER.writeValueAsString(requestBody);
+                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                    log.error("[{}] Failed to serialize request body: {}", providerName, e.getMessage());
+                    return ErrorUtil.RESP_502;
+                }
+            }
+
+            requestBuilder = ClassicRequestBuilder.post(provider.buildRequestUrl(normalizedUrl))
+                    .setEntity(jsonBody, ContentType.APPLICATION_JSON);
         }
 
         // Applies provider-specific headers (e.g., API key headers)
         for (Map.Entry<String, String> header : provider.getHeaders().entrySet()) {
-            requestSpec = requestSpec.header(header.getKey(), header.getValue());
+            requestBuilder.addHeader(header.getKey(), header.getValue());
         }
 
-        String providerName = provider.getName();
+        try {
+            return HTTP_CLIENT.execute(requestBuilder.build(), (ClassicHttpResponse response) -> {
+                int statusCode = response.getCode();
+                byte[] responseBytes = EntityUtils.toByteArray(response.getEntity());
 
-        // Retrieves the response body as bytes to enforce size limits before parsing
-        return requestSpec.retrieve().bodyToMono(byte[].class).flatMap(bytes -> {
-            if (bytes.length == 0) {
-                log.warn("[{}] Upstream response was empty", providerName);
-                return ErrorUtil.resp502();
-            }
-
-            if (bytes.length > MAX_RESPONSE_SIZE) {
-                log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, bytes.length);
-                return ErrorUtil.resp502();
-            }
-
-            // Validate that the response is well-formed JSON using a streaming parser.
-            // Manually tracks nesting depth as defense-in-depth against CVE-2026-29062
-            // (nesting depth bypass in certain Jackson parser implementations).
-            try (JsonParser parser = MAPPER.createParser(bytes)) {
-                int depth = 0;
-                JsonToken token;
-
-                while ((token = parser.nextToken()) != null) {
-                    if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
-                        depth++;
-
-                        if (depth > MAX_NESTING_DEPTH) {
-                            log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
-                            return ErrorUtil.resp502();
-                        }
-                    } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
-                        depth--;
-                    }
+                // Rejects non-200 responses with provider-specific logging and error mapping
+                if (statusCode != 200) {
+                    log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                    return switch (statusCode) {
+                        case 400 -> ErrorUtil.RESP_400;
+                        case 404 -> ErrorUtil.RESP_404;
+                        case 415 -> ErrorUtil.RESP_415;
+                        case 429 -> ErrorUtil.RESP_429;
+                        default -> ErrorUtil.RESP_502;
+                    };
                 }
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.warn("[{}] Failed to parse upstream response as JSON ({})", providerName, e.getClass().getName(), e);
-                return ErrorUtil.resp502();
-            }
 
-            // Pass through the validated raw bytes directly
-            return ServerResponse.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(bytes);
-        }).onErrorResume(WebClientResponseException.class, e -> {
-            int statusCode = e.getStatusCode().value();
-            log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                if (responseBytes == null || responseBytes.length == 0) {
+                    log.warn("[{}] Upstream response was empty", providerName);
+                    return ErrorUtil.RESP_502;
+                }
 
-            return switch (statusCode) {
-                case 400 -> ErrorUtil.resp400();
-                case 404 -> ErrorUtil.resp404();
-                case 415 -> ErrorUtil.resp415();
-                case 429 -> ErrorUtil.resp429();
-                default -> ErrorUtil.resp502();
-            };
-        }).onErrorResume(WebClientRequestException.class, e -> {
-            if (e.getCause() instanceof ReadTimeoutException) {
-                log.error("[{}] Upstream request timed out: ReadTimeoutException", providerName);
-            } else {
-                log.error("[{}] Upstream request failed: WebClientRequestException", providerName);
-            }
-            return ErrorUtil.resp502();
-        }).onErrorResume(Exception.class, e -> {
+                if (responseBytes.length > MAX_RESPONSE_SIZE) {
+                    log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, responseBytes.length);
+                    return ErrorUtil.RESP_502;
+                }
+
+                // Validate that the response is well-formed JSON using a streaming parser.
+                // Manually tracks nesting depth as defense-in-depth against CVE-2026-29062.
+                try (JsonParser parser = MAPPER.createParser(responseBytes)) {
+                    int depth = 0;
+                    JsonToken token;
+
+                    while ((token = parser.nextToken()) != null) {
+                        if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
+                            depth++;
+
+                            if (depth > MAX_NESTING_DEPTH) {
+                                log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
+                                return ErrorUtil.RESP_502;
+                            }
+                        } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                            depth--;
+                        }
+                    }
+                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                    log.warn("[{}] Failed to parse upstream response as JSON ({})", providerName, e.getClass().getName(), e);
+                    return ErrorUtil.RESP_502;
+                }
+
+                // Pass through the validated raw bytes as a UTF-8 string
+                String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
+                return ResponseEntity.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(responseBody);
+            });
+        } catch (SocketTimeoutException | ConnectionRequestTimeoutException e) {
+            log.error("[{}] Upstream request timed out: {}", providerName, e.getClass().getName());
+            return ErrorUtil.RESP_504;
+        } catch (UnknownHostException e) {
+            log.error("[{}] Upstream request blocked by SSRF resolver: {}", providerName, e.getMessage());
+            return ErrorUtil.RESP_502;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
-            return ErrorUtil.resp502();
-        });
+            return ErrorUtil.RESP_502;
+        }
     }
 
+    // -------------------------------------------------------------------------
+    // Rate limit helpers
+    // -------------------------------------------------------------------------
+
     /**
-     * Checks if the given IP is currently burst-blocked or has exceeded the burst rate limit,
-     * consuming one token from the burst bucket. If the IP is burst-blocked, logs a warning and returns true.
-     * If the IP has exceeded the burst rate limit, logs a warning, applies the burst block, and returns true.
-     * Otherwise, returns false to allow the request to proceed.
-     *
-     * @param provider The provider to check the burst block and bucket for.
-     * @param hashedIp The hashed IP address to check and consume from the burst bucket.
-     * @param providerName The provider name for logging purposes.
-     * @return A boolean indicating whether the IP is currently burst-blocked or has exceeded the burst rate limit
-     *         (true if blocked, false if allowed).
+     * Checks if the given IP is burst-blocked or has exceeded the burst rate limit.
+     * Consumes one token from the burst bucket if not already blocked.
      */
     private static boolean isBurstBlocked(@NonNull Provider provider,
                                           @NonNull String hashedIp,
@@ -709,16 +717,8 @@ public class ProxyHandler {
     }
 
     /**
-     * Checks if the given IP is currently sustained-blocked or has exceeded the sustained rate limit,
-     * consuming one token from the sustained bucket. If the IP is sustained-blocked, logs a warning and returns true.
-     * If the IP has exceeded the sustained rate limit, logs a warning, applies the sustained block, and returns true.
-     * Otherwise, returns false to allow the request to proceed.
-     *
-     * @param provider The provider to check the sustained block and bucket for.
-     * @param hashedIp The hashed IP address to check and consume from the sustained bucket.
-     * @param providerName The provider name for logging purposes.
-     * @return A boolean indicating whether the IP is currently sustained-blocked or has exceeded the sustained
-     *         rate limit (true if blocked, false if allowed).
+     * Checks if the given IP is sustained-blocked or has exceeded the sustained rate limit.
+     * Consumes one token from the sustained bucket if not already blocked.
      */
     private static boolean isSustainedBlocked(@NonNull Provider provider,
                                               @NonNull String hashedIp,
@@ -739,28 +739,26 @@ public class ProxyHandler {
     }
 
     /**
-     * Consumes one token from the invalid request bucket for the given IP, blocking it
-     * if the bucket is exhausted. Logs the provided message and returns the given error
-     * response if the IP is not (yet) blocked. Returns a 429 response if it is blocked.
+     * Consumes one token from the invalid-request bucket for the given IP.
+     * Blocks the IP if the bucket is exhausted. Logs the rejection reason.
      *
      * @param provider The provider to consume the invalid request token from.
      * @param hashedIp The hashed IP address to check and consume from.
      * @param providerName The provider name for logging purposes.
      * @param logMessage The warning message to log when the request is rejected.
      * @param errorResponse The error response to return when the request is rejected normally.
-     * @return A Mono emitting the appropriate ServerResponse.
+     * @return {@code errorResponse}, or a 429 if the IP has now been blocked.
      */
-    private static @NonNull Mono<ServerResponse> rejectInvalidRequest(@NonNull Provider provider,
-                                                                      @NonNull String hashedIp,
-                                                                      @NonNull String providerName,
-                                                                      @NonNull String logMessage,
-                                                                      @NonNull Mono<ServerResponse> errorResponse) {
-        // Consumes a token from the invalid request bucket, blocking the IP if the bucket is exhausted
+    private static ResponseEntity<String> rejectInvalidRequest(@NonNull Provider provider,
+                                                               @NonNull String hashedIp,
+                                                               @NonNull String providerName,
+                                                               @NonNull String logMessage,
+                                                               @NonNull ResponseEntity<String> errorResponse) {
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
             String violatorId = provider.getViolatorId(hashedIp);
             log.warn("[{}] RATE LIMIT HIT: Invalid request | {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);
-            return ErrorUtil.resp429();
+            return ErrorUtil.RESP_429;
         }
 
         // If the IP is not yet blocked, log the reason and return the provided error response
