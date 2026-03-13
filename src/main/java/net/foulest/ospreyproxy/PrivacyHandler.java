@@ -93,13 +93,13 @@ public class PrivacyHandler {
         privacy.put("logbackFileAppenders", getLogbackFileAppenderCount());
 
         // Whether a Spring log file is configured (logging.file.name / logging.file.path)
-        privacy.put("springLogFileConfigured", isLogFileConfigured());
+        boolean logFileConfigured = isLogFileConfigured();
+        privacy.put("springLogFileConfigured", logFileConfigured);
 
+        // Spring error detail suppression
         String includeStacktrace = environment.getProperty("spring.web.error.include-stacktrace", "never");
         String includeMessage = environment.getProperty("spring.web.error.include-message", "never");
         String includeBindingErrors = environment.getProperty("spring.web.error.include-binding-errors", "never");
-
-        // Spring error detail suppression
         privacy.put("includeStacktrace", includeStacktrace);
         privacy.put("includeMessage", includeMessage);
         privacy.put("includeBindingErrors", includeBindingErrors);
@@ -156,9 +156,9 @@ public class PrivacyHandler {
     /**
      * Checks whether a log file path is configured via system properties.
      */
-    private static boolean isLogFileConfigured() {
-        String fileName = System.getProperty("logging.file.name");
-        String filePath = System.getProperty("logging.file.path");
+    private boolean isLogFileConfigured() {
+        String fileName = environment.getProperty("logging.file.name");
+        String filePath = environment.getProperty("logging.file.path");
         return (fileName != null && !fileName.isBlank())
                 || (filePath != null && !filePath.isBlank());
     }
