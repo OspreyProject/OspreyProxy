@@ -58,7 +58,7 @@ public final class StatsUtil {
     }
 
     // The provider's greedy window capacity to simulate, in req/min
-    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 960;
+    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_140;
 
     // Map of every recorded stat per provider
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
