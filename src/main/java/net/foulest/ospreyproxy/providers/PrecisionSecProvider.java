@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
