@@ -57,7 +57,7 @@ public class PrecisionSecProvider implements Provider {
     // Rate limiting block durations
     private static final Duration BURST_BLOCK_DURATION = Duration.ofSeconds(5);
     private static final Duration SUSTAINED_BLOCK_DURATION = Duration.ofMinutes(1);
-    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofMinutes(5);
+    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofSeconds(5);
 
     // Bandwidth definitions for Bucket4j
     private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
