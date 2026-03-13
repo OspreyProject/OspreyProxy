@@ -481,6 +481,13 @@ public class ProxyHandler {
             requestBuilder.addHeader(key, value);
         }
 
+        // Short-circuit immediately if the provider's circuit breaker is open,
+        // rather than spending a connection pool slot on a request that will time out.
+        if (CircuitBreakerUtil.isOpen(providerName)) {
+            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
+            return ErrorUtil.RESP_503;
+        }
+
         try {
             ClassicHttpRequest request = requestBuilder.build();
 
@@ -492,6 +499,7 @@ public class ProxyHandler {
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
                     log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                    CircuitBreakerUtil.recordFailure(providerName);
 
                     return switch (statusCode) {
                         case 400 -> ErrorUtil.RESP_400;
@@ -540,6 +548,9 @@ public class ProxyHandler {
                 // Pass through the validated raw bytes as a UTF-8 string
                 String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
+                // Record success now that the response is fully validated
+                CircuitBreakerUtil.recordSuccess(providerName);
+
                 // Return the response body to the client
                 return ResponseEntity.ok()
                         .contentType(MediaType.APPLICATION_JSON)
@@ -547,12 +558,14 @@ public class ProxyHandler {
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException e) {
             log.error("[{}] Upstream request timed out: {}", providerName, e.getClass().getName());
+            CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
             log.error("[{}] Upstream request blocked by SSRF resolver: {}", providerName, e.getMessage());
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
+            CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_502;
         }
     }
