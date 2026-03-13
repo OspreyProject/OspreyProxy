@@ -282,7 +282,7 @@ public class PrivacyHandler {
 
                     // Check if access_log is set to "off" or a null device, which means disabled
                     // Site-specific "off" takes precedence, return immediately if found
-                    if ("off".equals(value) || "/dev/null".equals(value)) {
+                    if (value.equals("off") || value.equals("/dev/null")) {
                         return "disabled";
                     }
 
@@ -344,7 +344,7 @@ public class PrivacyHandler {
      * @param storageValue The storage value to resolve.
      */
     private static @NonNull String resolveAutoStorage(@NonNull String storageValue) {
-        if ("auto".equals(storageValue)) {
+        if (storageValue.equals("auto")) {
             boolean persistDirExists = Files.isDirectory(Paths.get("/var/log/journal"));
 
             if (persistDirExists) {

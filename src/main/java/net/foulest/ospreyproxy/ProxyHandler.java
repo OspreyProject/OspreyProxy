@@ -410,7 +410,7 @@ public class ProxyHandler {
 
         // PrecisionSec only wants the bare domain, no scheme/path/query/fragment
         // Example: https://example.com/some/path?q=1 -> example.com
-        if ("PrecisionSec".equals(providerName)) {
+        if (providerName.equals("PrecisionSec")) {
             try {
                 parsedUri = new URI(parsedUri.getHost());
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
