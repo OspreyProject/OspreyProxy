@@ -386,10 +386,11 @@ public class ProxyHandler {
         // Reconstructs the URI with the normalized host and scheme
         try {
             int port = parsedUri.getPort();
-            String path = parsedUri.getPath();
-            String query = parsedUri.getQuery();
-            String fragment = parsedUri.getFragment();
-            parsedUri = new URI(scheme, null, host, port, path, query, fragment);
+            String authority = port == -1 ? host : (host + ":" + port);
+            String rawPath = parsedUri.getRawPath();
+            String rawQuery = parsedUri.getRawQuery();
+            String schemeSpecific = "//" + authority + (rawPath != null ? rawPath : "") + (rawQuery != null ? "?" + rawQuery : "");
+            parsedUri = new URI(scheme, schemeSpecific, null);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request due to error during URI reconstruction (" + e.getClass().getName() + ")",
