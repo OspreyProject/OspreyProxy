@@ -139,8 +139,8 @@ public final class StatsUtil {
             }
         }, 1, 1, TimeUnit.SECONDS);
 
-        // Every 60 seconds: check per-provider highs and log only when a new recordRequest is set
-        REQUEST_STATS_SCHEDULER.scheduleAtFixedRate(() -> PROVIDER_STATS.forEach((name, stats) -> {
+        // Every 60 seconds: check per-provider highs and log only when a new record is set
+        REQUEST_STATS_SCHEDULER.scheduleWithFixedDelay(() -> PROVIDER_STATS.forEach((name, stats) -> {
             long reqThisMin = stats.minuteBucket.getAndSet(0);
             long peakThisMin = stats.peakReqPerSec.getAndSet(0);
 
