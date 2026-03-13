@@ -42,8 +42,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class StressTestUtil {
 
     // Whether stress test mode is active; injected from application.properties.
-    // Volatile for visibility: written by Spring's main thread via @Value setter,
-    // read by Netty event loop threads during request handling.
+    // Volatile for visibility: written by Spring's main thread via @Value setter.
     @Getter
     public static volatile boolean enabled;
 
