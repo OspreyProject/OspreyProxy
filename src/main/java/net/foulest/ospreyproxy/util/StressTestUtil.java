@@ -60,12 +60,12 @@ public final class StressTestUtil {
      *
      * @return A {@code String} that will be treated as a distinct IP by the rate limiter.
      */
-    public static @NonNull String syntheticIp() {
+    public static @NonNull String newSyntheticIp() {
         long bits = ThreadLocalRandom.current().nextLong();
 
         // Extract 2 octets from the random long for ~65K unique IPs (10.X.Y.1)
-        int b = (int) ((bits >>> 8) & 0xFF);    // 0-255
-        int c = (int) ((bits >>> 16) & 0xFF);    // 0-255
+        int b = (int) ((bits >>> 8) & 0xFF);  // 0-255
+        int c = (int) ((bits >>> 16) & 0xFF); // 0-255
 
         // Write directly into a char array to avoid StringBuilder allocation
         char[] buf = new char[12]; // max "10.255.255.1"

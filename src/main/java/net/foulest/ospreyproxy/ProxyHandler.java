@@ -208,7 +208,7 @@ public class ProxyHandler {
 
         // Hash the IP for rate limiting, or use a synthetic IP in stress test mode
         String hashedIp = StressTestUtil.isEnabled()
-                ? StressTestUtil.syntheticIp()
+                ? StressTestUtil.newSyntheticIp()
                 : HashUtil.hashIp(realIp);
 
         // Burst rate limit check (consumes one token)
