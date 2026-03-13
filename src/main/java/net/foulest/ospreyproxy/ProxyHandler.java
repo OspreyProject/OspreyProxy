@@ -413,7 +413,7 @@ public class ProxyHandler {
         // Example: https://example.com/some/path?q=1 -> example.com
         if (providerName.equals("PrecisionSec")) {
             try {
-                parsedUri = new URI(parsedUri.getHost());
+                parsedUri = new URI(host);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                         "Blocked request due to error during PrecisionSec URI reconstruction (" + e.getClass().getName() + ")",
