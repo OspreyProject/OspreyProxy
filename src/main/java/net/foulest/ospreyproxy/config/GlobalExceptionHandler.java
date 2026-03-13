@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.config;
 
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.ErrorUtil;
+import org.apache.catalina.connector.ClientAbortException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -55,6 +56,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<String> handleNoResource(NoResourceFoundException ignored) {
         return ErrorUtil.RESP_404;
+    }
+
+    /**
+     * Handles requests where the client closed the connection before the body
+     * was fully received. This is a routine network event (browser navigation,
+     * aggressive client timeout, dropped connection) and carries no action.
+     *
+     * @param ignored The exception to handle (ignored).
+     */
+    @ExceptionHandler(ClientAbortException.class)
+    public ResponseEntity<String> handleClientAbort(ClientAbortException ignored) {
+        return ErrorUtil.RESP_400;
     }
 
     /**
