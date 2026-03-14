@@ -359,23 +359,17 @@ public class ProxyHandler {
             }
         }
 
-        // Rejects empty hosts
-        if (host.isBlank()) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty host", ErrorUtil.RESP_400);
-        }
-
         host = host.toLowerCase(Locale.ROOT);
 
         // Removes trailing dot(s)
-        while (!host.isEmpty() && host.charAt(host.length() - 1) == '.') {
+        while (!host.isBlank() && host.charAt(host.length() - 1) == '.') {
             host = host.substring(0, host.length() - 1);
         }
 
         // Rejects hosts that are empty after normalization
-        if (host.isEmpty()) {
+        if (host.isBlank()) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty host after normalization", ErrorUtil.RESP_400);
+                    "Blocked request with empty host", ErrorUtil.RESP_400);
         }
 
         // Reconstructs the URI with the normalized host and scheme
