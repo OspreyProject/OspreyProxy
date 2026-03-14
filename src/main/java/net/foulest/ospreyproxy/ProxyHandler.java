@@ -55,7 +55,6 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * REST controller for all proxy endpoints.
@@ -63,9 +62,6 @@ import java.util.Set;
 @Slf4j
 @RestController
 public class ProxyHandler {
-
-    // Only allow these URI schemes
-    private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
 
     // Maximum allowed upstream response size in bytes (100 KB)
     private static final int MAX_RESPONSE_SIZE = 100_000;
@@ -330,7 +326,7 @@ public class ProxyHandler {
         scheme = scheme.toLowerCase(Locale.ROOT);
 
         // Rejects unsupported schemes (only http and https allowed)
-        if (!ALLOWED_SCHEMES.contains(scheme)) {
+        if (!scheme.equals("http") && !scheme.equals("https")) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with disallowed URL scheme", ErrorUtil.RESP_400);
         }
