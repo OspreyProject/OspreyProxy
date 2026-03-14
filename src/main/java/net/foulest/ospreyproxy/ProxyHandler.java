@@ -305,7 +305,8 @@ public class ProxyHandler {
         // Normalizes and validates URL syntax
         URI parsedUri;
         try {
-            parsedUri = new URI(url).normalize();
+            String encoded = url.replace("[", "%5B").replace("]", "%5D");
+            parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with malformed URL", ErrorUtil.RESP_400);
