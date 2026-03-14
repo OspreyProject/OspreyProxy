@@ -63,9 +63,6 @@ import java.util.Map;
 @RestController
 public class ProxyHandler {
 
-    // Maximum allowed upstream response size in bytes (100 KB)
-    private static final int MAX_RESPONSE_SIZE = 100_000;
-
     // Maximum nesting depth enforced during upstream response validation
     private static final int MAX_NESTING_DEPTH = 50;
 
@@ -506,8 +503,8 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                // Rejects responses that exceed the maximum allowed size
-                if (responseBytes.length > MAX_RESPONSE_SIZE) {
+                // Rejects responses that exceed the maximum allowed size (10 KB)
+                if (responseBytes.length > 10_000) {
                     log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, responseBytes.length);
                     return ErrorUtil.RESP_502;
                 }
