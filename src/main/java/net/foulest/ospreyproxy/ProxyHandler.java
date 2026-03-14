@@ -293,7 +293,7 @@ public class ProxyHandler {
         String url = Objects.toString(incoming.get("url"), "").trim();
 
         // Rejects missing or empty URLs
-        if (url.isEmpty()) {
+        if (url.isBlank()) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with missing or empty URL", ErrorUtil.RESP_400);
         }
