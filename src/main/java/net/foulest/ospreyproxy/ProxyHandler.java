@@ -215,11 +215,10 @@ public class ProxyHandler {
             return ErrorUtil.RESP_429;
         }
 
-        // Invalid-request block check (no token consumed here)
-        if (provider.isInvalidRequestBlocked(hashedIp)) {
-            String violatorId = provider.getViolatorId(hashedIp);
-            log.warn("[{}] RATE LIMIT ACTIVE: Invalid request | {}", providerName, violatorId);
-            return ErrorUtil.RESP_429;
+        // Short-circuit immediately if the provider's circuit breaker is open
+        if (CircuitBreakerUtil.isOpen(providerName)) {
+            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
+            return ErrorUtil.RESP_503;
         }
 
         // ------------------------------------------------
@@ -468,13 +467,6 @@ public class ProxyHandler {
             String key = header.getKey();
             String value = header.getValue();
             requestBuilder.addHeader(key, value);
-        }
-
-        // Short-circuit immediately if the provider's circuit breaker is open,
-        // rather than spending a connection pool slot on a request that will time out.
-        if (CircuitBreakerUtil.isOpen(providerName)) {
-            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
-            return ErrorUtil.RESP_503;
         }
 
         try {
