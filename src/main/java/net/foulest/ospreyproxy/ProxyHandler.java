@@ -445,8 +445,8 @@ public class ProxyHandler {
      */
     private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
                                                           @NonNull String normalizedUrl) {
-        String method = provider.getMethod();
         String providerName = provider.getName();
+        String method = provider.getMethod();
         ClassicRequestBuilder requestBuilder;
         String requestUrl = provider.buildRequestUrl(normalizedUrl);
 
@@ -457,6 +457,8 @@ public class ProxyHandler {
             Map<String, Object> requestBody = provider.buildBody(normalizedUrl);
             String jsonBody = "";
 
+            // buildBody() returns null for GET providers (e.g. PrecisionSec);
+            // POST providers (e.g. AlphaMountain) return a populated map.
             if (requestBody != null) {
                 try {
                     jsonBody = MAPPER.writeValueAsString(requestBody);
