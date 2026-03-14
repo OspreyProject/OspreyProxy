@@ -273,4 +273,21 @@ public final class IPUtil {
         }
         return false;
     }
+
+    /**
+     * Encodes illegal characters that might be present in URLs.
+     *
+     * @param url The URL string to encode.
+     * @return The encoded URL.
+     */
+    public static @NonNull String encodeIllegalUriChars(@NonNull String url) {
+        return url.replace("[", "%5B")
+                .replace("]", "%5D")
+                .replace("|", "%7C")
+                .replace("{", "%7B")
+                .replace("}", "%7D")
+                .replace("^", "%5E")
+                .replace("`", "%60")
+                .replace(" ", "%20");
+    }
 }

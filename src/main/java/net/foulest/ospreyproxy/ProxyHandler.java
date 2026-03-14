@@ -55,6 +55,7 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * REST controller for all proxy endpoints.
@@ -306,7 +307,7 @@ public class ProxyHandler {
         // Normalizes and validates URL syntax
         URI parsedUri;
         try {
-            String encoded = url.replace("[", "%5B").replace("]", "%5D");
+            String encoded = IPUtil.encodeIllegalUriChars(url);
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
