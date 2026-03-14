@@ -289,8 +289,8 @@ public class ProxyHandler {
         // URL Normalization and Validation
         // ------------------------------------------------
 
-        String rawUrl = incoming.getOrDefault("url", "");
-        String url = rawUrl != null ? rawUrl.trim() : "";
+        @SuppressWarnings("NestedMethodCall")
+        String url = Objects.toString(incoming.get("url"), "").trim();
 
         // Rejects missing or empty URLs
         if (url.isEmpty()) {
