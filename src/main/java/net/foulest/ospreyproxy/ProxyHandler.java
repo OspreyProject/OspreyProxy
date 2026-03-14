@@ -134,7 +134,8 @@ public class ProxyHandler {
     // -------------------------------------------------------------------------
 
     /**
-     * Handles requests to alphaMountain's API.
+     * Handles POST requests to the /alphamountain endpoint.
+     * Keep @RequestBody(required = false) for rate-limiting.
      */
     @PostMapping(value = "/alphamountain",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -145,7 +146,8 @@ public class ProxyHandler {
     }
 
     /**
-     * Handles requests to PrecisionSec's API.
+     * Handles POST requests to the /precisionsec endpoint.
+     * Keep @RequestBody(required = false) for rate-limiting.
      */
     @PostMapping(value = "/precisionsec",
             consumes = MediaType.APPLICATION_JSON_VALUE,
