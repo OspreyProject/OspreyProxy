@@ -414,8 +414,8 @@ public class ProxyHandler {
 
         // Rejects hostnames that don't exist in DNS
         if (!isIpLiteral && !DoHUtil.hostExists(host)) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with non-existent hostname", ErrorUtil.RESP_400);
+            log.warn("[{}] Blocked request with non-existent hostname ({})", providerName, host);
+            return ErrorUtil.RESP_400;
         }
 
         // ------------------------------------------------
@@ -428,9 +428,8 @@ public class ProxyHandler {
             try {
                 parsedUri = new URI(host);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request due to error during PrecisionSec URI reconstruction (" + e.getClass().getName() + ")",
-                        ErrorUtil.RESP_400);
+                log.error("[{}] Unexpected PrecisionSec URI reconstruction failure for '{}': {}", providerName, host, e.getMessage());
+                return ErrorUtil.RESP_502;
             }
         }
 
