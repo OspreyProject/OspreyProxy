@@ -386,6 +386,13 @@ public class ProxyHandler {
         // Reconstructs the URI with the normalized host and scheme
         try {
             int port = parsedUri.getPort();
+
+            // Rejects ports outside the valid range (1-65535); -1 means no port specified
+            if (port != -1 && (port < 1 || port > 65535)) {
+                return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with invalid port: " + port, ErrorUtil.RESP_400);
+            }
+
             String authority = port == -1 ? host : (host + ":" + port);
             String rawPath = parsedUri.getRawPath();
             String rawQuery = parsedUri.getRawQuery();
@@ -398,7 +405,7 @@ public class ProxyHandler {
 
         // Blocks private/internal hosts (string-based checks; IP-level blocking happens
         // inside IPUtil's DNS resolver at connection time to prevent DNS rebinding)
-        if (IPUtil.isPrivateHost(host, providerName)) {
+        if (IPUtil.isPrivateHost(host)) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request to private/internal host", ErrorUtil.RESP_400);
         }

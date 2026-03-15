@@ -117,6 +117,18 @@ public final class IPUtil {
                 return true;
             }
 
+            // IANA documentation ranges (RFC 5737); reserved, guaranteed unreachable
+            // 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2), 203.0.113.0/24 (TEST-NET-3)
+            if (first == 192 && second == 0 && (bytes[2] & 0xFF) == 2) {
+                return true;
+            }
+            if (first == 198 && second == 51 && (bytes[2] & 0xFF) == 100) {
+                return true;
+            }
+            if (first == 203 && second == 0 && (bytes[2] & 0xFF) == 113) {
+                return true;
+            }
+
             // Class E reserved range (240.0.0.0/4)
             return (first & 0xF0) == 0xF0;
         }
@@ -188,7 +200,7 @@ public final class IPUtil {
      * @param host The hostname to check.
      * @return {@code true} if the host is considered private/internal, {@code false} otherwise.
      */
-    public static boolean isPrivateHost(@NonNull String host, @NonNull String providerName) {
+    public static boolean isPrivateHost(@NonNull String host) {
         // Strip trailing DNS root dot(s)
         int end = host.length();
 
@@ -223,7 +235,6 @@ public final class IPUtil {
                 InetAddress addr = InetAddress.getByName(host);
                 return isPrivateAddress(addr);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.warn("[{}] Blocked request with invalid IP literal ({})", providerName, e.getClass().getName());
                 return true;
             }
         }
