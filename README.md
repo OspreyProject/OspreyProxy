@@ -13,15 +13,21 @@ for [Osprey: Browser Protection](https://osprey.ac).
   (capacity, refill interval, etc.), allowing fine-grained control over request limits for different upstreams. Repeated
   violations trigger exponential backoff blocking (doubling block duration per violation, capped at 1 hour).
 - **SSRF-hardened**: Custom Apache HttpClient `DnsResolver` blocks private IPs at connection time (not just before the
-  request), preventing DNS rebinding attacks. Covers IPv4, IPv6, IPv4-mapped IPv6, Teredo, 6to4, and carrier-grade NAT
-  ranges. Also blocks private hostnames (`localhost`, `.local`, `.internal`, etc.) and raw IP literals before the
-  request is sent.
-- **Input & output validation**: Enforces URL scheme allowlist (http/https only), 8192-character URL length limit, 100
-  KB upstream response cap, strict single-field JSON body parsing with non-string value rejection, and JSON
-  re-serialization to strip unexpected content. Upstream responses are also validated as well-formed JSON with a manual
-  nesting depth check (max 50) as defense-in-depth.
+  request), preventing DNS rebinding attacks. Covers loopback, site-local, link-local, multicast, limited broadcast,
+  carrier-grade NAT (100.64.0.0/10), Class E (240.0.0.0/4), RFC 5737 documentation ranges (TEST-NET-1/2/3), IPv4-mapped
+  IPv6, Teredo, and 6to4. Also blocks private hostnames (`localhost`, `.local`, `.internal`, etc.) and raw IP literals
+  before the request is sent.
+- **Input & output validation**: Enforces URL scheme allowlist (http/https only), 10 KB request body limit,
+  8192-character URL length limit, valid port range (1–65535), leading/trailing dot stripping with host presence
+  check, strict single-field JSON body parsing with non-string value rejection, and DNS existence validation via
+  Cloudflare's DoH API before forwarding to any upstream provider. Upstream responses are validated as well-formed
+  JSON via a streaming parser with a manual nesting depth check (max 50) and a 100 KB response size cap as
+  defense-in-depth.
 - **Annotation-based routing**: Uses Spring MVC's `@RestController` API for clean, declarative endpoint definitions
   with virtual thread execution, allowing blocking upstream HTTP calls to park rather than occupy platform threads.
+- **Circuit breaker**: Per-provider circuit breaker opens after 5 consecutive upstream failures, immediately
+  rejecting requests with 503 rather than waiting on timeouts. Transitions to half-open after a 30-second cooldown,
+  allowing a single probe request through. Closes automatically on a successful probe.
 - **Security by default**: HSTS, CSP, X-Frame-Options, Content-Type enforcement, Referrer-Policy, Permissions-Policy,
   no redirect following, no error detail leakage, server header suppressed, and API keys loaded from environment
   variables. Bounded upstream connection pool (200 max connections) with 5-second connect, response, and connection
