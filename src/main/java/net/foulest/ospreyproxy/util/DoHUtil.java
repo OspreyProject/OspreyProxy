@@ -86,7 +86,7 @@ public final class DoHUtil {
                     .build())
             .setDefaultRequestConfig(RequestConfig.custom()
                     .setConnectionRequestTimeout(Timeout.ofSeconds(2))
-                    .setResponseTimeout(Timeout.ofSeconds(3))
+                    .setResponseTimeout(Timeout.ofSeconds(10))
                     .build())
             .disableRedirectHandling()
             .disableAutomaticRetries()
