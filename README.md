@@ -38,10 +38,13 @@ analytics, no cookies, and no user accounts.
   restart. Raw IPs are never logged or sent upstream.
 - **URLs** submitted for checking are forwarded to the upstream providers and then discarded. Refer to each provider's
   privacy policy for how they handle submitted URLs.
-- **No request logging**: The application contains zero logging calls that record user-supplied content (such as IPs,
-  URLs, hosts, and request bodies). All `log.warn` calls contain no user data and only log internal events, errors, or
-  aggregate request counts (total requests and requests per minute, per provider, excluding IPs, URLs, or any
-  user-supplied content). The root log level is set to `WARN` and no log file path is configured. These are verifiable
+- **Minimal request logging**: User-supplied content appears in logs in three cases: (1) the normalized URL is
+  logged at `WARN` when an upstream provider returns a 400 response; (2) the normalized URI or extracted hostname
+  is logged at `ERROR` on unexpected internal failures during URL normalization or URI reconstruction; (3) the
+  exception message from the SSRF resolver or upstream HTTP client is logged at `ERROR` on connection-level
+  failures, which may include the blocked hostname. All other log calls record only internal events, errors, or
+  aggregate request counts (total requests and requests per minute, per provider). IPs and request bodies are
+  never logged. The root log level is set to `WARN` and no log file path is configured. These are verifiable
   in [`application.properties`](src/main/resources/application.properties).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,
   non-persistent, and lost on restart.

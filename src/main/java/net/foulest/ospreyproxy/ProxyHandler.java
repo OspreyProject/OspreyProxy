@@ -280,9 +280,8 @@ public class ProxyHandler {
                 }
             }
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400);
+            log.error("[{}] Unexpected malformed JSON body on request", providerName, e);
+            return ErrorUtil.RESP_400;
         }
 
         // ------------------------------------------------
@@ -311,7 +310,9 @@ public class ProxyHandler {
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL", ErrorUtil.RESP_400);
+                    "Blocked request with malformed URL (" + url + ")",
+                    ErrorUtil.RESP_400
+            );
         }
 
         String scheme = parsedUri.getScheme();
@@ -323,9 +324,8 @@ public class ProxyHandler {
                 parsedUri.toURL();
                 scheme = parsedUri.getScheme();
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed schemeless URL (" + e.getClass().getName() + ")",
-                        ErrorUtil.RESP_400);
+                log.error("[{}] Unexpected error during URL normalization for '{}': {}", providerName, parsedUri, e.getMessage());
+                return ErrorUtil.RESP_400;
             }
         }
 
@@ -387,9 +387,8 @@ public class ProxyHandler {
             String schemeSpecific = "//" + authority + (rawPath != null ? rawPath : "") + (rawQuery != null ? "?" + rawQuery : "");
             parsedUri = new URI(scheme, schemeSpecific, null);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request due to error during URI reconstruction (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400);
+            log.error("[{}] Unexpected URI reconstruction failure for '{}': {}", providerName, host, e.getMessage());
+            return ErrorUtil.RESP_502;
         }
 
         // Blocks private/internal hosts (string-based checks; IP-level blocking happens
@@ -488,7 +487,12 @@ public class ProxyHandler {
 
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
-                    log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                    if (statusCode == 400) {
+                        log.warn("[{}] Upstream request failed with status code: {} ({})", providerName, statusCode, normalizedUrl);
+                    } else {
+                        log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
+                    }
+
                     CircuitBreakerUtil.recordFailure(providerName);
 
                     return switch (statusCode) {
