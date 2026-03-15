@@ -361,6 +361,11 @@ public class ProxyHandler {
 
         host = host.toLowerCase(Locale.ROOT);
 
+        // Removes leading dot(s)
+        while (!host.isBlank() && host.charAt(0) == '.') {
+            host = host.substring(1);
+        }
+
         // Removes trailing dot(s)
         while (!host.isBlank() && host.charAt(host.length() - 1) == '.') {
             host = host.substring(0, host.length() - 1);
@@ -370,6 +375,12 @@ public class ProxyHandler {
         if (host.isBlank()) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with empty host", ErrorUtil.RESP_400);
+        }
+
+        // Rejects hosts without a . symbol
+        if (!host.contains(".")) {
+            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with host missing dot", ErrorUtil.RESP_400);
         }
 
         // Reconstructs the URI with the normalized host and scheme
