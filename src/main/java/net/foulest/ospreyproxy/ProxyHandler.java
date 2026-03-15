@@ -351,14 +351,8 @@ public class ProxyHandler {
 
             // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
             if (authority.charAt(0) == '[' && authority.contains("]")) {
-                int closingBracket = authority.indexOf(']');
-
-                if (closingBracket < 0) {
-                    return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                            "Blocked request with malformed IPv6 host", ErrorUtil.RESP_400);
-                }
-
-                host = authority.substring(1, closingBracket);
+                int endIndex = authority.indexOf(']');
+                host = authority.substring(1, endIndex);
             } else {
                 int lastColon = authority.lastIndexOf(':');
                 host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
