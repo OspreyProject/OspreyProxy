@@ -157,8 +157,8 @@ public final class CircuitBreakerUtil {
         int halfOpen = State.HALF_OPEN.ordinal();
         int closed = State.CLOSED.ordinal();
 
+        // Probe failed; reopen with a fresh cooldown
         if (ps.state.get() == halfOpen) {
-            // Probe failed; reopen with a fresh cooldown
             ps.openedAtMs.set(System.currentTimeMillis());
             ps.state.set(open);
             log.warn("[{}] Circuit breaker OPEN; probe failed, cooldown reset ({}s)", providerName, COOLDOWN_MS / 1000);
