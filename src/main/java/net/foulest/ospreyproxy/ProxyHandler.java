@@ -403,6 +403,14 @@ public class ProxyHandler {
                     "Blocked request to private/internal host", ErrorUtil.RESP_400);
         }
 
+        boolean isIpLiteral = host.contains(":") || host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
+
+        // Rejects hostnames that don't exist in DNS
+        if (!isIpLiteral && !DoHUtil.hostExists(host)) {
+            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with non-existent hostname", ErrorUtil.RESP_400);
+        }
+
         // ------------------------------------------------
         // Provider-Specific URL Modifications
         // ------------------------------------------------
