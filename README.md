@@ -54,11 +54,11 @@ analytics, no cookies, and no user accounts.
   in [`application.properties`](src/main/resources/application.properties).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,
   non-persistent, and lost on restart.
-- **Cloudflare**: Requests are proxied through [Cloudflare](https://www.cloudflare.com/) (orange cloud enabled) for
+- **Cloudflare**: Requests are proxied through [Cloudflare](https://www.cloudflare.com) (orange cloud enabled) for
   DDoS protection and bot mitigation. Cloudflare terminates TLS at their edge, meaning they can see request and response
   traffic before it reaches our origin server. The origin firewall only accepts connections from
-  [Cloudflare IP ranges](https://www.cloudflare.com/ips/). Refer to
-  [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/) for how they handle traffic data.
+  [Cloudflare IP ranges](https://www.cloudflare.com/ips). Refer to
+  [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy) for how they handle traffic data.
 
 ##
 
