@@ -23,9 +23,12 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
@@ -76,9 +79,14 @@ public final class DoHUtil {
 
     // Dedicated lightweight HTTP client for DoH queries only
     private static final CloseableHttpClient DOH_CLIENT = HttpClients.custom()
+            .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
+                    .setDefaultConnectionConfig(ConnectionConfig.custom()
+                            .setConnectTimeout(Timeout.ofSeconds(2))
+                            .build())
+                    .build())
             .setDefaultRequestConfig(RequestConfig.custom()
                     .setConnectionRequestTimeout(Timeout.ofSeconds(2))
-                    .setResponseTimeout(Timeout.ofSeconds(2))
+                    .setResponseTimeout(Timeout.ofSeconds(3))
                     .build())
             .disableRedirectHandling()
             .disableAutomaticRetries()
@@ -91,6 +99,7 @@ public final class DoHUtil {
      * @return {@code true} if the host exists or the check could not be completed,
      *         {@code false} only if Cloudflare returned no answer records.
      */
+    @SuppressWarnings("NestedMethodCall")
     public static boolean hostExists(@NonNull String host) {
         // Cache hit: previously confirmed to exist
         if (Boolean.TRUE.equals(POSITIVE_CACHE.getIfPresent(host))) {
@@ -141,7 +150,8 @@ public final class DoHUtil {
                     return true;
                 }
 
-                byte[] body = EntityUtils.toByteArray(response.getEntity());
+                HttpEntity entity = response.getEntity();
+                byte[] body = EntityUtils.toByteArray(entity);
 
                 if (body == null || body.length == 0) {
                     log.warn("DoH query for {} returned empty body", host);
