@@ -97,7 +97,7 @@ public class ProxyHandler {
     // Custom request config
     private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
             .setConnectionRequestTimeout(Timeout.ofSeconds(5))
-            .setResponseTimeout(Timeout.ofSeconds(10))
+            .setResponseTimeout(Timeout.ofSeconds(7))
             .setRedirectsEnabled(false)
             .build();
 
