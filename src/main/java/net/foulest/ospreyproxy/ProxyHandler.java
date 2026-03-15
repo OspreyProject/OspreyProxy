@@ -412,9 +412,8 @@ public class ProxyHandler {
 
         boolean isIpLiteral = host.contains(":") || host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
 
-        // Rejects hostnames that don't exist in DNS
+        // Rejects hostnames that don't exist in DNS (doesn't log)
         if (!isIpLiteral && !DoHUtil.hostExists(host)) {
-            log.warn("[{}] Blocked request with non-existent hostname ({})", providerName, host);
             return ErrorUtil.RESP_400;
         }
 
