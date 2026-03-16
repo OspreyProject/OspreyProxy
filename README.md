@@ -18,7 +18,7 @@ for [Osprey: Browser Protection](https://osprey.ac).
   IPv6, Teredo, and 6to4. Also blocks private hostnames (`localhost`, `.local`, `.internal`, etc.) and raw IP literals
   before the request is sent.
 - **Input & output validation**: Enforces URL scheme allowlist (http/https only), 10 KB request body limit,
-  8192-character URL length limit, valid port range (1–65535), leading/trailing dot stripping with host presence
+  8192-character URL length limit, valid port range (1-65535), leading/trailing dot stripping with host presence
   check, strict single-field JSON body parsing with non-string value rejection, and DNS existence validation via
   Cloudflare's DoH API before forwarding to any upstream provider. Upstream responses are validated as well-formed
   JSON via a streaming parser with a manual nesting depth check (max 50) and a 100 KB response size cap as
