@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,10 +25,10 @@ import org.jspecify.annotations.NonNull;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.function.Function;
 
 /**
  * Utility class for hashing IP addresses with a salt.
@@ -36,16 +36,10 @@ import java.util.HexFormat;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HashUtil {
 
-    // Random salt for hashing IPs; intentionally regenerated on each restart.
-    // Hashes are used only for in-memory rate-limit bucket keys (Caffeine cache),
-    // not persisted, so cross-restart consistency is unnecessary. Regeneration
-    // improves privacy by preventing long-term IP correlation.
+    // Random salt for hashing IPs; intentionally regenerated on each restart
     private static final byte[] IP_SALT = generateSalt();
 
-    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call.
-    // This is a static final field intended to live for the application's lifetime;
-    // remove() is not needed because Netty event loop threads are long-lived and
-    // terminated at shutdown, at which point the ThreadLocal is cleaned up.
+    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call
     @SuppressWarnings("java:S5164")
     private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
         try {
@@ -63,7 +57,7 @@ public final class HashUtil {
 
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
-     * Creates a new SecureRandom instance, which is acceptable because this method
+     * Creates a new {@link SecureRandom} instance, which is acceptable because this method
      * is called exactly once at class load time ({@code IP_SALT} initialization).
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
@@ -77,9 +71,9 @@ public final class HashUtil {
 
     /**
      * Hashes the IP address using SHA-256 with a salt to prevent rainbow table attacks.
-     * Caffeine's get() uses an optimistic fast-path for cache hits internally
-     * without locking, so no manual getIfPresent() check is needed.
-     * Uses ThreadLocal MessageDigest to avoid getInstance() overhead on misses.
+     * Caffeine's {@link Cache#get(Object, Function)} uses an optimistic fast-path for cache
+     * hits internally without locking, so no manual {@code getIfPresent()} check is needed.
+     * Uses {@code ThreadLocal<MessageDigest>} to avoid getInstance() overhead on misses.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.

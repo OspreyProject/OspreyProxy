@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -55,7 +55,7 @@ public class AlphaMountainProvider implements Provider {
     // Rate limiting block durations
     private static final Duration BURST_BLOCK_DURATION = Duration.ofSeconds(5);
     private static final Duration SUSTAINED_BLOCK_DURATION = Duration.ofMinutes(1);
-    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofMinutes(5);
+    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofSeconds(5);
 
     // Bandwidth definitions for Bucket4j
     private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
@@ -193,10 +193,9 @@ public class AlphaMountainProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockBurst(@NonNull String ip) {
-        int violations = BURST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
-        BURST_VIOLATION_COUNT.put(ip, violations);
-
+        int violations = BURST_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(BURST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+
         BURST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
         BURST_BUCKET_CACHE.invalidate(ip);
     }
@@ -204,10 +203,9 @@ public class AlphaMountainProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockSustained(@NonNull String ip) {
-        int violations = SUSTAINED_VIOLATION_COUNT.get(ip, k -> 0) + 1;
-        SUSTAINED_VIOLATION_COUNT.put(ip, violations);
-
+        int violations = SUSTAINED_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(SUSTAINED_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+
         SUSTAINED_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
         SUSTAINED_BUCKET_CACHE.invalidate(ip);
     }
@@ -215,10 +213,9 @@ public class AlphaMountainProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockInvalidRequest(@NonNull String ip) {
-        int violations = INVALID_REQUEST_VIOLATION_COUNT.get(ip, k -> 0) + 1;
-        INVALID_REQUEST_VIOLATION_COUNT.put(ip, violations);
-
+        int violations = INVALID_REQUEST_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << (violations - 1)), 3600L);
+
         INVALID_REQUEST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
         INVALID_REQUEST_BUCKET_CACHE.invalidate(ip);
     }

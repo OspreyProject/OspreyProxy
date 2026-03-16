@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,27 +17,23 @@
  */
 package net.foulest.ospreyproxy.config;
 
+import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.jspecify.annotations.NonNull;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
-import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerCodecConfigurer;
-import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.http.server.reactive.ServerHttpResponse;
-import org.springframework.web.reactive.config.WebFluxConfigurer;
-import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.server.WebExceptionHandler;
-import org.springframework.web.server.WebFilter;
-import org.springframework.web.server.WebFilterChain;
-import reactor.core.publisher.Mono;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
@@ -45,134 +41,123 @@ import java.util.Set;
  */
 @Slf4j
 @Configuration
-public class SecurityConfig implements WebFluxConfigurer {
+public class SecurityConfig implements WebMvcConfigurer {
 
-    // Path exempted from Content-Type enforcement (read-only GET, no request body)
-    private static final String PRIVACY_PATH = "/privacy";
-
-    // Maximum allowed body size for incoming requests (10 KB).
-    // Applied to the server-side codec via configureHttpMessageCodecs() so that
-    // ServerRequest.bodyToMono() enforces this limit, and to the Content-Length
-    // pre-check in securityFilter() to reject oversized requests before buffering.
+    // Maximum allowed body size (10 KB). Mirrors server.tomcat.max-http-form-post-size
     private static final int MAX_BODY_SIZE = 10_240;
 
-    // HTTP methods that typically carry no request body; exempt from Content-Type enforcement.
-    // DELETE is included because this proxy has no endpoints that accept DELETE with a body;
-    // per RFC 9110, a body on DELETE has no defined semantics and is ignored by this server.
-    private static final Set<HttpMethod> BODYLESS_METHODS = Set.of(
-            HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS, HttpMethod.DELETE
+    // HTTP methods that carry no request body; exempt from Content-Type enforcement
+    private static final Set<String> BODYLESS_METHODS = Set.of(
+            HttpMethod.GET.name(),
+            HttpMethod.HEAD.name(),
+            HttpMethod.OPTIONS.name(),
+            HttpMethod.DELETE.name()
     );
 
     /**
-     * Applies the server-side codec body size limit programmatically.
-     * <p>
-     * {@code spring.codec.max-in-memory-size} only configures the WebClient and response
-     * decoding codecs; it does NOT apply to {@code ServerRequest.bodyToMono()} used here.
-     * This override ensures the same 10 KB limit is enforced on incoming request bodies,
-     * causing {@link DataBufferLimitException} at 10 KB instead of Spring's default 256 KB.
+     * Registers the security filter at order 1 (highest priority).
+     * All requests pass through this filter before reaching any controller.
      */
-    @Override
-    public void configureHttpMessageCodecs(@NonNull ServerCodecConfigurer configurer) {
-        configurer.defaultCodecs().maxInMemorySize(MAX_BODY_SIZE);
+    @Bean
+    public FilterRegistrationBean<SecurityFilter> securityFilterRegistration() {
+        FilterRegistrationBean<SecurityFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new SecurityFilter());
+        registration.addUrlPatterns("/*");
+        registration.setOrder(1);
+        registration.setName("securityFilter");
+        return registration;
     }
 
     /**
-     * Global exception handler that intercepts {@link DataBufferLimitException} thrown when an
-     * incoming request body exceeds {@link #MAX_BODY_SIZE}. Without this, Spring's default error
-     * handler produces a 500; this handler returns a clean 400 instead.
-     * <p>
-     * Acts as a safety net for chunked transfer requests that omit Content-Length (so the
-     * filter pre-check cannot reject early). Runs at {@code @Order(-2)}, just above Spring's
-     * built-in {@code DefaultErrorWebExceptionHandler} at {@code @Order(-1)}.
+     * The security filter implementation.
+     * Stateless and thread-safe: no instance fields, safe to share across virtual threads.
      */
-    @Bean
-    @Order(-2)
-    public WebExceptionHandler bufferLimitExceptionHandler() {
-        return (ServerWebExchange exchange, Throwable ex) -> {
-            if (!(ex instanceof DataBufferLimitException)) {
-                return Mono.error(ex);
-            }
+    public static final class SecurityFilter implements Filter {
 
-            log.warn("Request body exceeded buffer limit: {}", ex.getMessage());
-            ServerHttpResponse response = exchange.getResponse();
-
-            if (response.isCommitted()) {
-                return Mono.empty();
-            }
-
-            response.setStatusCode(HttpStatus.BAD_REQUEST);
-            response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-            return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_400)))
-                    .onErrorResume(IllegalStateException.class, ise -> Mono.empty());
-        };
-    }
-
-    /**
-     * Global security filter that applies to all requests. Sets security headers on every response
-     * and enforces that incoming requests have a Content-Type of application/json, rejecting with
-     * 415 Unsupported Media Type if not. The /privacy endpoint is exempt since it is a GET with
-     * no request body. Runs first (order 1) to ensure security headers are always set even on
-     * rejected requests.
-     * <p>
-     * Also rejects requests whose declared Content-Length exceeds {@link #MAX_BODY_SIZE}
-     * before any body bytes are buffered, as an early-exit optimization for well-behaved clients.
-     */
-    @Bean
-    @Order(1)
-    public WebFilter securityFilter() {
-        return (ServerWebExchange exchange, WebFilterChain chain) -> {
-            ServerHttpRequest request = exchange.getRequest();
-            ServerHttpResponse response = exchange.getResponse();
-            HttpHeaders responseHeaders = response.getHeaders();
-
-            // Default response content type
-            responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+        @Override
+        public void doFilter(@NonNull ServletRequest servletRequest,
+                             @NonNull ServletResponse servletResponse,
+                             @NonNull FilterChain chain) throws IOException, ServletException {
+            HttpServletRequest request = (HttpServletRequest) servletRequest;
+            HttpServletResponse response = (HttpServletResponse) servletResponse;
 
             // Security headers on every response
-            responseHeaders.set("X-Content-Type-Options", "nosniff");
-            responseHeaders.set("X-Frame-Options", "DENY");
-            responseHeaders.set("Content-Security-Policy", "default-src 'none'");
-            responseHeaders.set("Referrer-Policy", "no-referrer");
-            responseHeaders.set("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
-            responseHeaders.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.setHeader("X-Frame-Options", "DENY");
+            response.setHeader("Content-Security-Policy", "default-src 'none'");
+            response.setHeader("Referrer-Policy", "no-referrer");
+            response.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
+            response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-            String path = request.getPath().value();
-            HttpMethod method = request.getMethod();
+            String method = request.getMethod();
 
-            // Skip Content-Type and size checks for bodyless HTTP methods and the privacy endpoint
-            if (BODYLESS_METHODS.contains(method)
-                    || path.equals(PRIVACY_PATH)
-                    || path.startsWith(PRIVACY_PATH + "/")) {
-                return chain.filter(exchange);
+            // Skip Content-Type and size checks for bodyless methods
+            if (BODYLESS_METHODS.contains(method)) {
+                chain.doFilter(request, response);
+                return;
             }
+
+            long contentLength = request.getContentLengthLong();
 
             // Early rejection for requests declaring an oversized Content-Length.
-            // getContentLength() returns -1 when the header is absent (chunked transfer),
-            // in which case the codec limit and WebExceptionHandler handle it instead.
-            long contentLength = request.getHeaders().getContentLength();
-
+            // getContentLengthLong() returns -1 when the header is absent (chunked
+            // transfer), in which case the Tomcat connector limit handles it instead.
             if (contentLength > MAX_BODY_SIZE) {
                 log.warn("Rejected request with oversized Content-Length: {} bytes", contentLength);
-                response.setStatusCode(HttpStatus.BAD_REQUEST);
-                return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_400)));
+                sendError(response, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
+                return;
             }
 
-            String rawContentType = request.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
+            String rawContentType = request.getHeader(HttpHeaders.CONTENT_TYPE);
+            int length = MediaType.APPLICATION_JSON_VALUE.length();
 
-            // Validate Content-Type against an exact allowlist
+            // Validate Content-Type: must be application/json (with optional charset param)
             boolean valid = rawContentType != null
-                    && (rawContentType.equalsIgnoreCase("application/json")
-                    || (rawContentType.contains(";")
-                    && rawContentType.regionMatches(true, 0, "application/json", 0, "application/json".length())
-                    && MediaType.parseMediaType(rawContentType).equalsTypeAndSubtype(MediaType.APPLICATION_JSON)));
+                    && (rawContentType.equalsIgnoreCase(MediaType.APPLICATION_JSON_VALUE)
+                    || (rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE,
+                    0, length)
+                    && rawContentType.length() > length
+                    && rawContentType.charAt(length) == ';'));
 
-            // If invalid, respond with 415 Unsupported Media Type
+            // Sends error if the request is not valid
             if (!valid) {
-                response.setStatusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-                return response.writeWith(Mono.just(response.bufferFactory().wrap(ErrorUtil.BYTES_415)));
+                sendError(response, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, ErrorUtil.BODY_415);
+                return;
             }
-            return chain.filter(exchange);
-        };
+
+            chain.doFilter(request, response);
+        }
+
+        /**
+         * Writes a JSON error body directly to the response without going through
+         * Spring MVC's message converter pipeline. Safe to call before the chain
+         * has been entered (i.e., before any controller or MVC processing).
+         *
+         * @param response The HttpServletResponse to write to.
+         * @param status The HTTP status code to set on the response.
+         * @param body The pre-serialized JSON error body string to write.
+         */
+        private static void sendError(@NonNull HttpServletResponse response,
+                                      int status,
+                                      @NonNull String body) throws IOException {
+            response.setStatus(status);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+            PrintWriter writer = response.getWriter();
+            writer.write(body);
+            writer.flush();
+        }
+
+        @Override
+        public void init(FilterConfig filterConfig) {
+            // No initialization needed
+        }
+
+        @Override
+        public void destroy() {
+            // No cleanup needed
+        }
     }
 }

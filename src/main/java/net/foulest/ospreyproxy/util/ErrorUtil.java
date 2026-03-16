@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,11 +20,9 @@ package net.foulest.ospreyproxy.util;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.NonNull;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.reactive.function.server.ServerResponse;
-import reactor.core.publisher.Mono;
-
-import java.nio.charset.StandardCharsets;
+import org.springframework.http.ResponseEntity;
 
 /**
  * Central store for all pre-serialized JSON error responses.
@@ -32,76 +30,54 @@ import java.nio.charset.StandardCharsets;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorUtil {
 
-    // 200 OK
-    private static final byte[] BYTES_200_OK = bytes("OK");
+    // Pre-computed response body strings
+    private static final String BODY_200 = body("OK");
+    public static final String BODY_400 = body("Bad Request");
+    private static final String BODY_401 = body("Unauthorized");
+    private static final String BODY_404 = body("Not found");
+    public static final String BODY_415 = body("Unsupported Media Type");
+    private static final String BODY_429 = body("Too Many Requests");
+    private static final String BODY_498 = body("Invalid Token");
+    private static final String BODY_502 = body("Bad Gateway");
+    private static final String BODY_503 = body("Service Unavailable");
+    private static final String BODY_504 = body("Gateway Timeout");
 
-    // 400 Bad Request
-    public static final byte[] BYTES_400 = bytes("Bad Request");
-
-    // 404 Not Found
-    private static final byte[] BYTES_404 = bytes("Not found");
-
-    // 415 Unsupported Media Type
-    public static final byte[] BYTES_415 = bytes("Unsupported Media Type");
-
-    // 429 Too Many Requests
-    private static final byte[] BYTES_429 = bytes("Too Many Requests");
-
-    // 502 Bad Gateway
-    private static final byte[] BYTES_502 = bytes("Bad Gateway");
-
-    // 504 Gateway Timeout
-    private static final byte[] BYTES_504 = bytes("Gateway Timeout");
-
-    public static @NonNull Mono<ServerResponse> resp200() {
-        return build(200, BYTES_200_OK);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp400() {
-        return build(400, BYTES_400);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp404() {
-        return build(404, BYTES_404);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp415() {
-        return build(415, BYTES_415);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp429() {
-        return build(429, BYTES_429);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp502() {
-        return build(502, BYTES_502);
-    }
-
-    public static @NonNull Mono<ServerResponse> resp504() {
-        return build(504, BYTES_504);
-    }
+    // Pre-built ResponseEntity instances for the most frequently returned errors
+    public static final ResponseEntity<String> RESP_200 = build(HttpStatus.OK, BODY_200);
+    public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
+    public static final ResponseEntity<String> RESP_401 = build(HttpStatus.BAD_REQUEST, BODY_401);
+    public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
+    public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
+    public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);
+    public static final ResponseEntity<String> RESP_498 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_498);
+    public static final ResponseEntity<String> RESP_502 = build(HttpStatus.BAD_GATEWAY, BODY_502);
+    public static final ResponseEntity<String> RESP_503 = build(HttpStatus.SERVICE_UNAVAILABLE, BODY_503);
+    public static final ResponseEntity<String> RESP_504 = build(HttpStatus.GATEWAY_TIMEOUT, BODY_504);
 
     /**
-     * Serializes {@code message} into a JSON error body and returns the UTF-8 bytes.
+     * Serializes {@code message} into a JSON error body string.
      * Called only during static initialization.
+     *
+     * @param message The error message to include in the JSON body.
+     * @return A JSON string of the form {"error":"message"}.
      */
-    private static byte @NonNull [] bytes(@NonNull String message) {
-        return ("{\"error\":\"" + message + "\"}").getBytes(StandardCharsets.UTF_8);
+    private static @NonNull String body(@NonNull String message) {
+        return "{\"error\":\"" + message + "\"}";
     }
 
     /**
-     * Builds a fresh {@link Mono}{@code <}{@link ServerResponse}{@code >} from
-     * pre-existing bytes. Safe to call on any thread, including Netty event loop
-     * threads: no blocking, no shared mutable state.
-     * <p>
-     * Uses {@code bodyValue(String)} rather than {@code bodyValue(byte[])} because
-     * Spring WebFlux's functional {@link ServerResponse} routes {@code byte[]} through
-     * {@code Jackson2JsonEncoder}, which base64-encodes it. A {@code String} value is
-     * handled by {@code CharSequenceEncoder} and written verbatim.
+     * Builds a {@link ResponseEntity} with the given {@code status} and pre-serialized {@code body}.
+     * Content-Type is always {@code application/json; charset=UTF-8}.
+     *
+     * @param status The HTTP status code for the response.
+     * @param body The pre-serialized JSON body string.
+     * @return A {@link ResponseEntity} with the given status and body,
+     *         ready to return from a controller method.
      */
-    private static @NonNull Mono<ServerResponse> build(int status, byte @NonNull [] body) {
-        return ServerResponse.status(status)
+    private static @NonNull ResponseEntity<String> build(@NonNull HttpStatus status,
+                                                         @NonNull String body) {
+        return ResponseEntity.status(status)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(new String(body, StandardCharsets.UTF_8));
+                .body(body);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring WebFlux.
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -42,8 +42,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class StressTestUtil {
 
     // Whether stress test mode is active; injected from application.properties.
-    // Volatile for visibility: written by Spring's main thread via @Value setter,
-    // read by Netty event loop threads during request handling.
+    // Volatile for visibility: written by Spring's main thread via @Value setter.
     @Getter
     public static volatile boolean enabled;
 
@@ -59,14 +58,14 @@ public final class StressTestUtil {
      * This exercises the Caffeine rate limiter cache with distinct keys rather than
      * all requests sharing the same IP, which would not reflect real-world behavior.
      *
-     * @return A string that will be treated as a distinct IP by the rate limiter.
+     * @return A {@code String} that will be treated as a distinct IP by the rate limiter.
      */
-    public static @NonNull String syntheticIp() {
+    public static @NonNull String newSyntheticIp() {
         long bits = ThreadLocalRandom.current().nextLong();
 
         // Extract 2 octets from the random long for ~65K unique IPs (10.X.Y.1)
-        int b = (int) ((bits >>> 8) & 0xFF);    // 0-255
-        int c = (int) ((bits >>> 16) & 0xFF);    // 0-255
+        int b = (int) ((bits >>> 8) & 0xFF);  // 0-255
+        int c = (int) ((bits >>> 16) & 0xFF); // 0-255
 
         // Write directly into a char array to avoid StringBuilder allocation
         char[] buf = new char[12]; // max "10.255.255.1"
@@ -93,6 +92,9 @@ public final class StressTestUtil {
     /**
      * Writes an integer octet (0-255) into the char buffer at the given position.
      *
+     * @param buf The character buffer to write into.
+     * @param pos The current position in the buffer to write at.
+     * @param value The integer value of the octet to write (0-255).
      * @return The new position after writing.
      */
     @SuppressWarnings("CharUsedInArithmeticContext")
