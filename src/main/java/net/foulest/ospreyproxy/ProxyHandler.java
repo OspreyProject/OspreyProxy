@@ -208,7 +208,7 @@ public class ProxyHandler {
         // Invalid-request block check (no token consumed here)
         if (provider.isInvalidRequestBlocked(hashedIp)) {
             String violatorId = provider.getViolatorId(hashedIp);
-            log.warn("[{}] RATE LIMIT ACTIVE: Invalid request | {}", providerName, violatorId);
+            log.warn("[{}] 'Invalid request' rate limit active for {}", providerName, violatorId);
             return ErrorUtil.RESP_429;
         }
 

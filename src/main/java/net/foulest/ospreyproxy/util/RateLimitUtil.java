@@ -47,13 +47,13 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked
         if (provider.isBurstBlocked(hashedIp)) {
-            log.warn("[{}] RATE LIMIT ACTIVE: Burst | {}", providerName, violatorId);
+            log.warn("[{}] 'Burst' rate limit active for {}", providerName, violatorId);
             return true;
         }
 
         // Consumes a token to check if the IP has hit the rate limit
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] RATE LIMIT HIT: Burst | {}", providerName, violatorId);
+            log.warn("[{}] 'Burst' rate limit hit for {}", providerName, violatorId);
             provider.blockBurst(hashedIp);
             return true;
         }
@@ -76,13 +76,13 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked
         if (provider.isSustainedBlocked(hashedIp)) {
-            log.warn("[{}] RATE LIMIT ACTIVE: Sustained | {}", providerName, violatorId);
+            log.warn("[{}] 'Sustained' rate limit active for {}", providerName, violatorId);
             return true;
         }
 
         // Consumes a token to check if the IP has hit the rate limit
         if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] RATE LIMIT HIT: Sustained | {}", providerName, violatorId);
+            log.warn("[{}] 'Sustained' rate limit hit for {}", providerName, violatorId);
             provider.blockSustained(hashedIp);
             return true;
         }
@@ -109,7 +109,7 @@ public final class RateLimitUtil {
 
         // Consumes a token to check if the IP has hit the rate limit
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
-            log.warn("[{}] RATE LIMIT HIT: Invalid request | {}", providerName, violatorId);
+            log.warn("[{}] 'Invalid request' rate limit hit for {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);
             return ErrorUtil.RESP_429;
         }
