@@ -44,8 +44,6 @@ public final class StatsUtil {
         final AtomicLong secondBucket = new AtomicLong(0);
         final AtomicLong minuteBucket = new AtomicLong(0);
         final AtomicLong peakReqPerSec = new AtomicLong(0);
-        final AtomicLong highestReqPerMin = new AtomicLong(0);
-        final AtomicLong highestPeakReqPerSec = new AtomicLong(0);
 
         // Tracks the real wall-clock time of the last per-second tick so the scheduler
         // can compute an accurate per-second rate even when the task fires late (e.g., GC pause).
@@ -62,6 +60,11 @@ public final class StatsUtil {
 
     // Map of every recorded stat per provider
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
+
+    // Global high-water marks across all providers (not per-provider, not combined)
+    // Seeded with the highest values observed in production so alerts only fire on genuine new records
+    private static final AtomicLong GLOBAL_HIGHEST_REQ_PER_MIN = new AtomicLong(594);
+    private static final AtomicLong GLOBAL_HIGHEST_PEAK_REQ_PER_SEC = new AtomicLong(29);
 
     // Scheduler for periodic request statistics printing
     private static final ScheduledExecutorService REQUEST_STATS_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -139,21 +142,43 @@ public final class StatsUtil {
             }
         }, 1, 1, TimeUnit.SECONDS);
 
-        // Every 60 seconds: check per-provider highs and log only when a new record is set
-        REQUEST_STATS_SCHEDULER.scheduleWithFixedDelay(() -> PROVIDER_STATS.forEach((name, stats) -> {
-            long reqThisMin = stats.minuteBucket.getAndSet(0);
-            long peakThisMin = stats.peakReqPerSec.getAndSet(0);
+        // Every 60 seconds: find the single highest req/min and req/sec across all providers,
+        // then alert only when either sets a new global record.
+        // This reflects the peak load on any one provider, not a combined total.
+        REQUEST_STATS_SCHEDULER.scheduleWithFixedDelay(() -> {
+            long highestReqThisMin = 0;
+            long highestPeakThisMin = 0;
+            String highestReqMinProvider = null;
+            String highestPeakSecProvider = null;
 
-            if (reqThisMin > stats.highestReqPerMin.get()) {
-                stats.highestReqPerMin.set(reqThisMin);
-                log.warn("[{}] New highest req/min: {}", name, reqThisMin);
+            for (Map.Entry<String, RequestStats> entry : PROVIDER_STATS.entrySet()) {
+                String name = entry.getKey();
+                RequestStats stats = entry.getValue();
+
+                long reqThisMin = stats.minuteBucket.getAndSet(0);
+                long peakThisMin = stats.peakReqPerSec.getAndSet(0);
+
+                if (reqThisMin > highestReqThisMin) {
+                    highestReqThisMin = reqThisMin;
+                    highestReqMinProvider = name;
+                }
+
+                if (peakThisMin > highestPeakThisMin) {
+                    highestPeakThisMin = peakThisMin;
+                    highestPeakSecProvider = name;
+                }
             }
 
-            if (peakThisMin > stats.highestPeakReqPerSec.get()) {
-                stats.highestPeakReqPerSec.set(peakThisMin);
-                log.warn("[{}] New highest req/sec: {}", name, peakThisMin);
+            if (highestReqMinProvider != null && highestReqThisMin > GLOBAL_HIGHEST_REQ_PER_MIN.get()) {
+                GLOBAL_HIGHEST_REQ_PER_MIN.set(highestReqThisMin);
+                log.warn("[{}] New highest req/min across providers: {}", highestReqMinProvider, highestReqThisMin);
             }
-        }), 60, 60, TimeUnit.SECONDS);
+
+            if (highestPeakSecProvider != null && highestPeakThisMin > GLOBAL_HIGHEST_PEAK_REQ_PER_SEC.get()) {
+                GLOBAL_HIGHEST_PEAK_REQ_PER_SEC.set(highestPeakThisMin);
+                log.warn("[{}] New highest req/sec across providers: {}", highestPeakSecProvider, highestPeakThisMin);
+            }
+        }, 60, 60, TimeUnit.SECONDS);
     }
 
     /**
