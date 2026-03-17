@@ -23,6 +23,7 @@ import org.apache.catalina.connector.ClientAbortException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -71,6 +72,16 @@ public class GlobalExceptionHandler {
             log.warn("Could not read request body: {}", ex.getMessage());
         }
         return ErrorUtil.RESP_400;
+    }
+
+    /**
+     * Handles requests that use an unsupported HTTP method (e.g. GET on a POST-only endpoint).
+     *
+     * @param ignored The exception to handle (ignored).
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<String> handleMethodNotAllowed(Exception ignored) {
+        return ErrorUtil.RESP_405;
     }
 
     /**

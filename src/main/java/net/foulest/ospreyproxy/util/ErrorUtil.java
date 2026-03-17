@@ -34,7 +34,8 @@ public final class ErrorUtil {
     private static final String BODY_200 = body("OK");
     public static final String BODY_400 = body("Bad Request");
     private static final String BODY_401 = body("Unauthorized");
-    private static final String BODY_404 = body("Not found");
+    private static final String BODY_404 = body("Not Found");
+    private static final String BODY_405 = body("Not Allowed");
     public static final String BODY_415 = body("Unsupported Media Type");
     private static final String BODY_429 = body("Too Many Requests");
     private static final String BODY_498 = body("Invalid Token");
@@ -47,6 +48,7 @@ public final class ErrorUtil {
     public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
     public static final ResponseEntity<String> RESP_401 = build(HttpStatus.BAD_REQUEST, BODY_401);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
+    public static final ResponseEntity<String> RESP_405 = build(HttpStatus.NOT_FOUND, BODY_405);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
     public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);
     public static final ResponseEntity<String> RESP_498 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_498);
