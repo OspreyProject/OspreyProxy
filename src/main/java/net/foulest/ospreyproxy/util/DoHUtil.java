@@ -146,7 +146,7 @@ public final class DoHUtil {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
-                    log.warn("DoH query for {} returned HTTP {}", host, statusCode);
+                    log.error("DoH query for {} returned HTTP {}", host, statusCode);
                     return true;
                 }
 
@@ -154,7 +154,7 @@ public final class DoHUtil {
                 byte[] body = EntityUtils.toByteArray(entity);
 
                 if (body == null || body.length == 0) {
-                    log.warn("DoH query for {} returned empty body", host);
+                    log.error("DoH query for {} returned empty body", host);
                     return true;
                 }
 
@@ -163,7 +163,7 @@ public final class DoHUtil {
                 try {
                     data = MAPPER.readValue(body, MAP_TYPE);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.warn("DoH query for {} returned unparseable body ({})", host, e.getClass().getName());
+                    log.error("DoH query for {} returned unparseable body ({})", host, e.getClass().getName());
                     return true;
                 }
 
@@ -171,7 +171,7 @@ public final class DoHUtil {
                 Object answerObj = data.get("Answer");
 
                 if (!(statusObj instanceof Number)) {
-                    log.warn("DoH query for {} returned invalid Status field", host);
+                    log.error("DoH query for {} returned invalid Status field", host);
                     return true;
                 }
 
@@ -180,7 +180,7 @@ public final class DoHUtil {
                 return dnsStatus == 0 && hasAnswers;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("DoH query for {} failed ({})", host, e.getClass().getName());
+            log.error("DoH query for {} failed ({})", host, e.getClass().getName());
             return true;
         }
     }

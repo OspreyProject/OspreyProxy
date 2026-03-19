@@ -237,7 +237,9 @@ public class ProxyHandler {
         // Rejects empty bodies
         if (bytes.length == 0) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty body", ErrorUtil.RESP_400);
+                    "Blocked request with empty body",
+                    ErrorUtil.RESP_400
+            );
         }
 
         Map<String, String> incoming;
@@ -247,20 +249,25 @@ public class ProxyHandler {
             incoming = MAPPER.readValue(bytes, MAP_TYPE);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400);
+                    "Blocked request with malformed JSON body: " + e.getMessage() + " (" + e.getClass().getName() + ")",
+                    ErrorUtil.RESP_400
+            );
         }
 
         // Rejects a null parse result (e.g., body was the JSON literal "null")
         if (incoming == null) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with null JSON body", ErrorUtil.RESP_400);
+                    "Blocked request with null JSON body",
+                    ErrorUtil.RESP_400
+            );
         }
 
         // Rejects unexpected fields
         if (incoming.size() > 1) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with unexpected fields", ErrorUtil.RESP_400);
+                    "Blocked request with unexpected fields",
+                    ErrorUtil.RESP_400
+            );
         }
 
         // Rejects non-string url values
@@ -280,7 +287,9 @@ public class ProxyHandler {
                 }
             }
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected malformed JSON body on request", providerName, e);
+            log.error("[{}] Unexpected malformed JSON body on request: {} ({})",
+                    providerName, e.getMessage(), e.getClass().getName()
+            );
             return ErrorUtil.RESP_400;
         }
 
@@ -294,13 +303,18 @@ public class ProxyHandler {
         // Rejects missing or empty URLs
         if (url.isBlank()) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with missing or empty URL", ErrorUtil.RESP_400);
+                    "Blocked request with missing or empty URL",
+                    ErrorUtil.RESP_400
+            );
         }
 
         // Rejects excessively long URLs
-        if (url.length() > 8192) {
+        int length = url.length();
+        if (length > 8192) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with excessively long URL", ErrorUtil.RESP_400);
+                    "Blocked request with excessively long URL (" + length + " characters)",
+                    ErrorUtil.RESP_400
+            );
         }
 
         // Normalizes and validates URL syntax
@@ -310,7 +324,7 @@ public class ProxyHandler {
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL (" + url + ")",
+                    "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")",
                     ErrorUtil.RESP_400
             );
         }
@@ -506,7 +520,7 @@ public class ProxyHandler {
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
                     if (statusCode == 400) {
-                        log.warn("[{}] Upstream request failed with status code: {} ({})", providerName, statusCode, normalizedUrl);
+                        log.warn("[{}] Upstream request failed with status code: 400 ({})", providerName, normalizedUrl);
                     } else {
                         log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
                     }
@@ -526,13 +540,13 @@ public class ProxyHandler {
 
                 // Rejects empty responses
                 if (responseBytes == null || responseBytes.length == 0) {
-                    log.warn("[{}] Upstream response was empty", providerName);
+                    log.error("[{}] Upstream response was empty", providerName);
                     return ErrorUtil.RESP_502;
                 }
 
                 // Rejects responses that exceed the maximum allowed size (10 KB)
                 if (responseBytes.length > 10_000) {
-                    log.warn("[{}] Upstream response exceeded maximum size: {} bytes", providerName, responseBytes.length);
+                    log.error("[{}] Upstream response exceeded maximum size: {} bytes", providerName, responseBytes.length);
                     return ErrorUtil.RESP_502;
                 }
 
@@ -547,7 +561,7 @@ public class ProxyHandler {
 
                             // Rejects responses that exceed the maximum nesting depth
                             if (depth > MAX_NESTING_DEPTH) {
-                                log.warn("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
+                                log.error("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
                                 return ErrorUtil.RESP_502;
                             }
                         } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
@@ -555,7 +569,7 @@ public class ProxyHandler {
                         }
                     }
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.warn("[{}] Failed to parse upstream response as JSON ({})", providerName, e.getClass().getName(), e);
+                    log.error("[{}] Failed to parse upstream response as JSON: {} ({})", providerName, e.getMessage(), e.getClass().getName());
                     return ErrorUtil.RESP_502;
                 }
 
@@ -571,14 +585,14 @@ public class ProxyHandler {
                         .body(responseBody);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
-            log.error("[{}] Upstream request timed out: {}", providerName, e.getClass().getName());
+            log.error("[{}] Upstream request timed out: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
-            log.error("[{}] Upstream request blocked by SSRF resolver: {}", providerName, e.getMessage());
+            log.error("[{}] Upstream request blocked by SSRF resolver: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected error during upstream request: {} | {}", providerName, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Unexpected error during upstream request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_502;
         }
