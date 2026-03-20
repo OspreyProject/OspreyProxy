@@ -100,9 +100,15 @@ public class SecurityConfig implements WebMvcConfigurer {
 
             long contentLength = request.getContentLengthLong();
 
-            // Early rejection for requests declaring an oversized Content-Length.
-            // getContentLengthLong() returns -1 when the header is absent (chunked
-            // transfer), in which case the Tomcat connector limit handles it instead.
+            // Reject requests with no declared Content-Length (e.g. chunked transfer encoding)
+            // to prevent body size enforcement bypass
+            if (contentLength < 0) {
+                log.warn("Rejected request with missing Content-Length");
+                sendError(response, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
+                return;
+            }
+
+            // Early rejection for requests declaring an oversized Content-Length
             if (contentLength > MAX_BODY_SIZE) {
                 log.warn("Rejected request with oversized Content-Length: {} bytes", contentLength);
                 sendError(response, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
@@ -115,8 +121,7 @@ public class SecurityConfig implements WebMvcConfigurer {
             // Validate Content-Type: must be application/json (with optional charset param)
             boolean valid = rawContentType != null
                     && (rawContentType.equalsIgnoreCase(MediaType.APPLICATION_JSON_VALUE)
-                    || (rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE,
-                    0, length)
+                    || (rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE, 0, length)
                     && rawContentType.length() > length
                     && rawContentType.charAt(length) == ';'));
 
@@ -136,13 +141,13 @@ public class SecurityConfig implements WebMvcConfigurer {
          * @param status The HTTP status code to set on the response.
          * @param body The pre-serialized JSON error body string to write.
          */
-        private static void sendError(@NonNull HttpServletResponse response,
-                                      int status,
+        private static void sendError(@NonNull HttpServletResponse response, int status,
                                       @NonNull String body) throws IOException {
             response.setStatus(status);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
+            // Writes the body
             PrintWriter writer = response.getWriter();
             writer.write(body);
             writer.flush();
