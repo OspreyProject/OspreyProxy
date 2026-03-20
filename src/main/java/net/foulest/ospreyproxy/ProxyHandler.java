@@ -537,8 +537,11 @@ public class ProxyHandler {
             throw new StatusCodeException(ErrorUtil.RESP_401);
         }
 
+        byte[] providedKeyBytes = providedKey.getBytes(StandardCharsets.UTF_8);
+        byte[] expectedKeyBytes = expectedKey.getBytes(StandardCharsets.UTF_8);
+
         // Checks if the API keys match
-        if (!providedKey.equals(expectedKey)) {
+        if (!MessageDigest.isEqual(providedKeyBytes, expectedKeyBytes)) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked PhishingBox request with invalid API-Key header");
             throw new StatusCodeException(ErrorUtil.RESP_401);
