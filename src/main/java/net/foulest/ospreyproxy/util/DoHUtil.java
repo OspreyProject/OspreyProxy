@@ -145,7 +145,7 @@ public final class DoHUtil {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity);
+                byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
 
                 if (body == null || body.length == 0) {
                     log.error("DoH query for {} returned empty body", host);

@@ -287,7 +287,7 @@ public final class LocalListUtil {
             }
 
             HttpEntity entity = response.getEntity();
-            byte[] body = EntityUtils.toByteArray(entity);
+            byte[] body = EntityUtils.toByteArray(entity, 50 * 1024 * 1024);
 
             if (body == null || body.length == 0) {
                 throw new IllegalStateException("Response body was empty");

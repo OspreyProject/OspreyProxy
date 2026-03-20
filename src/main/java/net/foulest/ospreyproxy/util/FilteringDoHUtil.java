@@ -49,6 +49,7 @@ import java.util.Map;
 public final class FilteringDoHUtil {
 
     // HTTP/2 client for filtering DoH queries
+    // Multiplexing handles max conn. total and max conn. per route
     // 5s connect timeout, 5s connection request timeout, 5s response timeout
     private static final CloseableHttpClient FILTERING_CLIENT;
 
@@ -165,7 +166,7 @@ public final class FilteringDoHUtil {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity);
+                byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
 
                 if (body == null || body.length == 0) {
                     log.warn("[Cloudflare Security] Empty response body for host '{}'", host);
@@ -268,7 +269,7 @@ public final class FilteringDoHUtil {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity);
+                byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
 
                 if (body == null || body.length == 0) {
                     log.warn("[{}] Empty response body for URL '{}'", resolverName, url);
