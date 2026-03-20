@@ -217,9 +217,9 @@ public final class IPUtil {
         }
 
         // Block known internal hostnames by name
-        if (host.equals("localhost")
-                || host.equals("local")
-                || host.equals("internal")
+        if ("localhost".equals(host)
+                || "local".equals(host)
+                || "internal".equals(host)
                 || host.endsWith(".local")
                 || host.endsWith(".internal")
                 || host.endsWith(".localhost")) {

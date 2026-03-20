@@ -360,7 +360,7 @@ public class ProxyHandler {
         String requestUrl = provider.buildRequestUrl(normalizedUrl);
 
         // Builds the request based on the provider's specified method (GET or POST).
-        if (method.equals("GET")) {
+        if ("GET".equals(method)) {
             requestBuilder = ClassicRequestBuilder.get(requestUrl);
         } else {
             Map<String, Object> requestBody = provider.buildBody(normalizedUrl);
@@ -487,7 +487,7 @@ public class ProxyHandler {
         }
 
         // Logs a warning if we couldn't determine the client's IP address
-        if (realIp.equals("unknown")) {
+        if ("unknown".equals(realIp)) {
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
         }
 
@@ -682,7 +682,7 @@ public class ProxyHandler {
         String scheme = parsedUri.getScheme().toLowerCase(Locale.ROOT);
 
         // Rejects unsupported schemes (only http and https allowed)
-        if (!scheme.equals("http") && !scheme.equals("https")) {
+        if (!"http".equals(scheme) && !"https".equals(scheme)) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with disallowed URL scheme '" + scheme + "': " + parsedUri);
             throw new StatusCodeException(ErrorUtil.RESP_400);

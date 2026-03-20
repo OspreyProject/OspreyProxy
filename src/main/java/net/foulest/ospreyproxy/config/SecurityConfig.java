@@ -121,7 +121,7 @@ public class SecurityConfig implements WebMvcConfigurer {
 
             // Validate Content-Type: must be application/json (with optional charset param)
             boolean valid = rawContentType != null
-                    && (rawContentType.equalsIgnoreCase(MediaType.APPLICATION_JSON_VALUE)
+                    && (MediaType.APPLICATION_JSON_VALUE.equalsIgnoreCase(rawContentType)
                     || (rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE, 0, length)
                     && rawContentType.length() > length
                     && rawContentType.charAt(length) == ';'));

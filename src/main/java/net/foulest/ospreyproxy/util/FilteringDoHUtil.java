@@ -100,11 +100,7 @@ public final class FilteringDoHUtil {
             return walkAnswers(response, (type, rdata) -> {
                 if (type == DNSRecords.A) {
                     String ip = parseIPv4(rdata);
-
-                    if (ip == null) {
-                        return false;
-                    }
-                    return ip.equals("94.140.14.33");
+                    return "94.140.14.33".equals(ip);
                 }
                 return false;
             });
@@ -232,7 +228,7 @@ public final class FilteringDoHUtil {
             return walkAnswers(response, (type, rdata) -> {
                 if (type == DNSRecords.CNAME) {
                     String cname = parseName(rdata);
-                    return IPUtil.normalize(cname).equalsIgnoreCase("landingpage.ph.rpz.switch.ch");
+                    return "landingpage.ph.rpz.switch.ch".equalsIgnoreCase(IPUtil.normalize(cname));
                 }
                 return false;
             });
