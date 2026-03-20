@@ -23,8 +23,9 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.NonNull;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.HexFormat;
@@ -39,13 +40,16 @@ public final class HashUtil {
     // Random salt for hashing IPs; intentionally regenerated on each restart
     private static final byte[] IP_SALT = generateSalt();
 
-    // ThreadLocal MessageDigest to avoid MessageDigest.getInstance() on every call
+    // ThreadLocal Mac to avoid getInstance() overhead on every call
+    // Mac is not thread-safe, so ThreadLocal is required
     @SuppressWarnings("java:S5164")
-    private static final ThreadLocal<MessageDigest> SHA256_DIGEST = ThreadLocal.withInitial(() -> {
+    private static final ThreadLocal<Mac> HMAC = ThreadLocal.withInitial(() -> {
         try {
-            return MessageDigest.getInstance("SHA-256");
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(IP_SALT, "HmacSHA256"));
+            return mac;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            throw new IllegalStateException("SHA-256 not available", e);
+            throw new IllegalStateException("HmacSHA256 not available", e);
         }
     });
 
@@ -80,11 +84,11 @@ public final class HashUtil {
      */
     public static String hashIp(@NonNull String ip) {
         return HASH_CACHE.get(ip, k -> {
-            MessageDigest digest = SHA256_DIGEST.get();
-            digest.reset();
-            digest.update(IP_SALT);
+            Mac mac = HMAC.get();
+            mac.reset();
+
             byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
-            byte[] hash = digest.digest(bytes);
+            byte[] hash = mac.doFinal(bytes);
             return HexFormat.of().formatHex(hash);
         });
     }
