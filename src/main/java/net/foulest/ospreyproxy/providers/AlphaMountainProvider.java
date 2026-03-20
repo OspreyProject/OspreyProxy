@@ -120,11 +120,6 @@ public class AlphaMountainProvider implements Provider {
             .maximumSize(100_000)
             .build();
 
-    // Static request body parameters
-    private static final String LICENSE = API_KEY;
-    private static final int VERSION = 1;
-    private static final String TYPE = "partner.info";
-
     @PostConstruct
     public void validateConfig() {
         // Check if the key is blank or doesn't match UUID spec
@@ -153,9 +148,9 @@ public class AlphaMountainProvider implements Provider {
     public @NonNull Map<String, Object> buildBody(@NonNull String url) {
         return Map.of(
                 "uri", url,
-                "license", LICENSE,
-                "version", VERSION,
-                "type", TYPE
+                "license", API_KEY,
+                "version", 1,
+                "type", "partner.info"
         );
     }
 
