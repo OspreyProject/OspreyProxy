@@ -48,11 +48,14 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -82,13 +85,14 @@ public class ProxyHandler {
             .disableAutomaticRetries()
             .build();
 
+    // Virtual thread executor for parallel PhishingBox checks
+    private static final Executor VIRTUAL_THREAD_EXECUTOR =
+            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("phishingbox-", 0).factory());
+
     // Injected provider instances
     private final AlphaMountainProvider alphaMountainProvider;
     private final PrecisionSecProvider precisionSecProvider;
     private final PhishingBoxProvider phishingBoxProvider;
-
-    // Injected LocalListUtil (static so it is accessible from static proxy methods)
-    private static LocalListUtil localListUtil;
 
     /**
      * Constructor for ProxyHandler. Spring will automatically inject the provider instances.
@@ -291,13 +295,13 @@ public class ProxyHandler {
     private static ResponseEntity<String> executePhishingBox(@NonNull String host,
                                                              @NonNull String providerName) {
         // Fans out all seven checks as CompletableFutures
-        CompletableFuture<Boolean> adGuardFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithAdGuard(host));
-        CompletableFuture<Boolean> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCleanBrowsing(host));
-        CompletableFuture<Boolean> cloudflareFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCloudflare(host));
-        CompletableFuture<Boolean> phishDestroyFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISH_DESTROY, host));
-        CompletableFuture<Boolean> phishingDatabaseFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISHING_DATABASE, host));
-        CompletableFuture<Boolean> quad9Future = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithQuad9(host));
-        CompletableFuture<Boolean> switchChFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithSwitchCH(host));
+        CompletableFuture<Boolean> adGuardFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithAdGuard(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCleanBrowsing(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> cloudflareFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCloudflare(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> phishDestroyFuture = CompletableFuture.supplyAsync(() -> LocalListUtil.isListed(LocalListUtil.Descriptor.PHISH_DESTROY, host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> phishingDatabaseFuture = CompletableFuture.supplyAsync(() -> LocalListUtil.isListed(LocalListUtil.Descriptor.PHISHING_DATABASE, host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> quad9Future = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithQuad9(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<Boolean> switchChFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithSwitchCH(host), VIRTUAL_THREAD_EXECUTOR);
 
         // Waits for all futures to complete
         try {
