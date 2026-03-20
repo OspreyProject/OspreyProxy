@@ -23,9 +23,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
@@ -45,21 +45,6 @@ import java.util.Map;
 
 /**
  * Executes filtering DNS-over-HTTPS lookups against each security resolver used by PhishingBox.
- * <p>
- * Each method mirrors the corresponding {@code checkUrlWith*} function in
- * {@code BrowserProtection.js}, returning {@code true} if the resolver considers
- * the host blocked and {@code false} otherwise. All methods are fail-open:
- * any I/O error, unexpected status code, bad content-type, or parse failure
- * returns {@code false} rather than throwing.
- * <p>
- * The five resolvers covered are:
- * <ul>
- *   <li>AdGuard Security DNS</li>
- *   <li>CleanBrowsing Security DNS</li>
- *   <li>Cloudflare Security DNS</li>
- *   <li>Quad9</li>
- *   <li>Switch.ch</li>
- * </ul>
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -73,14 +58,8 @@ public final class FilteringDoHUtil {
     private static final String SWITCH_CH_URL = "https://dns.switch.ch/dns-query?dns=";
 
     // Content-type header values
-    private static final String CT_DNS_MESSAGE = "application/dns-message";
-    private static final String CT_DNS_JSON = "application/dns-json";
-
-    // Block indicator IP for AdGuard Security (mirrors "94.140.14.33" in extension)
-    private static final String ADGUARD_SECURITY_BLOCK_IP = "94.140.14.33";
-
-    // Block indicator CNAME for Switch.ch (mirrors "landingpage.ph.rpz.switch.ch" in extension)
-    private static final String SWITCH_CH_BLOCK_CNAME = "landingpage.ph.rpz.switch.ch";
+    private static final String DNS_MESSAGE = "application/dns-message";
+    private static final String DNS_JSON = "application/dns-json";
 
     // Jackson mapper for Cloudflare JSON responses
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
@@ -89,116 +68,107 @@ public final class FilteringDoHUtil {
             }
     );
 
-    // Dedicated HTTP client for filtering DoH queries.
-    // 5s connect + 5s response — aggressive, since executePhishingBox waits on all resolvers.
-    private static final CloseableHttpClient FILTERING_CLIENT = HttpClients.custom()
-            .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
-                    .setMaxConnTotal(100)
-                    .setMaxConnPerRoute(20)
-                    .setDefaultConnectionConfig(ConnectionConfig.custom()
-                            .setConnectTimeout(Timeout.ofSeconds(5))
-                            .build())
-                    .build())
-            .setDefaultRequestConfig(RequestConfig.custom()
-                    .setConnectionRequestTimeout(Timeout.ofSeconds(5))
-                    .setResponseTimeout(Timeout.ofSeconds(5))
-                    .build())
-            .disableRedirectHandling()
-            .disableAutomaticRetries()
-            .build();
+    // HTTP/2 client for filtering DoH queries
+    private static final CloseableHttpClient FILTERING_CLIENT;
 
-    // -------------------------------------------------------------------------
-    // Public resolver methods
-    // -------------------------------------------------------------------------
+    static {
+        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofSeconds(5))
+                        .build())
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofSeconds(5))
+                        .setResponseTimeout(Timeout.ofSeconds(5))
+                        .build())
+                .disableRedirectHandling()
+                .disableAutomaticRetries()
+                .build();
+
+        asyncClient.start();
+        FILTERING_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(10));
+    }
 
     /**
-     * Queries AdGuard Security DNS for the given host.
-     * <p>
-     * Blocked when any A record in the answer section resolves to {@code 94.140.14.33}.
-     * Mirrors {@code checkUrlWithAdGuardSecurity} in {@code BrowserProtection.js}.
+     * Checks a hostname with AdGuard's filtering DNS server.
      *
-     * @param host The hostname to check (e.g., {@code "example.com"}).
-     * @return {@code true} if AdGuard Security considers the host malicious, {@code false} otherwise.
+     * @param host The host to check, e.g. "example.com".
+     * @return Whether the host is blocked by the provider.
      */
-    public static boolean checkAdGuardSecurity(@NonNull String host) {
+    public static boolean checkWithAdGuard(@NonNull String host) {
         try {
             String encoded = DNSWireUtil.buildBase64Query(host);
-            byte[] response = fetchDnsMessage(ADGUARD_SECURITY_URL + encoded, "AdGuard Security");
+            byte[] response = fetchDNSMessage(ADGUARD_SECURITY_URL + encoded, "AdGuard Security");
 
             if (response == null) {
+                log.warn("[AdGuard] Null response returned for '{}'", host);
                 return false;
             }
 
-            // Walk every A record in the answer section; blocked if rdata == 94.140.14.33
             return walkAnswers(response, (type, rdata) -> {
                 if (type == DnsRRType.A) {
                     String ip = parseIPv4(rdata);
-                    return ADGUARD_SECURITY_BLOCK_IP.equals(ip);
+
+                    if (ip == null) {
+                        return false;
+                    }
+                    return ip.equals("94.140.14.33");
                 }
                 return false;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[AdGuard Security] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
+            log.warn("[AdGuard] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
             return false;
         }
     }
 
     /**
-     * Queries CleanBrowsing Security DNS for the given host.
-     * <p>
-     * Blocked when byte index 3 of the raw response equals {@code 131} (RCODE REFUSED / block flag).
-     * Mirrors {@code checkUrlWithCleanBrowsingSecurity} in {@code BrowserProtection.js}.
+     * Checks a hostname with CleanBrowsing's filtering DNS server.
      *
-     * @param host The hostname to check.
-     * @return {@code true} if CleanBrowsing Security considers the host malicious, {@code false} otherwise.
+     * @param host The host to check, e.g. "example.com".
+     * @return Whether the host is blocked by the provider.
      */
-    public static boolean checkCleanBrowsingSecurity(@NonNull String host) {
+    public static boolean checkWithCleanBrowsing(@NonNull String host) {
         try {
             String encoded = DNSWireUtil.buildBase64Query(host);
-            byte[] response = fetchDnsMessage(CLEANBROWSING_SECURITY_URL + encoded, "CleanBrowsing Security");
+            byte[] response = fetchDNSMessage(CLEANBROWSING_SECURITY_URL + encoded, "CleanBrowsing Security");
 
             if (response == null) {
+                log.warn("[CleanBrowsing] Null response returned for '{}'", host);
                 return false;
             }
-
-            // Blocked if response[3] == 131 (0x83: QR=1, RCODE=3 NXDOMAIN with AA set — CleanBrowsing's block signal)
             return response.length >= 4 && (response[3] & 0xFF) == 131;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[CleanBrowsing Security] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
+            log.warn("[CleanBrowsing] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
             return false;
         }
     }
 
     /**
-     * Queries Cloudflare Security DNS for the given host using the JSON DoH endpoint.
-     * <p>
-     * Blocked when the response contains a {@code Comment} field with the substring
-     * {@code "EDE(16): Censored"}.
-     * Mirrors {@code checkUrlWithCloudflareSecurity} in {@code BrowserProtection.js}.
+     * Checks a hostname with Cloudflare's filtering DNS server.
      *
-     * @param host The hostname to check.
-     * @return {@code true} if Cloudflare Security considers the host blocked, {@code false} otherwise.
+     * @param host The host to check, e.g. "example.com".
+     * @return Whether the host is blocked by the provider.
      */
-    public static boolean checkCloudflareSecurity(@NonNull String host) {
+    public static boolean checkWithCloudflare(@NonNull String host) {
         try {
             String encodedHost = DNSWireUtil.encodeHostParam(host);
             String url = CLOUDFLARE_SECURITY_URL + encodedHost;
 
             HttpGet request = new HttpGet(url);
-            request.addHeader("Accept", CT_DNS_JSON);
+            request.addHeader("Accept", DNS_JSON);
 
             return FILTERING_CLIENT.execute(request, response -> {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
-                    log.debug("[Cloudflare Security] Unexpected status {} for host '{}'", statusCode, host);
+                    log.warn("[Cloudflare Security] Unexpected status {} for host '{}'", statusCode, host);
                     return false;
                 }
 
                 String contentType = getContentType(response);
 
-                if (!contentType.contains(CT_DNS_JSON)) {
-                    log.debug("[Cloudflare Security] Unexpected Content-Type '{}' for host '{}'", contentType, host);
+                if (!contentType.contains(DNS_JSON)) {
+                    log.warn("[Cloudflare Security] Unexpected Content-Type '{}' for host '{}'", contentType, host);
                     return false;
                 }
 
@@ -206,15 +176,16 @@ public final class FilteringDoHUtil {
                 byte[] body = EntityUtils.toByteArray(entity);
 
                 if (body == null || body.length == 0) {
-                    log.debug("[Cloudflare Security] Empty response body for host '{}'", host);
+                    log.warn("[Cloudflare Security] Empty response body for host '{}'", host);
                     return false;
                 }
 
                 Map<String, Object> data;
+
                 try {
                     data = MAPPER.readValue(body, MAP_TYPE);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.debug("[Cloudflare Security] Failed to parse response JSON for host '{}': {}", host, e.getMessage());
+                    log.warn("[Cloudflare Security] Failed to parse response JSON for host '{}': {}", host, e.getMessage());
                     return false;
                 }
 
@@ -222,95 +193,83 @@ public final class FilteringDoHUtil {
                 return comment instanceof String value && value.contains("EDE(16): Censored");
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[Cloudflare Security] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
+            log.warn("[Cloudflare Security] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
             return false;
         }
     }
-
     /**
-     * Queries Quad9 for the given host.
-     * <p>
-     * Blocked when byte index 3 of the raw response equals {@code 3} (RCODE NXDOMAIN — Quad9's block signal).
-     * Mirrors {@code checkUrlWithQuad9} in {@code BrowserProtection.js}.
+     * Checks a hostname with Quad9's filtering DNS server.
      *
-     * @param host The hostname to check.
-     * @return {@code true} if Quad9 considers the host malicious, {@code false} otherwise.
+     * @param host The host to check, e.g. "example.com".
+     * @return Whether the host is blocked by the provider.
      */
-    public static boolean checkQuad9(@NonNull String host) {
+    public static boolean checkWithQuad9(@NonNull String host) {
         try {
             String encoded = DNSWireUtil.buildBase64Query(host);
-            byte[] response = fetchDnsMessage(QUAD9_URL + encoded, "Quad9");
+            byte[] response = fetchDNSMessage(QUAD9_URL + encoded, "Quad9");
 
             if (response == null) {
+                log.warn("[Quad9] Null response returned for '{}'", host);
                 return false;
             }
-
-            // Blocked if response[3] == 3 (RCODE NXDOMAIN — Quad9 returns NXDOMAIN for blocked hosts)
             return response.length >= 4 && (response[3] & 0xFF) == 3;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[Quad9] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
+            log.warn("[Quad9] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
             return false;
         }
     }
-
     /**
-     * Queries Switch.ch Security DNS for the given host.
-     * <p>
-     * Blocked when any CNAME record in the answer section resolves to
-     * {@code landingpage.ph.rpz.switch.ch} (case-insensitive, trailing-dot-stripped).
-     * Mirrors {@code checkUrlWithSwitchCH} in {@code BrowserProtection.js}.
+     * Checks a hostname with Switch.ch's filtering DNS server.
      *
-     * @param host The hostname to check.
-     * @return {@code true} if Switch.ch considers the host malicious, {@code false} otherwise.
+     * @param host The host to check, e.g. "example.com".
+     * @return Whether the host is blocked by the provider.
      */
-    public static boolean checkSwitchCH(@NonNull String host) {
+    public static boolean checkWithSwitchCH(@NonNull String host) {
         try {
             String encoded = DNSWireUtil.buildBase64Query(host);
-            byte[] response = fetchDnsMessage(SWITCH_CH_URL + encoded, "Switch.ch");
+            byte[] response = fetchDNSMessage(SWITCH_CH_URL + encoded, "Switch.ch");
 
             if (response == null) {
+                log.warn("[Switch.ch] Null response returned for '{}'", host);
                 return false;
             }
 
-            // Walk every CNAME in the answer section; blocked if rdata == landingpage.ph.rpz.switch.ch
             return walkAnswers(response, (type, rdata) -> {
                 if (type == DnsRRType.CNAME) {
                     String cname = parseName(rdata);
-                    return SWITCH_CH_BLOCK_CNAME.equalsIgnoreCase(normalizeName(cname));
+                    return normalizeName(cname).equalsIgnoreCase("landingpage.ph.rpz.switch.ch");
                 }
                 return false;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[Switch.ch] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
+            log.warn("[Switch.ch] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
             return false;
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
-
     /**
-     * Fetches the raw bytes of a {@code application/dns-message} response.
-     * Returns {@code null} on any error (non-200, wrong content-type, empty body).
+     * Fetches a DNS message from the given URL and returns the raw response bytes.
+     *
+     * @param url The full URL to fetch.
+     * @param resolverName The name of the resolver for logging purposes.
      */
-    private static byte @Nullable [] fetchDnsMessage(@NonNull String url, @NonNull String resolverName) {
+    private static byte @Nullable [] fetchDNSMessage(@NonNull String url, @NonNull String resolverName) {
         try {
             HttpGet request = new HttpGet(url);
-            request.addHeader("Accept", CT_DNS_MESSAGE);
+            request.addHeader("Accept", DNS_MESSAGE);
 
             return FILTERING_CLIENT.execute(request, response -> {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
-                    log.debug("[{}] Unexpected status {} for URL '{}'", resolverName, statusCode, url);
+                    log.warn("[{}] Unexpected status {} for URL '{}'", resolverName, statusCode, url);
                     return null;
                 }
 
                 String contentType = getContentType(response);
 
-                if (!contentType.contains(CT_DNS_MESSAGE)) {
-                    log.debug("[{}] Unexpected Content-Type '{}' for URL '{}'", resolverName, contentType, url);
+                if (!contentType.contains(DNS_MESSAGE)) {
+                    log.warn("[{}] Unexpected Content-Type '{}' for URL '{}'", resolverName, contentType, url);
                     return null;
                 }
 
@@ -318,20 +277,22 @@ public final class FilteringDoHUtil {
                 byte[] body = EntityUtils.toByteArray(entity);
 
                 if (body == null || body.length == 0) {
-                    log.debug("[{}] Empty response body for URL '{}'", resolverName, url);
+                    log.warn("[{}] Empty response body for URL '{}'", resolverName, url);
                     return null;
                 }
-
                 return body;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.debug("[{}] HTTP fetch failed for URL '{}': {} ({})", resolverName, url, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] HTTP fetch failed for URL '{}': {} ({})", resolverName, url, e.getMessage(), e.getClass().getName());
             return null;
         }
     }
 
     /**
-     * Extracts the Content-Type header value from an HTTP response, defaulting to an empty string.
+     * Extracts the Content-Type header value from the response.
+     *
+     * @param response The response to extract the Content-Type from.
+     * @return The Content-Type as a String.
      */
     private static @NonNull String getContentType(@NonNull ClassicHttpResponse response) {
         Header header = response.getFirstHeader("Content-Type");
@@ -339,18 +300,14 @@ public final class FilteringDoHUtil {
     }
 
     /**
-     * Walks the answer section of a raw DNS wire-format response, invoking the given
-     * predicate for each resource record. Returns {@code true} as soon as the predicate
-     * returns {@code true} for any record.
-     * <p>
-     * Only the answer section is walked — same scope as the extension's per-provider checks.
+     * Walks through the answer records in the raw DNS message response
+     * and tests each record against the given predicate.
      *
-     * @param response The raw DNS wire-format response bytes.
-     * @param predicate A function receiving (rrType, rdataBytes) and returning true if blocked.
-     * @return {@code true} if any answer record satisfies the predicate.
+     * @param response The raw DNS message response bytes.
+     * @param predicate The predicate to test each answer record against. Takes the RR type and RDATA bytes as input.
+     * @return {@code true} if any answer record matches the predicate, {@code false} otherwise or if the response is malformed.
      */
     private static boolean walkAnswers(byte @NonNull [] response, @NonNull RRPredicate predicate) {
-        // DNS header is 12 bytes. Minimum viable response with 0 answers is 12 bytes.
         if (response.length < 12) {
             return false;
         }
@@ -362,32 +319,29 @@ public final class FilteringDoHUtil {
         }
 
         int off = 12;
-
-        // Skip the question section: read QDCOUNT questions
         int qdCount = ((response[4] & 0xFF) << 8) | (response[5] & 0xFF);
+
         for (int i = 0; i < qdCount; i++) {
             off = skipName(response, off);
-            off += 4; // QTYPE (2) + QCLASS (2)
+            off += 4;
 
             if (off > response.length) {
                 return false;
             }
         }
 
-        // Read each answer RR
         for (int i = 0; i < anCount; i++) {
             if (off >= response.length) {
                 break;
             }
 
-            // Skip owner name
             off = skipName(response, off);
+
             if (off + 10 > response.length) {
                 break;
             }
 
             int rrType = ((response[off] & 0xFF) << 8) | (response[off + 1] & 0xFF);
-            // skip TYPE(2) + CLASS(2) + TTL(4)
             off += 8;
 
             int rdLength = ((response[off] & 0xFF) << 8) | (response[off + 1] & 0xFF);
@@ -401,7 +355,6 @@ public final class FilteringDoHUtil {
             System.arraycopy(response, off, rdata, 0, rdLength);
             off += rdLength;
 
-            // Pass the full packet and rdata start offset so name parsing can follow compression pointers
             if (predicate.test(rrType, rdata)) {
                 return true;
             }
@@ -410,8 +363,12 @@ public final class FilteringDoHUtil {
     }
 
     /**
-     * Skips a DNS name (label sequence or compression pointer) at {@code off},
-     * returning the offset of the first byte after the name.
+     * Skips over a domain name in the raw DNS message bytes, starting at the given offset.
+     *
+     * @param data The raw byte array of the DNS message.
+     * @param off The offset to start skipping from. Should point to the beginning of a domain name (QNAME or NAME field).
+     * @return The offset immediately after the domain name. Handles both uncompressed and compressed names.
+     *         Returns an offset beyond the array length if the name is malformed.
      */
     @Contract(pure = true)
     private static int skipName(byte @NonNull [] data, int off) {
@@ -419,10 +376,7 @@ public final class FilteringDoHUtil {
             int len = data[off] & 0xFF;
 
             if ((len & 0xC0) == 0xC0) {
-                // Compression pointer: 2 bytes, then we're done advancing the outer cursor
                 off += 2;
-
-                // After a pointer the outer cursor has been advanced; stop here
                 break;
             }
 
@@ -437,8 +391,10 @@ public final class FilteringDoHUtil {
     }
 
     /**
-     * Parses an IPv4 address from 4 raw RDATA bytes.
-     * Returns {@code null} if the array is not exactly 4 bytes.
+     * Parses an IPv4 address from the given RDATA bytes. Expects exactly 4 bytes for a valid IPv4 address.
+     *
+     * @param rdata The raw RDATA bytes from an A record.
+     * @return The IPv4 address in dotted-decimal notation (e.g. "192.168.1.1")
      */
     @Contract(pure = true)
     private static @Nullable String parseIPv4(byte @NonNull [] rdata) {
@@ -449,10 +405,12 @@ public final class FilteringDoHUtil {
     }
 
     /**
-     * Parses a domain name from RDATA that holds a DNS wire-format name.
-     * Handles compression pointers relative to the outer packet buffer if needed;
-     * since CNAME rdata is self-contained here we just read labels sequentially.
-     * Returns an empty string on any parse failure.
+     * Parses a domain name from the given RDATA bytes. Handles uncompressed names only, as expected in CNAME RDATA.
+     *
+     * @param rdata The raw RDATA bytes from a CNAME record, which should contain the domain name in DNS label format.
+     *              Compression pointers are not expected in RDATA.
+     * @return The parsed domain name as a String, without the trailing dot.
+     *         Returns an empty string if the RDATA is malformed.
      */
     private static @NonNull String parseName(byte @NonNull [] rdata) {
         StringBuilder sb = new StringBuilder();
@@ -466,8 +424,6 @@ public final class FilteringDoHUtil {
                 break;
             }
 
-            // Compression pointers inside isolated rdata bytes cannot be resolved;
-            // treat as end-of-name
             if ((len & 0xC0) == 0xC0) {
                 break;
             }
@@ -490,28 +446,31 @@ public final class FilteringDoHUtil {
     }
 
     /**
-     * Normalizes a DNS name for comparison: lower-cased, trailing dot stripped.
-     * Mirrors {@code DNSMessage.normalizeName()} in the extension.
+     * Normalizes a domain name by trimming whitespace, converting to lowercase, and removing any trailing dots.
+     *
+     * @param name The domain name to normalize.
+     * @return The normalized domain name, suitable for case-insensitive comparison.
+     *         For example, "Example.COM. " becomes "example.com".
      */
     private static @NonNull String normalizeName(@NonNull String name) {
         String n = name.trim().toLowerCase(Locale.ROOT);
         return !n.isEmpty() && n.charAt(n.length() - 1) == '.' ? n.substring(0, n.length() - 1) : n;
     }
 
-    // -------------------------------------------------------------------------
-    // DNS RR type constants (subset used by FilteringDoHUtil)
-    // -------------------------------------------------------------------------
-
+    /**
+     * DNS RR type constants for the record types we care about in filtering responses.
+     */
     private static final class DnsRRType {
 
         static final int A = 1;
         static final int CNAME = 5;
     }
 
-    // -------------------------------------------------------------------------
-    // Internal functional interface for RR predicate
-    // -------------------------------------------------------------------------
-
+    /**
+     * Functional interface for testing DNS answer records in the raw response bytes.
+     * The predicate takes the RR type and RDATA bytes as input and returns a boolean
+     * indicating whether the record matches the filtering criteria.
+     */
     @FunctionalInterface
     private interface RRPredicate {
 

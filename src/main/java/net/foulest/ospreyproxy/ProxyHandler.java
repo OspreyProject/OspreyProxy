@@ -336,21 +336,16 @@ public class ProxyHandler {
      */
     private static ResponseEntity<String> executePhishingBox(@NonNull String host,
                                                              @NonNull String providerName) {
-        // Fan out all seven checks as CompletableFutures.
-        // Each runs on a virtual thread so the blocking I/O parks rather than
-        // occupying a platform thread — consistent with the rest of the proxy.
-        CompletableFuture<Boolean> adGuardFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkAdGuardSecurity(host));
-        CompletableFuture<Boolean> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkCleanBrowsingSecurity(host));
-        CompletableFuture<Boolean> cloudflareFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkCloudflareSecurity(host));
+        // Fans out all seven checks as CompletableFutures
+        CompletableFuture<Boolean> adGuardFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithAdGuard(host));
+        CompletableFuture<Boolean> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCleanBrowsing(host));
+        CompletableFuture<Boolean> cloudflareFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithCloudflare(host));
         CompletableFuture<Boolean> phishDestroyFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISH_DESTROY, host));
         CompletableFuture<Boolean> phishingDatabaseFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISHING_DATABASE, host));
-        CompletableFuture<Boolean> quad9Future = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkQuad9(host));
-        CompletableFuture<Boolean> switchChFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkSwitchCH(host));
+        CompletableFuture<Boolean> quad9Future = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithQuad9(host));
+        CompletableFuture<Boolean> switchChFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkWithSwitchCH(host));
 
-        // Wait for all futures, up to 5 seconds total.
-        // orTimeout() cancels and completes exceptionally after the deadline;
-        // we then harvest each result individually so a single slow source
-        // doesn't suppress results from the others.
+        // Waits for all futures to complete
         try {
             CompletableFuture.allOf(
                     adGuardFuture,
@@ -362,11 +357,9 @@ public class ProxyHandler {
                     switchChFuture
             ).orTimeout(5, TimeUnit.SECONDS).join();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
-            // orTimeout fires a CompletionException wrapping TimeoutException.
-            // Individual futures that already completed normally are still readable below.
         }
 
-        // Harvest results; failed or cancelled futures contribute false (fail-open).
+        // Puts all the results in our JSON map
         Map<String, Boolean> resultMap = new LinkedHashMap<>();
         resultMap.put("adGuard", safeGet(adGuardFuture, providerName, "adGuard"));
         resultMap.put("cleanBrowsing", safeGet(cleanBrowsingFuture, providerName, "cleanBrowsing"));
@@ -376,7 +369,7 @@ public class ProxyHandler {
         resultMap.put("quad9", safeGet(quad9Future, providerName, "quad9"));
         resultMap.put("switchCh", safeGet(switchChFuture, providerName, "switchCh"));
 
-        // Serialize the result map to JSON
+        // Serializes the result map to JSON
         String responseBody;
         try {
             responseBody = MAPPER.writeValueAsString(resultMap);
@@ -386,9 +379,8 @@ public class ProxyHandler {
             return ErrorUtil.RESP_502;
         }
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(responseBody);
+        // Sends the serialized map back to the client
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
     }
 
     /**
@@ -892,7 +884,8 @@ public class ProxyHandler {
             return Boolean.TRUE.equals(future.getNow(false));
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Source '{}' did not complete in time or failed: {} ({})",
-                    providerName, sourceName, e.getMessage(), e.getClass().getName());
+                    providerName, sourceName, e.getMessage(), e.getClass().getName()
+            );
             return false;
         }
     }
