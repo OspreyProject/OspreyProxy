@@ -537,14 +537,23 @@ public class ProxyHandler {
             throw new StatusCodeException(ErrorUtil.RESP_401);
         }
 
-        byte[] providedKeyBytes = providedKey.getBytes(StandardCharsets.UTF_8);
-        byte[] expectedKeyBytes = expectedKey.getBytes(StandardCharsets.UTF_8);
+        // Checks if the API keys match (constant-time to prevent timing attacks)
+        // Both sides are hashed to normalize length before comparison, eliminating length-based timing leaks
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] providedKeyBytes = providedKey.getBytes(StandardCharsets.UTF_8);
+            byte[] providedKeyHash = digest.digest(providedKeyBytes);
+            digest.reset();
+            byte[] expectedKeyBytes = expectedKey.getBytes(StandardCharsets.UTF_8);
+            byte[] expectedKeyHash = digest.digest(expectedKeyBytes);
 
-        // Checks if the API keys match
-        if (!MessageDigest.isEqual(providedKeyBytes, expectedKeyBytes)) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked PhishingBox request with invalid API-Key header");
-            throw new StatusCodeException(ErrorUtil.RESP_401);
+            if (!MessageDigest.isEqual(providedKeyHash, expectedKeyHash)) {
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked PhishingBox request with invalid API-Key header");
+                throw new StatusCodeException(ErrorUtil.RESP_401);
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 
