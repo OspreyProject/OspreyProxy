@@ -128,6 +128,7 @@ public class SecurityConfig implements WebMvcConfigurer {
 
             // Sends error if the request is not valid
             if (!valid) {
+                log.warn("Rejected request with invalid Content-Type: {}", rawContentType);
                 sendError(response, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, ErrorUtil.BODY_415);
                 return;
             }
