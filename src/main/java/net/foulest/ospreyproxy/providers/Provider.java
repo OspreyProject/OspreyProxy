@@ -47,8 +47,9 @@ public interface Provider {
      *
      * @return The upstream API URL.
      */
-    @NonNull
-    String getApiUrl();
+    default @NonNull String getApiUrl() {
+        return "";
+    }
 
     /**
      * HTTP method to use for the upstream request.

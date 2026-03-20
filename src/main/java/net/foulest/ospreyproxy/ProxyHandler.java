@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
+import net.foulest.ospreyproxy.providers.PhishingBoxProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.util.*;
@@ -116,17 +117,26 @@ public class ProxyHandler {
     // Injected provider instances
     private final AlphaMountainProvider alphaMountainProvider;
     private final PrecisionSecProvider precisionSecProvider;
+    private final PhishingBoxProvider phishingBoxProvider;
+
+    // Injected LocalListUtil (static so it is accessible from static proxy methods)
+    private static LocalListUtil localListUtil;
 
     /**
      * Constructor for ProxyHandler. Spring will automatically inject the provider instances.
      *
      * @param alphaMountainProvider alphaMountain's provider object.
      * @param precisionSecProvider PrecisionSec's provider object.
+     * @param phishingBoxProvider PhishingBox's provider object.
      */
     public ProxyHandler(@NonNull AlphaMountainProvider alphaMountainProvider,
-                        @NonNull PrecisionSecProvider precisionSecProvider) {
+                        @NonNull PrecisionSecProvider precisionSecProvider,
+                        @NonNull PhishingBoxProvider phishingBoxProvider,
+                        @NonNull LocalListUtil localListUtil) {
         this.alphaMountainProvider = alphaMountainProvider;
         this.precisionSecProvider = precisionSecProvider;
+        this.phishingBoxProvider = phishingBoxProvider;
+        ProxyHandler.localListUtil = localListUtil;
 
         // Pre-warm Jackson type metadata
         MAPPER.constructType(Map.class);
@@ -160,6 +170,18 @@ public class ProxyHandler {
     public ResponseEntity<String> handlePrecisionSec(@RequestBody(required = false) byte[] body,
                                                      @NonNull HttpServletRequest request) {
         return proxyRequest(body, request, precisionSecProvider);
+    }
+
+    /**
+     * Handles POST requests to the /phishingbox endpoint.
+     * Keep @RequestBody(required = false) for rate-limiting.
+     */
+    @PostMapping(value = "/phishingbox",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> handlePhishingBox(@RequestBody(required = false) byte[] body,
+                                                    @NonNull HttpServletRequest request) {
+        return proxyRequest(body, request, phishingBoxProvider);
     }
 
     // -------------------------------------------------------------------------
@@ -201,6 +223,12 @@ public class ProxyHandler {
             return e.getStatus();
         }
 
+        // Validates the API-Key header for PhishingBox requests
+        if (provider instanceof PhishingBoxProvider) {
+            try {
+                validateApiKeyHeader(request, provider, providerName, hashedIp);
+            } catch (StatusCodeException e) {
+                return e.getStatus();
             }
         }
 
@@ -269,7 +297,93 @@ public class ProxyHandler {
 
         // Sends the normalized URL string to the upstream provider
         String normalizedUrl = parsedUri.toString();
-        return executeUpstream(provider, normalizedUrl);
+        if (provider instanceof PhishingBoxProvider) {
+            return executePhishingBox(host, providerName);
+        } else {
+            return executeUpstream(provider, providerName, normalizedUrl);
+        }
+    }
+
+    /**
+     * Executes the PhishingBox aggregate check synchronously.
+     * <p>
+     * Fans out to all seven sources in parallel on virtual threads, waits up to
+     * 5 seconds for every source to respond, then assembles and returns a flat
+     * JSON boolean map. Sources that time out or fail individually contribute
+     * {@code false} to their respective keys (fail-open).
+     * <p>
+     * The returned JSON map has the following keys:
+     * <pre>
+     * {
+     *   "adGuard":          true|false,
+     *   "cleanBrowsing":    true|false,
+     *   "cloudflare":       true|false,
+     *   "phishDestroy":     true|false,
+     *   "phishingDatabase": true|false,
+     *   "quad9":            true|false,
+     *   "switchCh":         true|false
+     * }
+     * </pre>
+     *
+     * @param host The validated, normalized host to check.
+     * @param providerName  The display name of the provider.
+     * @return A {@link ResponseEntity} containing the JSON map, or a 502 on serialization failure.
+     */
+    private static ResponseEntity<String> executePhishingBox(@NonNull String host,
+                                                             @NonNull String providerName) {
+        // Fan out all seven checks as CompletableFutures.
+        // Each runs on a virtual thread so the blocking I/O parks rather than
+        // occupying a platform thread — consistent with the rest of the proxy.
+        CompletableFuture<Boolean> adGuardFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkAdGuardSecurity(host));
+        CompletableFuture<Boolean> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkCleanBrowsingSecurity(host));
+        CompletableFuture<Boolean> cloudflareFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkCloudflareSecurity(host));
+        CompletableFuture<Boolean> phishDestroyFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISH_DESTROY, host));
+        CompletableFuture<Boolean> phishingDatabaseFuture = CompletableFuture.supplyAsync(() -> localListUtil.isListed(LocalListUtil.Descriptor.PHISHING_DATABASE, host));
+        CompletableFuture<Boolean> quad9Future = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkQuad9(host));
+        CompletableFuture<Boolean> switchChFuture = CompletableFuture.supplyAsync(() -> FilteringDoHUtil.checkSwitchCH(host));
+
+        // Wait for all futures, up to 5 seconds total.
+        // orTimeout() cancels and completes exceptionally after the deadline;
+        // we then harvest each result individually so a single slow source
+        // doesn't suppress results from the others.
+        try {
+            CompletableFuture.allOf(
+                    adGuardFuture,
+                    cleanBrowsingFuture,
+                    cloudflareFuture,
+                    phishDestroyFuture,
+                    phishingDatabaseFuture,
+                    quad9Future,
+                    switchChFuture
+            ).orTimeout(5, TimeUnit.SECONDS).join();
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            // orTimeout fires a CompletionException wrapping TimeoutException.
+            // Individual futures that already completed normally are still readable below.
+        }
+
+        // Harvest results; failed or cancelled futures contribute false (fail-open).
+        Map<String, Boolean> resultMap = new LinkedHashMap<>();
+        resultMap.put("adGuard", safeGet(adGuardFuture, providerName, "adGuard"));
+        resultMap.put("cleanBrowsing", safeGet(cleanBrowsingFuture, providerName, "cleanBrowsing"));
+        resultMap.put("cloudflare", safeGet(cloudflareFuture, providerName, "cloudflare"));
+        resultMap.put("phishDestroy", safeGet(phishDestroyFuture, providerName, "phishDestroy"));
+        resultMap.put("phishingDatabase", safeGet(phishingDatabaseFuture, providerName, "phishingDatabase"));
+        resultMap.put("quad9", safeGet(quad9Future, providerName, "quad9"));
+        resultMap.put("switchCh", safeGet(switchChFuture, providerName, "switchCh"));
+
+        // Serialize the result map to JSON
+        String responseBody;
+        try {
+            responseBody = MAPPER.writeValueAsString(resultMap);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.error("[{}] Failed to serialize result map for '{}': {} ({})",
+                    providerName, host, e.getMessage(), e.getClass().getName());
+            return ErrorUtil.RESP_502;
+        }
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(responseBody);
     }
 
     /**
@@ -284,8 +398,8 @@ public class ProxyHandler {
      *         or an appropriate error body.
      */
     private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
+                                                          @NonNull String providerName,
                                                           @NonNull String normalizedUrl) {
-        String providerName = provider.getName();
         String method = provider.getMethod();
         ClassicRequestBuilder requestBuilder;
         String requestUrl = provider.buildRequestUrl(normalizedUrl);
