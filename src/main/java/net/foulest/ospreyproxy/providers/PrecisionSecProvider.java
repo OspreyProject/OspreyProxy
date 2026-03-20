@@ -22,7 +22,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.annotation.PostConstruct;
-import net.foulest.ospreyproxy.util.StressTestUtil;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -126,7 +125,7 @@ public class PrecisionSecProvider implements Provider {
     @PostConstruct
     public void validateConfig() {
         // Check if the key is blank or doesn't match UUID spec
-        if (!StressTestUtil.isEnabled() && (API_KEY == null || API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN))) {
+        if (isEnabled() && (API_KEY == null || API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN))) {
             throw new IllegalStateException("PRECISIONSEC_API_KEY environment variable is invalid or not set");
         }
     }
