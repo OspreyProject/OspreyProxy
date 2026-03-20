@@ -30,7 +30,7 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Provider implementation for PrecisionSec.
+ * Provider implementation for PhishingBox.
  */
 @Component
 public class PhishingBoxProvider implements Provider {

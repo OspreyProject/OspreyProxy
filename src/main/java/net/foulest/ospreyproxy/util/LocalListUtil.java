@@ -45,16 +45,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Fetches, persists in memory, and queries local phishing domain filtering lists.
- * <p>
- * Mirrors {@code LocalLists.js} from the Osprey browser extension.
- * On startup, immediately fetches each list and schedules a refresh every 5 minutes.
- * Lookups are available as soon as the first fetch completes; before that,
- * {@link #isListed(Descriptor, String)} returns {@code false} (fail-open).
- * <p>
- * Subdomain walk-up is implemented exactly as in the extension: a hostname is
- * considered listed if the hostname itself, or any ancestor domain up to (but not
- * including) the TLD, appears in the set.
+ * Utility class for managing local lists of domains fetched from external sources.
  */
 @Slf4j
 @Component
@@ -88,25 +79,20 @@ public final class LocalListUtil {
 
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "local-list-refresh");
-        t.setDaemon(true);
-        return t;
+        Thread thread = new Thread(r, "local-list-refresh");
+        thread.setDaemon(true);
+        return thread;
     });
 
     // Runtime state per descriptor, keyed by descriptor identity
-    private final Map<Descriptor, AtomicReference<State>> stateMap = new EnumMap<>(Descriptor.class);
-
-    // -------------------------------------------------------------------------
-    // Descriptor enum — mirrors LocalLists.descriptors in the extension
-    // -------------------------------------------------------------------------
+    private static final Map<Descriptor, AtomicReference<State>> stateMap = new EnumMap<>(Descriptor.class);
 
     /**
-     * Describes a local filtering list, mirroring the descriptor objects in
-     * {@code LocalLists.descriptors} from the browser extension.
+     * Enumeration of supported list descriptors, each with its URL, content format, and short name for logging.
+     * The content format determines how the raw response is parsed into a set of hostnames.
      */
     @AllArgsConstructor
     public enum Descriptor {
-
         PHISH_DESTROY(
                 "https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.json",
                 Format.JSON,
@@ -124,25 +110,29 @@ public final class LocalListUtil {
         final String shortName;
     }
 
-    /** List content format. */
+    /**
+     * List content format.
+     */
     private enum Format {
-        JSON, TEXT
+        JSON,
+        TEXT
     }
 
-    // -------------------------------------------------------------------------
-    // Runtime state holder
-    // -------------------------------------------------------------------------
-
     /**
-     * Holds the live domain set and the raw content string for a single descriptor.
-     * Both fields are null until the first successful fetch.
+     * Runtime state for a single descriptor, including the live set of
+     * domains and the raw content string from the last successful fetch.
      */
     private static final class State {
 
-        /** The live domain set. {@code null} until the first successful fetch. */
+        /**
+         * The live set of domains for this descriptor, or null if the list has not yet been loaded.
+         */
         volatile @Nullable Set<String> domainSet;
 
-        /** The raw content from the last successful fetch, used for change detection. */
+        /**
+         * The raw content string from the last successful fetch.
+         * Used to detect changes and avoid unnecessary rebuilds.
+         */
         volatile @Nullable String rawContent;
 
         State() {
@@ -150,10 +140,6 @@ public final class LocalListUtil {
             rawContent = null;
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Lifecycle
-    // -------------------------------------------------------------------------
 
     @PostConstruct
     public void init() {
@@ -177,24 +163,19 @@ public final class LocalListUtil {
         scheduler.shutdownNow();
     }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
     /**
-     * Returns {@code true} if the given hostname (or any ancestor domain up to but
-     * not including the TLD) appears in the given descriptor's domain set.
+     * Checks if the given host is listed in the live set for the specified descriptor.
+     * If the list has not yet been loaded, this method returns {@code false} (fail-open).
      * <p>
-     * Mirrors the {@code isListed} check and subdomain walk-up logic in
-     * {@code checkUrlWithLocalList} from {@code BrowserProtection.js}.
-     * <p>
-     * Returns {@code false} (fail-open) if the list has not yet been loaded.
+     * The check is case-insensitive and ignores leading/trailing whitespace.
+     * It also implements subdomain walk-up: a hostname is considered listed if the hostname itself,
+     * or any ancestor domain up to (but not including) the TLD, appears in the set.
      *
      * @param descriptor The list descriptor to check against.
-     * @param host       The hostname to check, e.g. {@code "sub.example.com"}.
-     * @return {@code true} if the host or any ancestor is listed.
+     * @param host The hostname to check for listing.
+     * @return {@code true} if the host is listed, {@code false} if it is not listed or if the list has not yet been loaded.
      */
-    public boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
+    public static boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
         AtomicReference<State> ref = stateMap.get(descriptor);
 
         if (ref == null) {
@@ -219,7 +200,6 @@ public final class LocalListUtil {
 
         // Walk up the domain tree, checking each parent suffix.
         // Stops before the TLD (must have at least two labels to be meaningful).
-        // Mirrors: for (let i = 1; i < labels.length - 1; i++) in the extension.
         for (int i = 1; i < labels.length - 1; i++) {
             String ancestor = String.join(".", Arrays.copyOfRange(labels, i, labels.length));
 
@@ -231,8 +211,10 @@ public final class LocalListUtil {
     }
 
     /**
-     * Returns the number of entries currently loaded for the given descriptor.
-     * Returns {@code 0} if the list has not yet been loaded.
+     * Returns the number of domains currently in the given descriptor's live set.
+     *
+     * @param descriptor The list descriptor to check.
+     * @return The number of domains in the live set, or 0 if the list has not yet been loaded.
      */
     public int size(@NonNull Descriptor descriptor) {
         AtomicReference<State> ref = stateMap.get(descriptor);
@@ -246,10 +228,10 @@ public final class LocalListUtil {
     }
 
     /**
-     * Fetches the latest raw content for the given descriptor and applies it.
-     * Errors are caught and logged; they do not interrupt the update schedule.
-     * <p>
-     * Mirrors {@code LocalLists.fetchAndUpdate()} from the extension.
+     * Fetches the list content from the descriptor's URL and updates the live domain set.
+     * If the content is unchanged from the last successful fetch, the update is skipped.
+     *
+     * @param descriptor The list descriptor to fetch and update.
      */
     private void fetchAndUpdate(@NonNull Descriptor descriptor) {
         try {
@@ -261,12 +243,12 @@ public final class LocalListUtil {
     }
 
     /**
-     * Fetches the raw content string for the given descriptor.
-     * <p>
-     * Mirrors {@code LocalLists.fetchJson()} from the extension (handles both JSON and plain-text).
+     * Fetches the raw content string from the descriptor's URL.
+     * Validates that the response has a 200 status code and an expected content type.
+     * Enforces a maximum response size of 50 MiB to prevent OOM errors.
      *
-     * @return The raw content string.
-     * @throws Exception If the fetch fails (non-200, wrong content-type, empty body, I/O error).
+     * @param descriptor The list descriptor to fetch.
+     * @return The raw content string from the response.
      */
     private static @NonNull String fetchRaw(@NonNull Descriptor descriptor) throws Exception {
         HttpGet request = new HttpGet(descriptor.url);
@@ -298,15 +280,13 @@ public final class LocalListUtil {
     }
 
     /**
-     * Applies freshly fetched raw content to a descriptor's runtime state.
-     * Compares against the currently loaded raw content and skips the rebuild if unchanged.
-     * <p>
-     * Mirrors {@code LocalLists.applyJson()} from the extension.
+     * Parses the raw content and updates the live domain set for the given descriptor.
+     * If the content is unchanged from the last successful fetch, the update is skipped.
      *
-     * @param descriptor The descriptor whose state to update.
-     * @param rawContent The newly fetched raw content string.
+     * @param descriptor The list descriptor to update.
+     * @param rawContent The raw content string to parse and apply.
      */
-    private void applyContent(@NonNull Descriptor descriptor, @NonNull String rawContent) {
+    private static void applyContent(@NonNull Descriptor descriptor, @NonNull String rawContent) {
         AtomicReference<State> ref = stateMap.get(descriptor);
         State current = ref.get();
 
@@ -333,12 +313,11 @@ public final class LocalListUtil {
     }
 
     /**
-     * Parses a JSON array of hostname strings into a set of lower-cased, trimmed hostnames.
-     * Non-string and empty entries are silently ignored.
-     * <p>
-     * Mirrors {@code LocalLists.parseJson()} from the extension.
+     * Parses JSON content into a set of hostnames.
+     * Expects a JSON array of strings. Null entries and empty strings are ignored.
+     * Leading/trailing whitespace is trimmed, and all entries are normalized to lower-case.
      *
-     * @param rawJson The raw JSON text from the list endpoint.
+     * @param rawJson The raw JSON content from the list endpoint.
      * @return A set of hostnames.
      */
     private static @NonNull Set<String> parseJson(@NonNull String rawJson) {
@@ -360,14 +339,12 @@ public final class LocalListUtil {
     }
 
     /**
-     * Parses a plain-text file (one hostname per line) into a set of lower-cased,
-     * trimmed hostnames. Blank lines and lines beginning with {@code #} are ignored.
-     * Hosts-file format ({@code 127.0.0.1\thostname.com}) is handled by taking the
-     * tab-delimited second field.
-     * <p>
-     * Mirrors {@code LocalLists.parsePlainText()} from the extension.
+     * Parses plain text content into a set of hostnames.
+     * Lines starting with '#' and blank lines are ignored as comments.
+     * For lines in hosts file format (e.g. "127.0.0.1"), only the part after the first tab is considered.
+     * Leading "www." is stripped and all entries are normalized to lower-case.
      *
-     * @param rawText The raw plain-text content from the list endpoint.
+     * @param rawText The raw text content from the list endpoint.
      * @return A set of hostnames.
      */
     private static @NonNull Set<String> parsePlainText(@NonNull String rawText) {

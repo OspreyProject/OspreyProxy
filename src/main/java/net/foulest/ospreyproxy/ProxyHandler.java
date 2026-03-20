@@ -104,17 +104,12 @@ public class ProxyHandler {
         this.alphaMountainProvider = alphaMountainProvider;
         this.precisionSecProvider = precisionSecProvider;
         this.phishingBoxProvider = phishingBoxProvider;
-        ProxyHandler.localListUtil = localListUtil;
 
         // Pre-warm Jackson type metadata
         JacksonUtil.MAPPER.constructType(Map.class);
         JacksonUtil.MAPPER.constructType(String.class);
         JacksonUtil.MAPPER.constructType(Object.class);
     }
-
-    // -------------------------------------------------------------------------
-    // Endpoints
-    // -------------------------------------------------------------------------
 
     /**
      * Handles POST requests to the /alphamountain endpoint.
@@ -151,10 +146,6 @@ public class ProxyHandler {
                                                     @NonNull HttpServletRequest request) {
         return proxyRequest(body, request, phishingBoxProvider);
     }
-
-    // -------------------------------------------------------------------------
-    // Core proxy logic
-    // -------------------------------------------------------------------------
 
     /**
      * Core method implementing all proxy logic: IP extraction, rate limiting,
