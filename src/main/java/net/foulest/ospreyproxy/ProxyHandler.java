@@ -295,11 +295,6 @@ public class ProxyHandler {
         // Records the request for our stats
         StatsUtil.recordRequest(providerName);
 
-        // Skips upstream call and returns fake response for stress tests
-        if (StressTestUtil.isEnabled()) {
-            return ErrorUtil.RESP_200;
-        }
-
         // Sends the normalized URL string to the upstream provider
         String normalizedUrl = parsedUri.toString();
         if (provider instanceof PhishingBoxProvider) {
@@ -446,8 +441,6 @@ public class ProxyHandler {
                         log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
                     }
 
-                    CircuitBreakerUtil.recordFailure(providerName);
-
                     return switch (statusCode) {
                         case 400 -> ErrorUtil.RESP_400;
                         case 401 -> ErrorUtil.RESP_401;
@@ -498,8 +491,6 @@ public class ProxyHandler {
                 // Pass through the validated raw bytes as a UTF-8 string
                 String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-                // Record success now that the response is fully validated
-                CircuitBreakerUtil.recordSuccess(providerName);
 
                 // Return the response body to the client
                 return ResponseEntity.ok()
@@ -508,14 +499,12 @@ public class ProxyHandler {
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             log.error("[{}] Upstream request timed out: {} ({})", providerName, e.getMessage(), e.getClass().getName());
-            CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
             log.error("[{}] Upstream request blocked by SSRF resolver: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
-            CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_502;
         }
     }
@@ -564,12 +553,6 @@ public class ProxyHandler {
         // Sustained rate limit check (consumes one token)
         if (RateLimitUtil.isSustainedBlocked(provider, hashedIp, providerName)) {
             throw new StatusCodeException(ErrorUtil.RESP_429);
-        }
-
-        // Short-circuit immediately if the provider's circuit breaker is open
-        if (CircuitBreakerUtil.isOpen(providerName)) {
-            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
-            throw new StatusCodeException(ErrorUtil.RESP_503);
         }
         return hashedIp;
     }

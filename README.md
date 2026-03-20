@@ -25,15 +25,10 @@ for [Osprey: Browser Protection](https://osprey.ac).
   defense-in-depth.
 - **Annotation-based routing**: Uses Spring MVC's `@RestController` API for clean, declarative endpoint definitions
   with virtual thread execution, allowing blocking upstream HTTP calls to park rather than occupy platform threads.
-- **Circuit breaker**: Per-provider circuit breaker opens after 5 consecutive upstream failures, immediately
-  rejecting requests with 503 rather than waiting on timeouts. Transitions to half-open after a 30-second cooldown,
-  allowing a single probe request through. Closes automatically on a successful probe.
 - **Security by default**: HSTS, CSP, X-Frame-Options, Content-Type enforcement, Referrer-Policy, Permissions-Policy,
   no redirect following, no error detail leakage, server header suppressed, and API keys loaded from environment
   variables. Bounded upstream connection pool (200 max connections) with 5-second connect, response, and connection
   request timeouts.
-- **Built-in stress testing**: Toggle a single property (`ospreyproxy.stress-test-mode=true`) to bypass upstream
-  providers and load test the full request pipeline with synthetic IPs. Must never be enabled in production!
 
 ## Privacy
 
