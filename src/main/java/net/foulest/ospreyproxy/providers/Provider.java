@@ -43,6 +43,13 @@ public interface Provider {
     String getName();
 
     /**
+     * Whether the provider is enabled.
+     *
+     * @return {@code true} if the provider is enabled, {@code false} otherwise.
+     */
+    boolean isEnabled();
+
+    /**
      * The base upstream API URL.
      *
      * @return The upstream API URL.

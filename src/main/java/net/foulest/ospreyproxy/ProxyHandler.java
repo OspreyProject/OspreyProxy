@@ -214,6 +214,11 @@ public class ProxyHandler {
             return e.getStatus();
         }
 
+        // Checks if the provider is enabled
+        if (!provider.isEnabled()) {
+            return ErrorUtil.RESP_503;
+        }
+
         Map<String, String> incoming;
 
         // Validates the request's body

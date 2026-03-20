@@ -137,6 +137,11 @@ public class PrecisionSecProvider implements Provider {
     }
 
     @Override
+    public boolean isEnabled() {
+        return false;
+    }
+
+    @Override
     public @NonNull String getApiUrl() {
         return API_URL;
     }

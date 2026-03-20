@@ -133,6 +133,11 @@ public class PhishingBoxProvider implements Provider {
         return "PhishingBox";
     }
 
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+
     /**
      * Returns the expected API key for inbound PhishingBox requests.
      * Used by {@code ProxyHandler} to authenticate requests to the {@code /phishingbox} endpoint.

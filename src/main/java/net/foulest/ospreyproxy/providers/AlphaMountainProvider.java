@@ -140,6 +140,11 @@ public class AlphaMountainProvider implements Provider {
     }
 
     @Override
+    public boolean isEnabled() {
+        return true;
+    }
+
+    @Override
     public @NonNull String getApiUrl() {
         return API_URL;
     }
