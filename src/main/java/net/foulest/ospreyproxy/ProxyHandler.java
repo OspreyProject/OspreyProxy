@@ -546,10 +546,8 @@ public class ProxyHandler {
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
         }
 
-        // Hashes the IP for rate limiting, or uses a synthetic IP in stress test mode
-        String hashedIp = StressTestUtil.isEnabled()
-                ? StressTestUtil.newSyntheticIp()
-                : HashUtil.hashIp(realIp);
+        // Hashes the IP for rate limiting
+        String hashedIp = HashUtil.hashIp(realIp);
 
         // Invalid-request block check (no token consumed here)
         if (provider.isInvalidRequestBlocked(hashedIp)) {
