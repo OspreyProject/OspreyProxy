@@ -394,7 +394,7 @@ public class ProxyHandler {
             return HTTP_CLIENT.execute(request, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
-                byte[] responseBytes = EntityUtils.toByteArray(entity);
+                byte[] responseBytes = EntityUtils.toByteArray(entity, 10_000);
 
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
@@ -417,12 +417,6 @@ public class ProxyHandler {
                 // Rejects empty responses
                 if (responseBytes == null || responseBytes.length == 0) {
                     log.error("[{}] Upstream response was empty", providerName);
-                    return ErrorUtil.RESP_502;
-                }
-
-                // Rejects responses that exceed the maximum allowed size (10 KB)
-                if (responseBytes.length > 10_000) {
-                    log.error("[{}] Upstream response exceeded maximum size: {} bytes", providerName, responseBytes.length);
                     return ErrorUtil.RESP_502;
                 }
 
