@@ -74,10 +74,10 @@ public final class HashUtil {
     }
 
     /**
-     * Hashes the IP address using SHA-256 with a salt to prevent rainbow table attacks.
+     * Hashes the IP address using HMAC-SHA-256 with a salt to prevent rainbow table attacks.
      * Caffeine's {@link Cache#get(Object, Function)} uses an optimistic fast-path for cache
      * hits internally without locking, so no manual {@code getIfPresent()} check is needed.
-     * Uses {@code ThreadLocal<MessageDigest>} to avoid getInstance() overhead on misses.
+     * Uses {@code ThreadLocal<Mac>} to avoid getInstance() overhead on misses.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.

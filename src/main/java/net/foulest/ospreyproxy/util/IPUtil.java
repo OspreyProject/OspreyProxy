@@ -253,7 +253,7 @@ public final class IPUtil {
      * @return {@code true} if the host looks like an IP literal, {@code false} if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
-    private static boolean isIpLiteral(@NonNull String host) {
+    public static boolean isIpLiteral(@NonNull String host) {
         // IPv6 literals from URI.getHost() come without brackets (e.g., "::1").
         // Port-separated colons (e.g., "host:8080") cannot appear here because
         // URI.getHost() returns only the host component with the port stripped.

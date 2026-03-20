@@ -26,7 +26,6 @@ import java.io.ByteArrayOutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.regex.Pattern;
 
 /**
  * Utility class for building DNS queries in wire format and encoding them for DoH (DNS over HTTPS) requests.
