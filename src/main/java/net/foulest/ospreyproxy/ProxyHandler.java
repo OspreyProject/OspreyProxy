@@ -420,11 +420,10 @@ public class ProxyHandler {
 
                     return switch (statusCode) {
                         case 400 -> ErrorUtil.RESP_400;
-                        case 401 -> ErrorUtil.RESP_401;
+                        case 401, 498 -> ErrorUtil.RESP_401;
                         case 404 -> ErrorUtil.RESP_404;
                         case 415 -> ErrorUtil.RESP_415;
                         case 429 -> ErrorUtil.RESP_429;
-                        case 498 -> ErrorUtil.RESP_498;
                         default -> ErrorUtil.RESP_502;
                     };
                 }

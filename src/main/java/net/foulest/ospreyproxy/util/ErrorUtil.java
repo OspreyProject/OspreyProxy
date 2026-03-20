@@ -31,27 +31,23 @@ import org.springframework.http.ResponseEntity;
 public final class ErrorUtil {
 
     // Pre-computed response body strings
-    private static final String BODY_200 = body(HttpStatus.OK.getReasonPhrase());
     public static final String BODY_400 = body(HttpStatus.BAD_REQUEST.getReasonPhrase());
     private static final String BODY_401 = body(HttpStatus.UNAUTHORIZED.getReasonPhrase());
     private static final String BODY_404 = body(HttpStatus.NOT_FOUND.getReasonPhrase());
     private static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
     public static final String BODY_415 = body(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
     private static final String BODY_429 = body(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase());
-    private static final String BODY_498 = body("Invalid Token");
     private static final String BODY_502 = body(HttpStatus.BAD_GATEWAY.getReasonPhrase());
     private static final String BODY_503 = body(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase());
     private static final String BODY_504 = body(HttpStatus.GATEWAY_TIMEOUT.getReasonPhrase());
 
     // Pre-built ResponseEntity instances for the most frequently returned errors
-    public static final ResponseEntity<String> RESP_200 = build(HttpStatus.OK, BODY_200);
     public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
     public static final ResponseEntity<String> RESP_401 = build(HttpStatus.UNAUTHORIZED, BODY_401);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
     public static final ResponseEntity<String> RESP_405 = build(HttpStatus.METHOD_NOT_ALLOWED, BODY_405);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
     public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);
-    public static final ResponseEntity<String> RESP_498 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_498);
     public static final ResponseEntity<String> RESP_502 = build(HttpStatus.BAD_GATEWAY, BODY_502);
     public static final ResponseEntity<String> RESP_503 = build(HttpStatus.SERVICE_UNAVAILABLE, BODY_503);
     public static final ResponseEntity<String> RESP_504 = build(HttpStatus.GATEWAY_TIMEOUT, BODY_504);
