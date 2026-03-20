@@ -153,7 +153,7 @@ public class PrecisionSecProvider implements Provider {
 
     @Override
     public @NonNull Map<String, String> getHeaders() {
-        return Map.of("API-Key", API_KEY);
+        return API_KEY != null ? Map.of("API-Key", API_KEY) : Map.of();
     }
 
     @Override
