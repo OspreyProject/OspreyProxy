@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.AlphaMountainProvider;
 import net.foulest.ospreyproxy.providers.PrecisionSecProvider;
 import net.foulest.ospreyproxy.providers.Provider;
@@ -53,9 +54,12 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * REST controller for all proxy endpoints.
@@ -178,262 +182,70 @@ public class ProxyHandler {
     public static ResponseEntity<String> proxyRequest(byte[] bodyBytes,
                                                       @NonNull HttpServletRequest request,
                                                       @NonNull Provider provider) {
-        // ------------------------------------------------
-        // IP Extraction and Rate Limiting
-        // ------------------------------------------------
-
-        // Resolves client IP from X-Real-IP header (set by Nginx)
-        // NOTE: Ensure your VPS is behind Cloudflare + Nginx with a firewall
-        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits
-        String realIp = request.getHeader("X-Real-IP");
-
-        // Fallback to remote address if X-Real-IP is missing or empty
-        if (realIp == null || realIp.isBlank()) {
-            String remoteAddr = request.getRemoteAddr();
-            realIp = (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr : "unknown";
-        }
-
         String providerName = provider.getName();
+        String hashedIp;
 
-        // Logs a warning if we couldn't determine the client's IP address
-        if (realIp.equals("unknown")) {
-            log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
-        }
-
-        // Hashes the IP for rate limiting, or uses a synthetic IP in stress test mode
-        String hashedIp = StressTestUtil.isEnabled()
-                ? StressTestUtil.newSyntheticIp()
-                : HashUtil.hashIp(realIp);
-
-        // Invalid-request block check (no token consumed here)
-        if (provider.isInvalidRequestBlocked(hashedIp)) {
-            String violatorId = provider.getViolatorId(hashedIp);
-            log.warn("[{}] 'Invalid request' rate limit active for {}", providerName, violatorId);
-            return ErrorUtil.RESP_429;
-        }
-
-        // Burst rate limit check (consumes one token)
-        if (RateLimitUtil.isBurstBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.RESP_429;
-        }
-
-        // Sustained rate limit check (consumes one token)
-        if (RateLimitUtil.isSustainedBlocked(provider, hashedIp, providerName)) {
-            return ErrorUtil.RESP_429;
-        }
-
-        // Short-circuit immediately if the provider's circuit breaker is open
-        if (CircuitBreakerUtil.isOpen(providerName)) {
-            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
-            return ErrorUtil.RESP_503;
-        }
-
-        // ------------------------------------------------
-        // Request Body Parsing and Validation
-        // ------------------------------------------------
-
-        byte[] bytes = (bodyBytes != null) ? bodyBytes : new byte[0];
-
-        // Rejects empty bodies
-        if (bytes.length == 0) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty body",
-                    ErrorUtil.RESP_400
-            );
+        // Validates and rate-limits the IP
+        try {
+            hashedIp = validateIP(request, provider, providerName);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
         Map<String, String> incoming;
 
-        // Parses the request body as JSON
+        // Validates the request's body
         try {
-            incoming = MAPPER.readValue(bytes, MAP_TYPE);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed JSON body: " + e.getMessage() + " (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400
-            );
+            incoming = validateBody(bodyBytes, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
-        // Rejects a null parse result (e.g., body was the JSON literal "null")
-        if (incoming == null) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with null JSON body",
-                    ErrorUtil.RESP_400
-            );
-        }
-
-        // Rejects unexpected fields
-        if (incoming.size() > 1) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with unexpected fields",
-                    ErrorUtil.RESP_400
-            );
-        }
-
-        // Rejects non-string url values
-        try (JsonParser validator = MAPPER.createParser(bytes)) {
-            JsonToken token;
-            boolean inUrlValue = false;
-
-            while ((token = validator.nextToken()) != null) {
-                if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
-                    inUrlValue = true;
-                } else if (inUrlValue) {
-                    if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
-                        return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                                "Blocked request with non-string url value", ErrorUtil.RESP_400);
-                    }
-                    break;
-                }
             }
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected malformed JSON body on request: {} ({})",
-                    providerName, e.getMessage(), e.getClass().getName()
-            );
-            return ErrorUtil.RESP_400;
         }
-
-        // ------------------------------------------------
-        // URL Normalization and Validation
-        // ------------------------------------------------
 
         @SuppressWarnings("NestedMethodCall")
         String url = Objects.toString(incoming.get("url"), "").trim();
-
-        // Rejects missing or empty URLs
-        if (url.isBlank()) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with missing or empty URL",
-                    ErrorUtil.RESP_400
-            );
-        }
-
-        // Rejects excessively long URLs
-        int length = url.length();
-        if (length > 8192) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with excessively long URL (" + length + " characters)",
-                    ErrorUtil.RESP_400
-            );
-        }
-
-        // Normalizes and validates URL syntax
         URI parsedUri;
+
+        // Validates the request's URI
         try {
-            String encoded = IPUtil.encodeIllegalUriChars(url);
-            parsedUri = new URI(encoded).normalize();
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")",
-                    ErrorUtil.RESP_400
-            );
+            parsedUri = validateURI(url, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
-        String scheme = parsedUri.getScheme();
+        String scheme;
 
-        // Prepends https:// for schemeless URLs (e.g., example.com)
-        if (scheme == null) {
-            try {
-                parsedUri = new URI("https://" + parsedUri).normalize();
-                parsedUri.toURL();
-                scheme = parsedUri.getScheme();
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.error("[{}] Unexpected error during URL normalization for '{}': {}", providerName, parsedUri, e.getMessage());
-                return ErrorUtil.RESP_400;
-            }
-        }
-
-        scheme = scheme.toLowerCase(Locale.ROOT);
-
-        // Rejects unsupported schemes (only http and https allowed)
-        if (!scheme.equals("http") && !scheme.equals("https")) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with disallowed URL scheme", ErrorUtil.RESP_400);
-        }
-
-        String host = parsedUri.getHost();
-
-        // Extracts host from authority if getHost() is null
-        if (host == null || host.isBlank()) {
-            String authority = parsedUri.getRawAuthority();
-
-            // Rejects requests with no authority/host component
-            if (authority == null || authority.isBlank()) {
-                return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with no host", ErrorUtil.RESP_400);
-            }
-
-            // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
-            if (authority.charAt(0) == '[' && authority.contains("]")) {
-                int endIndex = authority.indexOf(']');
-                host = authority.substring(1, endIndex);
-            } else {
-                int lastColon = authority.lastIndexOf(':');
-                host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
-            }
-        }
-
-        host = host.toLowerCase(Locale.ROOT);
-
-        // Removes leading dot(s)
-        while (!host.isBlank() && host.charAt(0) == '.') {
-            host = host.substring(1);
-        }
-
-        // Removes trailing dot(s)
-        while (!host.isBlank() && host.charAt(host.length() - 1) == '.') {
-            host = host.substring(0, host.length() - 1);
-        }
-
-        // Rejects hosts that are empty after normalization
-        if (host.isBlank()) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty host", ErrorUtil.RESP_400);
-        }
-
-        // Rejects hosts without a . symbol
-        if (!host.contains(".")) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with host missing dot", ErrorUtil.RESP_400);
-        }
-
-        // Reconstructs the URI with the normalized host and scheme
+        // Validates the domain's scheme
         try {
-            int port = parsedUri.getPort();
-
-            // Rejects ports outside the valid range (1-65535); -1 means no port specified
-            if (port != -1 && (port < 1 || port > 65535)) {
-                return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with invalid port: " + port, ErrorUtil.RESP_400);
-            }
-
-            String authority = port == -1 ? host : (host + ":" + port);
-            String rawPath = parsedUri.getRawPath();
-            String rawQuery = parsedUri.getRawQuery();
-            String schemeSpecific = "//" + authority + (rawPath != null ? rawPath : "") + (rawQuery != null ? "?" + rawQuery : "");
-            parsedUri = new URI(scheme, schemeSpecific, null);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected URI reconstruction failure for '{}': {}", providerName, host, e.getMessage());
-            return ErrorUtil.RESP_502;
+            scheme = validateScheme(parsedUri, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
-        // Blocks private/internal hosts (string-based checks; IP-level blocking happens
-        // inside IPUtil's DNS resolver at connection time to prevent DNS rebinding)
-        if (IPUtil.isPrivateHost(host)) {
-            return RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request to private/internal host", ErrorUtil.RESP_400);
+        String host;
+
+        // Validates the domain's host
+        try {
+            host = validateHost(parsedUri, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
-        boolean isIpLiteral = host.contains(":") || host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
-
-        // Rejects hostnames that don't exist in DNS (doesn't log)
-        if (!isIpLiteral && !DoHUtil.hostExists(host)) {
-            return ErrorUtil.RESP_400;
+        // Reconstructs the domain's URI
+        try {
+            parsedUri = reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
         }
 
-        // ------------------------------------------------
-        // Provider-Specific URL Modifications
-        // ------------------------------------------------
+        // Validates the domain's DNS
+        try {
+            validateDNS(parsedUri, host, provider, providerName, hashedIp);
+        } catch (StatusCodeException e) {
+            return e.getStatus();
+        }
 
         // PrecisionSec only wants the bare domain, no scheme/path/query/fragment
         // Example: https://example.com/some/path?q=1 -> example.com
@@ -441,14 +253,11 @@ public class ProxyHandler {
             try {
                 parsedUri = new URI(host);
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.error("[{}] Unexpected PrecisionSec URI reconstruction failure for '{}': {}", providerName, host, e.getMessage());
+                log.error("[{}] Unexpected PrecisionSec URI reconstruction failure for '{}': {} ({})",
+                        providerName, parsedUri, e.getMessage(), e.getClass().getName());
                 return ErrorUtil.RESP_502;
             }
         }
-
-        // ------------------------------------------------
-        // Upstream Request Execution
-        // ------------------------------------------------
 
         // Records the request for our stats
         StatsUtil.recordRequest(providerName);
@@ -494,7 +303,8 @@ public class ProxyHandler {
                 try {
                     jsonBody = MAPPER.writeValueAsString(requestBody);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.error("[{}] Failed to serialize request body: {}", providerName, e.getMessage());
+                    log.error("[{}] Failed to serialize request body for '{}': {} ({})",
+                            providerName, normalizedUrl, e.getMessage(), e.getClass().getName());
                     return ErrorUtil.RESP_502;
                 }
             }
@@ -510,8 +320,8 @@ public class ProxyHandler {
         }
 
         try {
+            // Executes the request and processes the response
             ClassicHttpRequest request = requestBuilder.build();
-
             return HTTP_CLIENT.execute(request, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
@@ -569,7 +379,8 @@ public class ProxyHandler {
                         }
                     }
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.error("[{}] Failed to parse upstream response as JSON: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+                    log.error("[{}] Failed to parse upstream response as JSON: {} ({})",
+                            providerName, e.getMessage(), e.getClass().getName());
                     return ErrorUtil.RESP_502;
                 }
 
@@ -595,6 +406,375 @@ public class ProxyHandler {
             log.error("[{}] Unexpected error during upstream request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             CircuitBreakerUtil.recordFailure(providerName);
             return ErrorUtil.RESP_502;
+        }
+    }
+
+    /**
+     * Validates and rate-limits a request's IP address, and returns a hashed IP.
+     *
+     * @param request The request to validate.
+     * @param provider The provider to check rate limits against.
+     * @param providerName The name of the provider.
+     * @return A hashed representation of the client's IP address for rate limiting purposes.
+     * @throws StatusCodeException If the IP address is found to be invalid/blocked.
+     */
+    private static String validateIP(@NonNull HttpServletRequest request, Provider provider, String providerName) {
+        // Resolves client IP from X-Real-IP header (set by Nginx)
+        // NOTE: Ensure your VPS is behind Cloudflare + Nginx with a firewall
+        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits
+        String realIp = request.getHeader("X-Real-IP");
+
+        // Fallback to remote address if X-Real-IP is missing or empty
+        if (realIp == null || realIp.isBlank()) {
+            String remoteAddr = request.getRemoteAddr();
+            realIp = (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr : "unknown";
+        }
+
+        // Logs a warning if we couldn't determine the client's IP address
+        if (realIp.equals("unknown")) {
+            log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
+        }
+
+        // Hashes the IP for rate limiting, or uses a synthetic IP in stress test mode
+        String hashedIp = StressTestUtil.isEnabled()
+                ? StressTestUtil.newSyntheticIp()
+                : HashUtil.hashIp(realIp);
+
+        // Invalid-request block check (no token consumed here)
+        if (provider.isInvalidRequestBlocked(hashedIp)) {
+            String violatorId = provider.getViolatorId(hashedIp);
+            log.warn("[{}] 'Invalid request' rate limit active for {}", providerName, violatorId);
+            throw new StatusCodeException(ErrorUtil.RESP_429);
+        }
+
+        // Burst rate limit check (consumes one token)
+        if (RateLimitUtil.isBurstBlocked(provider, hashedIp, providerName)) {
+            throw new StatusCodeException(ErrorUtil.RESP_429);
+        }
+
+        // Sustained rate limit check (consumes one token)
+        if (RateLimitUtil.isSustainedBlocked(provider, hashedIp, providerName)) {
+            throw new StatusCodeException(ErrorUtil.RESP_429);
+        }
+
+        // Short-circuit immediately if the provider's circuit breaker is open
+        if (CircuitBreakerUtil.isOpen(providerName)) {
+            log.warn("[{}] Circuit breaker OPEN; rejecting request without upstream call", providerName);
+            throw new StatusCodeException(ErrorUtil.RESP_503);
+        }
+        return hashedIp;
+    }
+
+    /**
+     * Validates the {@code API-Key} request header for PhishingBox requests.
+     * The key must be present and must exactly match the value of the
+     * {@code PHISHINGBOX_API_KEY} environment variable.
+     *
+     * @param request The incoming servlet request.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @throws StatusCodeException If the header is missing or does not match.
+     */
+    private static void validateApiKeyHeader(@NonNull HttpServletRequest request, Provider provider,
+                                             String providerName, String hashedIp) {
+        String providedKey = request.getHeader("API-Key");
+        String expectedKey = PhishingBoxProvider.getApiKey();
+
+        if (providedKey == null || providedKey.isBlank()) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked PhishingBox request with missing API-Key header");
+            throw new StatusCodeException(ErrorUtil.RESP_401);
+        }
+
+        if (!providedKey.equals(expectedKey)) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked PhishingBox request with invalid API-Key header");
+            throw new StatusCodeException(ErrorUtil.RESP_401);
+        }
+    }
+
+    /**
+     * Validates a request's body.
+     *
+     * @param bodyBytes The raw request body bytes to validate.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @return A map containing the parsed body fields if valid.
+     * @throws StatusCodeException If the body is found to be invalid.
+     */
+    private static @NonNull Map<String, String> validateBody(byte[] bodyBytes, Provider provider, String providerName, String hashedIp) {
+        byte[] bytes = (bodyBytes != null) ? bodyBytes : new byte[0];
+
+        // Rejects empty bodies
+        if (bytes.length == 0) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with empty body");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        Map<String, String> incoming;
+
+        // Parses the request body as JSON
+        try {
+            incoming = MAPPER.readValue(bytes, MAP_TYPE);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with malformed JSON body: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Rejects a null parse result (e.g., body was the JSON literal "null")
+        if (incoming == null) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with null JSON body");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Rejects unexpected fields
+        if (incoming.size() > 1) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with unexpected fields");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Rejects non-string url values
+        try (JsonParser validator = MAPPER.createParser(bytes)) {
+            JsonToken token;
+            boolean inUrlValue = false;
+
+            while ((token = validator.nextToken()) != null) {
+                if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
+                    inUrlValue = true;
+                } else if (inUrlValue) {
+                    if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
+                        RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                                "Blocked request with non-string url value: " + token + " (" + token.asString() + ")");
+                        throw new StatusCodeException(ErrorUtil.RESP_400);
+                    }
+                    break;
+                }
+            }
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.error("[{}] Unexpected malformed JSON body on request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+        return incoming;
+    }
+
+    /**
+     * Validates a request's URI.
+     *
+     * @param url The raw URL string to validate.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @return A normalized URI object if the URL is valid.
+     * @throws StatusCodeException If the URL is found to be invalid.
+     */
+    private static URI validateURI(@NonNull String url, Provider provider, String providerName, String hashedIp) {
+        // Rejects missing or empty URLs
+        if (url.isBlank()) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with missing or empty URL");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Rejects excessively long URLs
+        int length = url.length();
+        if (length > 8192) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with excessively long URL (" + length + " characters)");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Normalizes and validates URL syntax
+        URI parsedUri;
+        try {
+            String encoded = IPUtil.encodeIllegalUriChars(url);
+            parsedUri = new URI(encoded).normalize();
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Prepends https:// for schemeless URLs (e.g., example.com)
+        // new URI("example.com") parses the input as a path, not a host,
+        // so we must fix this before validateHost runs.
+        if (parsedUri.getScheme() == null) {
+            try {
+                parsedUri = new URI("https://" + parsedUri).normalize();
+                parsedUri.toURL();
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+                throw new StatusCodeException(ErrorUtil.RESP_400);
+            }
+        }
+
+        return parsedUri;
+    }
+
+    /**
+     * Validates a request's scheme.
+     *
+     * @param parsedUri The parsed URI object to take the scheme from.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @return The normalized scheme string if valid (e.g., "http" or "https").
+     * @throws StatusCodeException If the scheme is found to be invalid.
+     */
+    private static @NonNull String validateScheme(@NonNull URI parsedUri, Provider provider, String providerName, String hashedIp) {
+        // By the time this is called, validateURI has already prepended https://
+        // for schemeless inputs, so getScheme() is always non-null here.
+        String scheme = parsedUri.getScheme().toLowerCase(Locale.ROOT);
+
+        // Rejects unsupported schemes (only http and https allowed)
+        if (!scheme.equals("http") && !scheme.equals("https")) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with disallowed URL scheme '" + scheme + "': " + parsedUri);
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+        return scheme;
+    }
+
+    /**
+     * Validates a request's host.
+     *
+     * @param parsedUri The parsed URI object to take the host from.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @return The normalized host string if valid.
+     * @throws StatusCodeException If the host is found to be invalid.
+     */
+    private static @NonNull String validateHost(@NonNull URI parsedUri, Provider provider, String providerName, String hashedIp) {
+        String host = parsedUri.getHost();
+
+        // Extracts host from authority if getHost() is null
+        if (host == null || host.isBlank()) {
+            String authority = parsedUri.getRawAuthority();
+
+            // Rejects requests with no authority/host component
+            if (authority == null || authority.isBlank()) {
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with no host: " + parsedUri);
+                throw new StatusCodeException(ErrorUtil.RESP_400);
+            }
+
+            // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
+            if (authority.charAt(0) == '[' && authority.contains("]")) {
+                int endIndex = authority.indexOf(']');
+                host = authority.substring(1, endIndex);
+            } else {
+                int lastColon = authority.lastIndexOf(':');
+                host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
+            }
+        }
+
+        host = host.toLowerCase(Locale.ROOT);
+
+        // Removes leading dot(s)
+        while (!host.isBlank() && host.charAt(0) == '.') {
+            host = host.substring(1);
+        }
+
+        // Removes trailing dot(s)
+        while (!host.isBlank() && host.charAt(host.length() - 1) == '.') {
+            host = host.substring(0, host.length() - 1);
+        }
+
+        // Rejects hosts that are empty after normalization
+        if (host.isBlank()) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with empty host: " + parsedUri);
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        // Rejects hosts without a . symbol
+        if (!host.contains(".")) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with host missing dot: " + parsedUri);
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+        return host;
+    }
+
+    /**
+     * Validates a request's DNS.
+     *
+     * @param parsedUri The parsed URI object to take the host from for DNS validation.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @throws StatusCodeException If the DNS is found to be invalid.
+     */
+    private static void validateDNS(@NonNull URI parsedUri, @NonNull String host, Provider provider, String providerName, String hashedIp) {
+        // Blocks private/internal hosts (string-based checks; IP-level blocking happens
+        // inside IPUtil's DNS resolver at connection time to prevent DNS rebinding)
+        if (IPUtil.isPrivateHost(host)) {
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request to private/internal host: " + parsedUri);
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+
+        boolean isIpLiteral = host.contains(":") || host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
+
+        // Rejects hostnames that don't exist in DNS (doesn't log)
+        if (!isIpLiteral && !DoHUtil.hostExists(host)) {
+            throw new StatusCodeException(ErrorUtil.RESP_400);
+        }
+    }
+
+    /**
+     * Reconstructs a URI with the normalized host and scheme.
+     *
+     * @param parsedUri The parsed URI object to reconstruct.
+     * @param host The normalized host.
+     * @param scheme The normalized scheme.
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The name of the provider.
+     * @param hashedIp The hashed IP address of the sender.
+     * @return The reconstructed URI object.
+     * @throws StatusCodeException If the port is found to be invalid.
+     */
+    private static URI reconstructURI(@NonNull URI parsedUri, @NonNull String host, @NonNull String scheme,
+                                      Provider provider, String providerName, String hashedIp) {
+        // Reconstructs the URI with the normalized host and scheme
+        try {
+            int port = parsedUri.getPort();
+
+            // Rejects ports outside the valid range (1-65535); -1 means no port specified
+            if (port != -1 && (port < 1 || port > 65535)) {
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with invalid port: " + port + " (" + parsedUri + ")");
+                throw new StatusCodeException(ErrorUtil.RESP_400);
+            }
+
+            String authority = port == -1 ? host : (host + ":" + port);
+            String rawPath = parsedUri.getRawPath();
+            String rawQuery = parsedUri.getRawQuery();
+            String schemeSpecific = "//" + authority + (rawPath != null ? rawPath : "") + (rawQuery != null ? "?" + rawQuery : "");
+            parsedUri = new URI(scheme, schemeSpecific, null);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.error("[{}] Unexpected URI reconstruction failure for '{}': {} ({})", providerName, parsedUri, e.getMessage(), e.getClass().getName());
+            throw new StatusCodeException(ErrorUtil.RESP_502);
+        }
+        return parsedUri;
+    }
+
+    /**
+     * Retrieves the result of a {@link CompletableFuture}, returning {@code false}
+     * if the future completed exceptionally or was cancelled (e.g., due to timeout).
+     *
+     * @param future       The future to harvest.
+     * @param providerName The provider name for logging context.
+     * @param sourceName   The source name for logging context.
+     * @return The future's boolean value, or {@code false} on failure.
+     */
+    private static boolean safeGet(@NonNull CompletableFuture<Boolean> future,
+                                   @NonNull String providerName,
+                                   @NonNull String sourceName) {
+        try {
+            return Boolean.TRUE.equals(future.getNow(false));
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.warn("[{}] Source '{}' did not complete in time or failed: {} ({})",
+                    providerName, sourceName, e.getMessage(), e.getClass().getName());
+            return false;
         }
     }
 }
