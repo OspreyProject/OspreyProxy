@@ -292,7 +292,12 @@ public final class IPUtil {
      * @return The encoded URL.
      */
     public static @NonNull String encodeIllegalUriChars(@NonNull String url) {
-        return url.replace("[", "%5B")
+        // Encode bare % signs that are not part of a valid percent-encoded sequence
+        // (e.g. /% or /%s=%q) before the character replacements below, which themselves
+        // emit %-prefixed sequences and must not be double-encoded.
+        String result = url.replaceAll("%(?![0-9a-fA-F]{2})", "%25");
+
+        return result.replace("[", "%5B")
                 .replace("]", "%5D")
                 .replace("|", "%7C")
                 .replace("{", "%7B")
