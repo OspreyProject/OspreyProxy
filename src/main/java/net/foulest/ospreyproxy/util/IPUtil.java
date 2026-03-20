@@ -24,9 +24,11 @@ import org.apache.hc.client5.http.DnsResolver;
 import org.jspecify.annotations.NonNull;
 
 import java.net.*;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Utility class for checking if an IP address or hostname is private/internal to prevent SSRF attacks.
@@ -74,9 +76,8 @@ public final class IPUtil {
          * @return The canonical hostname.
          */
         @Override
-        public String resolveCanonicalHostname(String host) throws UnknownHostException {
-            InetAddress addr = InetAddress.getByName(host);
-            return addr.getCanonicalHostName();
+        public String resolveCanonicalHostname(String host) {
+            return host;
         }
     };
 
@@ -109,6 +110,11 @@ public final class IPUtil {
                 return true;
             }
 
+            // "This network" range (0.0.0.0/8, RFC 1122)
+            if (first == 0) {
+                return true;
+            }
+
             // Carrier-grade NAT range (100.64.0.0/10)
             if (first == 100 && second >= 64 && second <= 127) {
                 return true;
@@ -118,7 +124,13 @@ public final class IPUtil {
             if (first == 192 && second == 0 && (bytes[2] & 0xFF) == 2) {
                 return true;
             }
+            if (first == 192 && second == 0 && (bytes[2] & 0xFF) == 0) {
+                return true;
+            }
             if (first == 198 && second == 51 && (bytes[2] & 0xFF) == 100) {
+                return true;
+            }
+            if (first == 198 && second >= 18 && second <= 19) {
                 return true;
             }
             if (first == 203 && second == 0 && (bytes[2] & 0xFF) == 113) {
@@ -197,22 +209,11 @@ public final class IPUtil {
      * @return {@code true} if the host is considered private/internal, {@code false} otherwise.
      */
     public static boolean isPrivateHost(@NonNull String host) {
-        // Strip trailing DNS root dot(s)
-        int end = host.length();
+        host = normalize(host);
 
-        while (end > 0 && host.charAt(end - 1) == '.') {
-            end--;
-        }
-
-        // If the host was entirely dots, treat it as invalid/private
-        if (end == 0) {
+        // Checks if the host is empty
+        if (host.isEmpty()) {
             return true;
-        }
-
-        // Work with the stripped host for all subsequent checks
-        // host is already lowercase at call sites; no re-lowercasing needed
-        if (end < host.length()) {
-            host = host.substring(0, end);
         }
 
         // Block known internal hostnames by name
@@ -288,9 +289,7 @@ public final class IPUtil {
      * @return The encoded URL.
      */
     public static @NonNull String encodeIllegalUriChars(@NonNull String url) {
-        // Encode bare % signs that are not part of a valid percent-encoded sequence
-        // (e.g. /% or /%s=%q) before the character replacements below, which themselves
-        // emit %-prefixed sequences and must not be double-encoded.
+        url = Normalizer.normalize(url, Normalizer.Form.NFC);
         String result = url.replaceAll("%(?![0-9a-fA-F]{2})", "%25");
 
         return result.replace("[", "%5B")

@@ -59,7 +59,7 @@ public final class ErrorUtil {
      * @return A JSON string of the form {"error":"message"}.
      */
     private static @NonNull String body(@NonNull String message) {
-        return "{\"error\":\"" + message + "\"}";
+        return "{\"error\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
     }
 
     /**

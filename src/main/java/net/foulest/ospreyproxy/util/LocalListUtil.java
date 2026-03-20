@@ -27,6 +27,7 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
@@ -162,7 +163,7 @@ public final class LocalListUtil {
 
         for (Descriptor descriptor : Descriptor.values()) {
             // Immediate fetch on startup, then repeat every 5 minutes
-            scheduler.scheduleAtFixedRate(
+            scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
                     0L,
                     UPDATE_INTERVAL_SECONDS,
@@ -372,7 +373,7 @@ public final class LocalListUtil {
     private static @NonNull Set<String> parsePlainText(@NonNull String rawText) {
         Set<String> set = new HashSet<>();
 
-        for (String line : rawText.split("\n", -1)) {
+        for (String line : rawText.split("\\R", -1)) {
             String trimmed = line.trim();
 
             // Skip blank lines and comment lines
@@ -390,7 +391,7 @@ public final class LocalListUtil {
                 normalized = normalized.substring(4);
             }
 
-            if (!normalized.isEmpty()) {
+            if (!normalized.contains(" ") && normalized.contains(".")) {
                 set.add(normalized);
             }
         }

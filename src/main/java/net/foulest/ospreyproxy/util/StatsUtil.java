@@ -96,7 +96,7 @@ public final class StatsUtil {
                 // compareAndSet ensures only one wins and the other skips cleanly.
                 long prevNanos = stats.lastTickNanos.get();
                 double elapsedSecs = Math.max((nowNanos - prevNanos) / 1_000_000_000.0, 0.001);
-                stats.lastTickNanos.set(nowNanos);
+                stats.lastTickNanos.compareAndSet(prevNanos, nowNanos);
 
                 // Drains the raw count accumulated since the last tick
                 long rawCount = stats.secondBucket.getAndSet(0);
@@ -109,10 +109,7 @@ public final class StatsUtil {
                 // not 0 (which would lose the event entirely).
                 long reqPerSec = (long) Math.ceil(rawCount / elapsedSecs);
 
-                long current = stats.peakReqPerSec.get();
-                if (reqPerSec > current) {
-                    stats.peakReqPerSec.set(reqPerSec);
-                }
+                stats.peakReqPerSec.accumulateAndGet(reqPerSec, Math::max);
 
                 // Simulates the provider's greedy token pool using the normalized per-second rate.
                 // refill rate = SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0 tokens/sec (scaled x100)
@@ -122,10 +119,9 @@ public final class StatsUtil {
                 long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;
 
                 // Apply refill then consume, clamping pool between 0 and cap
-                long pool = stats.simulatedTokenPoolScaled.get();
-                pool = Math.min(pool + refillScaled, capScaled);
-                pool = Math.max(pool - consumeScaled, 0);
-                stats.simulatedTokenPoolScaled.set(pool);
+                stats.simulatedTokenPoolScaled.updateAndGet(p ->
+                        Math.max(Math.min(p + refillScaled, capScaled) - consumeScaled, 0)
+                );
 
                 // Net drift this second: negative means we're consuming faster than the window refills
                 double netDriftPerSec = (refillScaled - consumeScaled) / 100.0;

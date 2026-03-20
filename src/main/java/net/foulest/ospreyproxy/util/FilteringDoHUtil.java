@@ -367,7 +367,10 @@ public final class FilteringDoHUtil {
      */
     @Contract(pure = true)
     private static int skipName(byte @NonNull [] data, int off) {
-        while (off < data.length) {
+        int steps = 0;
+
+        while (off < data.length && steps < data.length) {
+            steps++;
             int len = data[off] & 0xFF;
 
             if ((len & 0xC0) == 0xC0) {
