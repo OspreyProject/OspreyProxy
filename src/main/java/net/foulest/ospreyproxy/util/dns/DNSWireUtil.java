@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import net.foulest.ospreyproxy.util.PatternUtil;
 import org.jspecify.annotations.NonNull;
 
 import java.io.ByteArrayOutputStream;
@@ -33,9 +34,6 @@ import java.util.regex.Pattern;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DNSWireUtil {
 
-    // Pre-compiled pattern for valid domain characters
-    private static final Pattern VALID_DOMAIN = Pattern.compile("^[a-zA-Z0-9._-]+$");
-
     /**
      * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
      *
@@ -44,29 +42,13 @@ public final class DNSWireUtil {
      * @return Base64url-encoded wire-format DNS query (no padding).
      * @throws IllegalArgumentException If the hostname or type is invalid.
      */
-    @SuppressWarnings("NestedMethodCall")
     private static @NonNull String buildBase64Query(@NonNull String host, int type) {
         // Checks if the DNS record type is valid
         if (type < 0 || type > 65535) {
             throw new IllegalArgumentException("type must be a valid DNS record type (0-65535): " + type);
         }
 
-        String stripped = host.trim();
-
-        // Strips trailing dots
-        if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == '.') {
-            stripped = stripped.substring(0, stripped.length() - 1);
-        }
-
-        // Rejects domains with invalid characters
-        if (!VALID_DOMAIN.matcher(stripped).matches()) {
-            throw new IllegalArgumentException("Domain contains invalid characters");
-        }
-
-        // Rejects overly long domains (max 253 chars per RFC 1035)
-        if (stripped.length() > 253) {
-            throw new IllegalArgumentException("Domain exceeds maximum length: " + stripped.length());
-        }
+        String stripped = getStrippedHost(host);
 
         // Header: ID=0x0000, flags=0x0100 (RD), QDCOUNT=1, ANCOUNT/NSCOUNT/ARCOUNT=0
         byte[] header = {
@@ -131,19 +113,31 @@ public final class DNSWireUtil {
      * @return URL-encoded hostname string.
      */
     public static @NonNull String encodeHostParam(@NonNull String host) {
+        String stripped = getStrippedHost(host);
+        return URLEncoder.encode(stripped, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Strips whitespace and trailing dots from the hostname,
+     * and validates it against allowed characters and length.
+     *
+     * @param host The hostname to process.
+     * @return The stripped and validated hostname.
+     */
+    private static @NonNull String getStrippedHost(@NonNull String host) {
         String stripped = host.trim();
 
         if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == '.') {
             stripped = stripped.substring(0, stripped.length() - 1);
         }
 
-        if (!VALID_DOMAIN.matcher(stripped).matches()) {
+        if (!PatternUtil.VALID_DOMAIN.matcher(stripped).matches()) {
             throw new IllegalArgumentException("Domain contains invalid characters");
         }
 
         if (stripped.length() > 253) {
             throw new IllegalArgumentException("Domain exceeds maximum length: " + stripped.length());
         }
-        return URLEncoder.encode(stripped, StandardCharsets.UTF_8);
+        return stripped;
     }
 }

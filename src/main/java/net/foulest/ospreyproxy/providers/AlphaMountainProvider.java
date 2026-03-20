@@ -22,6 +22,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.annotation.PostConstruct;
+import net.foulest.ospreyproxy.util.PatternUtil;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -39,7 +40,6 @@ public class AlphaMountainProvider implements Provider {
     // API Key and URL configuration
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
-    private static final String UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
     // Rate limiting capacity
     private static final int BURST_CAPACITY = 11;
@@ -128,7 +128,8 @@ public class AlphaMountainProvider implements Provider {
     @PostConstruct
     public void validateConfig() {
         // Check if the key is blank or doesn't match UUID spec
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank() || !API_KEY.matches(UUID_PATTERN))) {
+        if (isEnabled() && (API_KEY == null || API_KEY.isBlank()
+                || !PatternUtil.UUID_PATTERN.matcher(API_KEY).matches())) {
             throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is invalid or not set");
         }
     }
