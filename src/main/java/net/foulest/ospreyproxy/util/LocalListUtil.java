@@ -213,7 +213,7 @@ public final class LocalListUtil {
         Set<String> domainSet = ref.get().domainSet;
 
         if (domainSet == null) {
-            log.debug("[{}] List not yet loaded; skipping check for '{}'", descriptor.shortName, host);
+            log.warn("[{}] List not yet loaded; skipping check for '{}'", descriptor.shortName, host);
             return false;
         }
 
@@ -266,7 +266,6 @@ public final class LocalListUtil {
      */
     private void fetchAndUpdate(@NonNull Descriptor descriptor) {
         try {
-            log.debug("[{}] Fetching list update from: {}", descriptor.shortName, descriptor.url);
             String rawContent = fetchRaw(descriptor);
             applyContent(descriptor, rawContent);
         } catch (Exception e) {
@@ -326,7 +325,6 @@ public final class LocalListUtil {
 
         // Skip rebuild if content is unchanged (mirrors the rawJson equality check in the extension)
         if (rawContent.equals(current.rawContent)) {
-            log.debug("[{}] List is unchanged; skipping rebuild.", descriptor.shortName);
             return;
         }
 
@@ -345,8 +343,6 @@ public final class LocalListUtil {
         next.domainSet = newSet;
         next.rawContent = rawContent;
         ref.set(next);
-
-        log.info("[{}] List updated with {} entries.", descriptor.shortName, String.format("%,d", newSet.size()));
     }
 
     // -------------------------------------------------------------------------
