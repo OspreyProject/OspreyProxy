@@ -172,7 +172,7 @@ public final class FilteringDoHUtil {
                 Map<String, Object> data;
 
                 try {
-                    data = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_STRING);
+                    data = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_OBJECT);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     log.warn("[Cloudflare Security] Failed to parse response JSON for host '{}': {}", host, e.getMessage());
                     return false;
