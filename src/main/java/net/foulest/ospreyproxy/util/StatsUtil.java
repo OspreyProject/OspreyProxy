@@ -129,9 +129,9 @@ public final class StatsUtil {
                 if (netDriftPerSec < 0) {
                     // Minimum window (req/min) needed so refill rate >= consume rate: ceil(reqPerSec * 60)
                     long minWindowNeeded = (long) Math.ceil(reqPerSec * 60.0);
+                    long prevHighest = stats.highestMinWindowNeeded.get();
 
-                    if (minWindowNeeded > stats.highestMinWindowNeeded.get()) {
-                        stats.highestMinWindowNeeded.set(minWindowNeeded);
+                    if (minWindowNeeded > prevHighest && stats.highestMinWindowNeeded.compareAndSet(prevHighest, minWindowNeeded)) {
                         log.warn("[{}] Greedy window deficit - Consume vs refill: {}/sec | Min window needed: {}/min",
                                 name, String.format("%.2f", netDriftPerSec), minWindowNeeded);
                     }
