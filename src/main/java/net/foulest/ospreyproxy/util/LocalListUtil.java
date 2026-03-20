@@ -254,10 +254,6 @@ public final class LocalListUtil {
         return domainSet != null ? domainSet.size() : 0;
     }
 
-    // -------------------------------------------------------------------------
-    // Fetch and update pipeline
-    // -------------------------------------------------------------------------
-
     /**
      * Fetches the latest raw content for the given descriptor and applies it.
      * Errors are caught and logged; they do not interrupt the update schedule.
@@ -345,10 +341,6 @@ public final class LocalListUtil {
         ref.set(next);
     }
 
-    // -------------------------------------------------------------------------
-    // Parsers
-    // -------------------------------------------------------------------------
-
     /**
      * Parses a JSON array of hostname strings into a set of lower-cased, trimmed hostnames.
      * Non-string and empty entries are silently ignored.
@@ -361,6 +353,7 @@ public final class LocalListUtil {
     private static @NonNull Set<String> parseJson(@NonNull String rawJson) {
         List<String> parsed = MAPPER.readValue(rawJson, LIST_TYPE);
 
+        // Checks if the parsed list is null
         if (parsed == null) {
             throw new IllegalArgumentException("Expected a JSON array but got null");
         }

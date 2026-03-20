@@ -68,10 +68,7 @@ public final class IPUtil {
         }
 
         /**
-         * Returns the canonical (fully-qualified) hostname for the given {@code host}.
-         * Delegates to the JVM's standard resolver; no SSRF risk here since
-         * this performs a reverse lookup on a name, not a forward lookup that
-         * could return a private address for outbound connections.
+         * Returns the canonical hostname for the given host.
          *
          * @param host The hostname to resolve.
          * @return The canonical hostname.
@@ -117,8 +114,7 @@ public final class IPUtil {
                 return true;
             }
 
-            // IANA documentation ranges (RFC 5737); reserved, guaranteed unreachable
-            // 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2), 203.0.113.0/24 (TEST-NET-3)
+            // IANA documentation ranges (RFC 5737)
             if (first == 192 && second == 0 && (bytes[2] & 0xFF) == 2) {
                 return true;
             }

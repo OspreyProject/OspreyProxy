@@ -197,6 +197,7 @@ public final class FilteringDoHUtil {
             return false;
         }
     }
+
     /**
      * Checks a hostname with Quad9's filtering DNS server.
      *
@@ -218,6 +219,7 @@ public final class FilteringDoHUtil {
             return false;
         }
     }
+
     /**
      * Checks a hostname with Switch.ch's filtering DNS server.
      *

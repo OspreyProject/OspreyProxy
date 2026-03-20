@@ -69,9 +69,6 @@ import java.util.concurrent.TimeUnit;
 @RestController
 public class ProxyHandler {
 
-    // Maximum nesting depth enforced during upstream response validation
-    private static final int MAX_NESTING_DEPTH = 50;
-
     // Jackson mapper for parsing request bodies and validating upstream responses
     private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
@@ -474,7 +471,7 @@ public class ProxyHandler {
                             depth++;
 
                             // Rejects responses that exceed the maximum nesting depth
-                            if (depth > MAX_NESTING_DEPTH) {
+                            if (depth > 50) {
                                 log.error("[{}] Upstream response exceeded maximum nesting depth: {}", providerName, depth);
                                 return ErrorUtil.RESP_502;
                             }
@@ -568,18 +565,23 @@ public class ProxyHandler {
      * @param hashedIp The hashed IP address of the sender.
      * @throws StatusCodeException If the header is missing or does not match.
      */
-    private static void validateApiKeyHeader(@NonNull HttpServletRequest request, Provider provider,
+    private static void validateApiKeyHeader(@NonNull HttpServletRequest request,
+                                             @NonNull Provider provider,
                                              String providerName, String hashedIp) {
         String providedKey = request.getHeader("API-Key");
         String expectedKey = provider.getApiKey();
 
+        // Checks if either API keys are missing
         if (providedKey == null || providedKey.isBlank()) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked PhishingBox request with missing API-Key header");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked PhishingBox request with missing API-Key header");
             throw new StatusCodeException(ErrorUtil.RESP_401);
         }
 
+        // Checks if the API keys match
         if (!providedKey.equals(expectedKey)) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked PhishingBox request with invalid API-Key header");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked PhishingBox request with invalid API-Key header");
             throw new StatusCodeException(ErrorUtil.RESP_401);
         }
     }

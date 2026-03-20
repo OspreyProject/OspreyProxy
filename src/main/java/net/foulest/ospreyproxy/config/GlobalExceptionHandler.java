@@ -86,8 +86,6 @@ public class GlobalExceptionHandler {
 
     /**
      * Catch-all for unexpected exceptions not handled elsewhere.
-     * Returns 502 (Bad Gateway) since unexpected failures at the proxy layer
-     * are most meaningfully represented as an upstream/infrastructure error.
      *
      * @param ex The exception to handle.
      */

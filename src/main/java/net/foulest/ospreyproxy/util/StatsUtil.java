@@ -116,6 +116,7 @@ public final class StatsUtil {
 
                 // Simulates the provider's greedy token pool using the normalized per-second rate.
                 // refill rate = SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0 tokens/sec (scaled x100)
+                // noinspection ConstantMathCall
                 long refillScaled = Math.round((SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0) * 100);
                 long consumeScaled = reqPerSec * 100L;
                 long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;

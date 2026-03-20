@@ -45,7 +45,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Validates hostnames via Cloudflare's DNS-over-HTTPS (DoH) API
+ * Utility class for performing DNS-over-HTTPS (DoH) queries to Cloudflare's DoH API.
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

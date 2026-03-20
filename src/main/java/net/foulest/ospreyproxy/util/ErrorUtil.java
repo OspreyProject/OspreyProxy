@@ -25,7 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Central store for all pre-serialized JSON error responses.
+ * Utility class for building standardized error responses in the OspreyProxy application.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorUtil {
@@ -57,8 +57,7 @@ public final class ErrorUtil {
     public static final ResponseEntity<String> RESP_504 = build(HttpStatus.GATEWAY_TIMEOUT, BODY_504);
 
     /**
-     * Serializes {@code message} into a JSON error body string.
-     * Called only during static initialization.
+     * Helper method to create a JSON body string for an error message.
      *
      * @param message The error message to include in the JSON body.
      * @return A JSON string of the form {"error":"message"}.
@@ -68,8 +67,7 @@ public final class ErrorUtil {
     }
 
     /**
-     * Builds a {@link ResponseEntity} with the given {@code status} and pre-serialized {@code body}.
-     * Content-Type is always {@code application/json; charset=UTF-8}.
+     * Helper method to build a ResponseEntity with the given status and pre-serialized JSON body.
      *
      * @param status The HTTP status code for the response.
      * @param body The pre-serialized JSON body string.

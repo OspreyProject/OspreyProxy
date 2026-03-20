@@ -138,13 +138,8 @@ public class PhishingBoxProvider implements Provider {
         return true;
     }
 
-    /**
-     * Returns the expected API key for inbound PhishingBox requests.
-     * Used by {@code ProxyHandler} to authenticate requests to the {@code /phishingbox} endpoint.
-     *
-     * @return The API key string, or {@code null} if the environment variable is unset.
-     */
-    public static String getApiKey() {
+    @Override
+    public @NonNull String getApiKey() {
         return API_KEY;
     }
 

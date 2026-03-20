@@ -21,6 +21,11 @@ import lombok.Getter;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
 
+/**
+ * Custom exception class that encapsulates an HTTP status code and message to be returned in the response.
+ * This allows us to throw this exception from anywhere in the code and have it automatically translated into
+ * the appropriate HTTP response.
+ */
 @Getter
 public class StatusCodeException extends RuntimeException {
 

@@ -69,8 +69,8 @@ public class SecurityConfig implements WebMvcConfigurer {
     }
 
     /**
-     * The security filter implementation.
-     * Stateless and thread-safe: no instance fields, safe to share across virtual threads.
+     * A servlet filter that applies security headers to all responses and enforces
+     * strict Content-Type and body size checks on incoming requests before they reach any controller.
      */
     public static final class SecurityFilter implements Filter {
 
@@ -130,9 +130,7 @@ public class SecurityConfig implements WebMvcConfigurer {
         }
 
         /**
-         * Writes a JSON error body directly to the response without going through
-         * Spring MVC's message converter pipeline. Safe to call before the chain
-         * has been entered (i.e., before any controller or MVC processing).
+         * Writes an error response with the given status and pre-serialized JSON body.
          *
          * @param response The HttpServletResponse to write to.
          * @param status The HTTP status code to set on the response.
@@ -148,16 +146,6 @@ public class SecurityConfig implements WebMvcConfigurer {
             PrintWriter writer = response.getWriter();
             writer.write(body);
             writer.flush();
-        }
-
-        @Override
-        public void init(FilterConfig filterConfig) {
-            // No initialization needed
-        }
-
-        @Override
-        public void destroy() {
-            // No cleanup needed
         }
     }
 }
