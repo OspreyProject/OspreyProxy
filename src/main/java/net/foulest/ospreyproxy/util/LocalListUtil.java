@@ -26,9 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
@@ -61,28 +60,30 @@ import java.util.concurrent.atomic.AtomicReference;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class LocalListUtil {
 
-    // How often to re-fetch each list (mirrors LocalLists.UPDATE_INTERVAL_MS = 5 minutes)
+    // HTTP/2 client for list fetches
+    // Multiplexing handles max conn. total and max conn. per route
+    // 30s connect timeout, 30s connection request timeout, 30s response timeout, 35s operation timeout
+    private static final CloseableHttpClient FETCH_CLIENT;
+
+    static {
+        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofSeconds(30))
+                        .build())
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofSeconds(30))
+                        .setResponseTimeout(Timeout.ofSeconds(30))
+                        .build())
+                .disableRedirectHandling()
+                .disableAutomaticRetries()
+                .build();
+
+        asyncClient.start();
+        FETCH_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(35));
+    }
+
+    // How often to re-fetch each list
     private static final long UPDATE_INTERVAL_SECONDS = 5 * 60L;
-
-    // Fetch timeout per list request (mirrors LocalLists.FETCH_TIMEOUT_MS = 30 seconds)
-    private static final int FETCH_TIMEOUT_SECONDS = 30;
-
-    // Dedicated HTTP client for list fetches
-    private static final CloseableHttpClient FETCH_CLIENT = HttpClients.custom()
-            .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
-                    .setMaxConnTotal(10)
-                    .setMaxConnPerRoute(5)
-                    .setDefaultConnectionConfig(ConnectionConfig.custom()
-                            .setConnectTimeout(Timeout.ofSeconds(FETCH_TIMEOUT_SECONDS))
-                            .build())
-                    .build())
-            .setDefaultRequestConfig(RequestConfig.custom()
-                    .setConnectionRequestTimeout(Timeout.ofSeconds(FETCH_TIMEOUT_SECONDS))
-                    .setResponseTimeout(Timeout.ofSeconds(FETCH_TIMEOUT_SECONDS))
-                    .build())
-            .disableRedirectHandling()
-            .disableAutomaticRetries()
-            .build();
 
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -347,7 +348,7 @@ public final class LocalListUtil {
             throw new IllegalArgumentException("Expected a JSON array but got null");
         }
 
-        Set<String> set = new HashSet<>(parsed.size() * 2);
+        Set<String> set = HashSet.newHashSet(parsed.size() * 2);
 
         for (String entry : parsed) {
             if (entry != null && !entry.isEmpty()) {

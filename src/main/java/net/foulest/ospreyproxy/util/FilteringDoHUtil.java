@@ -20,6 +20,9 @@ package net.foulest.ospreyproxy.util;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.util.dns.DNSRecords;
+import net.foulest.ospreyproxy.util.dns.DNSWireUtil;
+import net.foulest.ospreyproxy.util.dns.RecordPredicate;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -36,7 +39,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -46,25 +48,8 @@ import java.util.Map;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class FilteringDoHUtil {
 
-    // Resolver endpoints
-    private static final String ADGUARD_SECURITY_URL = "https://dns.adguard-dns.com/dns-query?dns=";
-    private static final String CLEANBROWSING_SECURITY_URL = "https://doh.cleanbrowsing.org/doh/security-filter/dns-query?dns=";
-    private static final String CLOUDFLARE_SECURITY_URL = "https://security.cloudflare-dns.com/dns-query?name=";
-    private static final String QUAD9_URL = "https://dns.quad9.net/dns-query?dns=";
-    private static final String SWITCH_CH_URL = "https://dns.switch.ch/dns-query?dns=";
-
-    // Content-type header values
-    private static final String DNS_MESSAGE = "application/dns-message";
-    private static final String DNS_JSON = "application/dns-json";
-
-    // Jackson mapper for Cloudflare JSON responses
-    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
-    private static final JavaType MAP_TYPE = MAPPER.constructType(
-            new TypeReference<Map<String, Object>>() {
-            }
-    );
-
     // HTTP/2 client for filtering DoH queries
+    // 5s connect timeout, 5s connection request timeout, 5s response timeout
     private static final CloseableHttpClient FILTERING_CLIENT;
 
     static {
@@ -84,6 +69,17 @@ public final class FilteringDoHUtil {
         FILTERING_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(10));
     }
 
+    // Resolver endpoints
+    private static final String ADGUARD_SECURITY_URL = "https://dns.adguard-dns.com/dns-query?dns=";
+    private static final String CLEANBROWSING_SECURITY_URL = "https://doh.cleanbrowsing.org/doh/security-filter/dns-query?dns=";
+    private static final String CLOUDFLARE_SECURITY_URL = "https://security.cloudflare-dns.com/dns-query?name=";
+    private static final String QUAD9_URL = "https://dns.quad9.net/dns-query?dns=";
+    private static final String SWITCH_CH_URL = "https://dns.switch.ch/dns-query?dns=";
+
+    // Content-type header values
+    private static final String DNS_MESSAGE = "application/dns-message";
+    private static final String DNS_JSON = "application/dns-json";
+
     /**
      * Checks a hostname with AdGuard's filtering DNS server.
      *
@@ -101,7 +97,7 @@ public final class FilteringDoHUtil {
             }
 
             return walkAnswers(response, (type, rdata) -> {
-                if (type == DnsRRType.A) {
+                if (type == DNSRecords.A) {
                     String ip = parseIPv4(rdata);
 
                     if (ip == null) {
@@ -179,7 +175,7 @@ public final class FilteringDoHUtil {
                 Map<String, Object> data;
 
                 try {
-                    data = MAPPER.readValue(body, MAP_TYPE);
+                    data = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_STRING);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     log.warn("[Cloudflare Security] Failed to parse response JSON for host '{}': {}", host, e.getMessage());
                     return false;
@@ -233,9 +229,9 @@ public final class FilteringDoHUtil {
             }
 
             return walkAnswers(response, (type, rdata) -> {
-                if (type == DnsRRType.CNAME) {
+                if (type == DNSRecords.CNAME) {
                     String cname = parseName(rdata);
-                    return normalizeName(cname).equalsIgnoreCase("landingpage.ph.rpz.switch.ch");
+                    return IPUtil.normalize(cname).equalsIgnoreCase("landingpage.ph.rpz.switch.ch");
                 }
                 return false;
             });
@@ -305,7 +301,7 @@ public final class FilteringDoHUtil {
      * @param predicate The predicate to test each answer record against. Takes the RR type and RDATA bytes as input.
      * @return {@code true} if any answer record matches the predicate, {@code false} otherwise or if the response is malformed.
      */
-    private static boolean walkAnswers(byte @NonNull [] response, @NonNull RRPredicate predicate) {
+    private static boolean walkAnswers(byte @NonNull [] response, @NonNull RecordPredicate predicate) {
         if (response.length < 12) {
             return false;
         }
@@ -441,37 +437,5 @@ public final class FilteringDoHUtil {
             first = false;
         }
         return sb.toString();
-    }
-
-    /**
-     * Normalizes a domain name by trimming whitespace, converting to lowercase, and removing any trailing dots.
-     *
-     * @param name The domain name to normalize.
-     * @return The normalized domain name, suitable for case-insensitive comparison.
-     *         For example, "Example.COM. " becomes "example.com".
-     */
-    private static @NonNull String normalizeName(@NonNull String name) {
-        String n = name.trim().toLowerCase(Locale.ROOT);
-        return !n.isEmpty() && n.charAt(n.length() - 1) == '.' ? n.substring(0, n.length() - 1) : n;
-    }
-
-    /**
-     * DNS RR type constants for the record types we care about in filtering responses.
-     */
-    private static final class DnsRRType {
-
-        static final int A = 1;
-        static final int CNAME = 5;
-    }
-
-    /**
-     * Functional interface for testing DNS answer records in the raw response bytes.
-     * The predicate takes the RR type and RDATA bytes as input and returns a boolean
-     * indicating whether the record matches the filtering criteria.
-     */
-    @FunctionalInterface
-    private interface RRPredicate {
-
-        boolean test(int rrType, byte[] rdata);
     }
 }

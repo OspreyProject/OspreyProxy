@@ -25,9 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.util.Timeout;
@@ -47,6 +47,28 @@ import java.util.Map;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DoHUtil {
 
+    // HTTP/2 client for DoH queries
+    // Multiplexing handles max conn. total and max conn. per route
+    // 2s connect timeout, 2s connection request timeout, 5s response timeout, 10s operation timeout
+    private static final CloseableHttpClient DOH_CLIENT;
+
+    static {
+        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofSeconds(2))
+                        .build())
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofSeconds(2))
+                        .setResponseTimeout(Timeout.ofSeconds(5))
+                        .build())
+                .disableRedirectHandling()
+                .disableAutomaticRetries()
+                .build();
+
+        asyncClient.start();
+        DOH_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(10));
+    }
+
     // Cloudflare's DoH JSON endpoint
     private static final String DOH_URL = "https://cloudflare-dns.com/dns-query";
 
@@ -62,21 +84,6 @@ public final class DoHUtil {
     private static final Cache<String, Boolean> NEGATIVE_CACHE = Caffeine.newBuilder()
             .expireAfterWrite(NEGATIVE_TTL)
             .maximumSize(50_000)
-            .build();
-
-    // Dedicated lightweight HTTP client for DoH queries only
-    private static final CloseableHttpClient DOH_CLIENT = HttpClients.custom()
-            .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
-                    .setDefaultConnectionConfig(ConnectionConfig.custom()
-                            .setConnectTimeout(Timeout.ofSeconds(2))
-                            .build())
-                    .build())
-            .setDefaultRequestConfig(RequestConfig.custom()
-                    .setConnectionRequestTimeout(Timeout.ofSeconds(2))
-                    .setResponseTimeout(Timeout.ofSeconds(10))
-                    .build())
-            .disableRedirectHandling()
-            .disableAutomaticRetries()
             .build();
 
     /**

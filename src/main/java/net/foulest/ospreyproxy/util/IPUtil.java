@@ -302,4 +302,16 @@ public final class IPUtil {
                 .replace("`", "%60")
                 .replace(" ", "%20");
     }
+
+    /**
+     * Normalizes a domain name by trimming whitespace, converting to lowercase, and removing any trailing dots.
+     *
+     * @param name The domain name to normalize.
+     * @return The normalized domain name, suitable for case-insensitive comparison.
+     *         For example, "Example.COM. " becomes "example.com".
+     */
+    static @NonNull String normalize(@NonNull String name) {
+        String n = name.trim().toLowerCase(Locale.ROOT);
+        return !n.isEmpty() && n.charAt(n.length() - 1) == '.' ? n.substring(0, n.length() - 1) : n;
+    }
 }
