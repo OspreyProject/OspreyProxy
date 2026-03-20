@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.util;
+package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -25,53 +25,45 @@ import java.io.ByteArrayOutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.regex.Pattern;
 
 /**
- * Builds DNS wire-format query packets and encodes them for use in DoH requests.
- * <p>
- * Mirrors {@code UrlHelpers.encodeDNSQuery()} from the Osprey browser extension.
+ * Utility class for building DNS queries in wire format and encoding them for DoH (DNS over HTTPS) requests.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-final class DNSWireUtil {
+public final class DNSWireUtil {
 
-    // DNS record type A (IPv4 address)
-    private static final int TYPE_A = 1;
+    // Pre-compiled pattern for valid domain characters
+    private static final Pattern VALID_DOMAIN = Pattern.compile("^[a-zA-Z0-9._-]+$");
 
     /**
-     * Builds a minimal DNS wire-format query packet for the given hostname and record type,
-     * then returns it as a Base64url-encoded string suitable for use in a {@code ?dns=} parameter.
-     * <p>
-     * Packet layout:
-     * <ul>
-     *   <li>12-byte header: ID=0x0000, flags=0x0100 (RD set), QDCOUNT=1, all others 0</li>
-     *   <li>QNAME: each label prefixed by its length byte, terminated by 0x00</li>
-     *   <li>QTYPE: 2 bytes big-endian</li>
-     *   <li>QCLASS: 0x00 0x01 (IN)</li>
-     * </ul>
+     * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
      *
      * @param host The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
-     * @param type The DNS record type (0–65535). Use {@link #TYPE_A} for A records.
+     * @param type The DNS record type (0–65535). Use constants from {@link DNSRecords} for common types.
      * @return Base64url-encoded wire-format DNS query (no padding).
      * @throws IllegalArgumentException If the hostname or type is invalid.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @NonNull String buildBase64Query(@NonNull String host, int type) {
+        // Checks if the DNS record type is valid
         if (type < 0 || type > 65535) {
             throw new IllegalArgumentException("type must be a valid DNS record type (0-65535): " + type);
         }
 
-        // Strip trailing dot; DNS wire format carries labels explicitly
         String stripped = host.trim();
+
+        // Strips trailing dots
         if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == '.') {
             stripped = stripped.substring(0, stripped.length() - 1);
         }
 
-        // Reject domains with invalid characters (mirrors extension validation)
-        if (!stripped.matches("^[a-zA-Z0-9._-]+$")) {
-            throw new IllegalArgumentException("Domain contains invalid characters: " + stripped);
+        // Rejects domains with invalid characters
+        if (!VALID_DOMAIN.matcher(stripped).matches()) {
+            throw new IllegalArgumentException("Domain contains invalid characters");
         }
 
-        // Reject overly long domains (max 253 chars per RFC 1035)
+        // Rejects overly long domains (max 253 chars per RFC 1035)
         if (stripped.length() > 253) {
             throw new IllegalArgumentException("Domain exceeds maximum length: " + stripped.length());
         }
@@ -86,19 +78,23 @@ final class DNSWireUtil {
                 0x00, 0x00  // ARCOUNT
         };
 
-        // Build QNAME: length-prefixed labels terminated by 0x00
         ByteArrayOutputStream qname = new ByteArrayOutputStream();
+
+        // Build QNAME: length-prefixed labels terminated by 0x00
         for (String label : stripped.split("\\.", -1)) {
             byte[] labelBytes = label.getBytes(StandardCharsets.UTF_8);
 
+            // Checks if the label length is valid
             if (labelBytes.length == 0 || labelBytes.length > 63) {
-                throw new IllegalArgumentException("Invalid label length in domain '" + stripped + "': " + labelBytes.length);
+                throw new IllegalArgumentException("Invalid label length in domain: " + labelBytes.length);
             }
 
             qname.write(labelBytes.length);
             qname.write(labelBytes, 0, labelBytes.length);
         }
-        qname.write(0x00); // end of QNAME
+
+        // End of QNAME
+        qname.write(0x00);
 
         // QTYPE (2 bytes big-endian) + QCLASS IN (0x00 0x01)
         byte[] qtypeAndClass = {
@@ -107,35 +103,47 @@ final class DNSWireUtil {
                 0x00, 0x01  // IN
         };
 
-        // Assemble the full packet
+        // Assembles the full packet
         byte[] qnameBytes = qname.toByteArray();
         byte[] packet = new byte[header.length + qnameBytes.length + qtypeAndClass.length];
         System.arraycopy(header, 0, packet, 0, header.length);
         System.arraycopy(qnameBytes, 0, packet, header.length, qnameBytes.length);
         System.arraycopy(qtypeAndClass, 0, packet, header.length + qnameBytes.length, qtypeAndClass.length);
 
-        // Base64url encode with no padding (mirrors btoa + replaceAll in the extension)
+        // Encodes the packet with Base64 and returns it
         return Base64.getUrlEncoder().withoutPadding().encodeToString(packet);
     }
 
     /**
-     * Convenience overload for A record queries.
+     * Builds a Base64url-encoded wire-format DNS query for the given hostname, using record type A (IPv4 address).
      *
      * @param host The hostname to query.
      * @return Base64url-encoded wire-format DNS query for an A record.
      */
-    static @NonNull String buildBase64Query(@NonNull String host) {
-        return buildBase64Query(host, TYPE_A);
+    public static @NonNull String buildBase64Query(@NonNull String host) {
+        return buildBase64Query(host, DNSRecords.A);
     }
 
     /**
      * URL-encodes a hostname for use in {@code ?name=} DoH JSON parameters.
-     * Used by Cloudflare's JSON-based DoH endpoint.
      *
      * @param host The hostname to encode.
      * @return URL-encoded hostname string.
      */
-    static @NonNull String encodeHostParam(@NonNull String host) {
-        return URLEncoder.encode(host, StandardCharsets.UTF_8);
+    public static @NonNull String encodeHostParam(@NonNull String host) {
+        String stripped = host.trim();
+
+        if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == '.') {
+            stripped = stripped.substring(0, stripped.length() - 1);
+        }
+
+        if (!VALID_DOMAIN.matcher(stripped).matches()) {
+            throw new IllegalArgumentException("Domain contains invalid characters");
+        }
+
+        if (stripped.length() > 253) {
+            throw new IllegalArgumentException("Domain exceeds maximum length: " + stripped.length());
+        }
+        return URLEncoder.encode(stripped, StandardCharsets.UTF_8);
     }
 }
