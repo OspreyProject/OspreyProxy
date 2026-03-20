@@ -32,10 +32,6 @@ import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JavaType;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -67,15 +63,6 @@ public final class DoHUtil {
             .expireAfterWrite(NEGATIVE_TTL)
             .maximumSize(50_000)
             .build();
-
-    // Jackson mapper for parsing DoH JSON responses
-    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
-
-    // Pre-resolved JavaType for DoH response deserialization
-    private static final JavaType MAP_TYPE = MAPPER.constructType(
-            new TypeReference<Map<String, Object>>() {
-            }
-    );
 
     // Dedicated lightweight HTTP client for DoH queries only
     private static final CloseableHttpClient DOH_CLIENT = HttpClients.custom()
@@ -161,7 +148,7 @@ public final class DoHUtil {
                 Map<String, Object> data;
 
                 try {
-                    data = MAPPER.readValue(body, MAP_TYPE);
+                    data = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_OBJECT);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     log.error("DoH query for {} returned unparseable body ({})", host, e.getClass().getName());
                     return true;

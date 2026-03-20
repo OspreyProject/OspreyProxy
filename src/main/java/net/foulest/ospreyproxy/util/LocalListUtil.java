@@ -36,10 +36,6 @@ import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JavaType;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -70,13 +66,6 @@ public final class LocalListUtil {
 
     // Fetch timeout per list request (mirrors LocalLists.FETCH_TIMEOUT_MS = 30 seconds)
     private static final int FETCH_TIMEOUT_SECONDS = 30;
-
-    // Jackson mapper for parsing JSON-format lists
-    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
-    private static final JavaType LIST_TYPE = MAPPER.constructType(
-            new TypeReference<List<String>>() {
-            }
-    );
 
     // Dedicated HTTP client for list fetches
     private static final CloseableHttpClient FETCH_CLIENT = HttpClients.custom()
@@ -351,7 +340,7 @@ public final class LocalListUtil {
      * @return A set of hostnames.
      */
     private static @NonNull Set<String> parseJson(@NonNull String rawJson) {
-        List<String> parsed = MAPPER.readValue(rawJson, LIST_TYPE);
+        List<String> parsed = JacksonUtil.MAPPER.readValue(rawJson, JacksonUtil.LIST_TYPE);
 
         // Checks if the parsed list is null
         if (parsed == null) {

@@ -43,13 +43,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
-import tools.jackson.core.StreamReadConstraints;
-import tools.jackson.core.StreamReadFeature;
-import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JavaType;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -69,22 +63,8 @@ import java.util.concurrent.TimeUnit;
 @RestController
 public class ProxyHandler {
 
-    // Jackson mapper for parsing request bodies and validating upstream responses
-    private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
-                    .streamReadConstraints(StreamReadConstraints.builder()
-                            .maxNumberLength(1000)
-                            .maxNestingDepth(MAX_NESTING_DEPTH)
-                            .maxStringLength(500_000)
                             .build())
-                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                     .build())
-            .build();
-
-    // Pre-resolved JavaType for request body deserialization
-    private static final JavaType MAP_TYPE = MAPPER.constructType(
-            new TypeReference<Map<String, String>>() {
-            }
-    );
 
     // Connection manager
     private static final HttpClientConnectionManager CONNECTION_MANAGER = PoolingHttpClientConnectionManagerBuilder.create()
@@ -136,9 +116,9 @@ public class ProxyHandler {
         ProxyHandler.localListUtil = localListUtil;
 
         // Pre-warm Jackson type metadata
-        MAPPER.constructType(Map.class);
-        MAPPER.constructType(String.class);
-        MAPPER.constructType(Object.class);
+        JacksonUtil.MAPPER.constructType(Map.class);
+        JacksonUtil.MAPPER.constructType(String.class);
+        JacksonUtil.MAPPER.constructType(Object.class);
     }
 
     // -------------------------------------------------------------------------
@@ -364,7 +344,7 @@ public class ProxyHandler {
         // Serializes the result map to JSON
         String responseBody;
         try {
-            responseBody = MAPPER.writeValueAsString(resultMap);
+            responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Failed to serialize result map for '{}': {} ({})",
                     providerName, host, e.getMessage(), e.getClass().getName());
@@ -404,7 +384,7 @@ public class ProxyHandler {
             // POST providers (e.g. AlphaMountain) return a populated map.
             if (requestBody != null) {
                 try {
-                    jsonBody = MAPPER.writeValueAsString(requestBody);
+                    jsonBody = JacksonUtil.MAPPER.writeValueAsString(requestBody);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     log.error("[{}] Failed to serialize request body for '{}': {} ({})",
                             providerName, normalizedUrl, e.getMessage(), e.getClass().getName());
@@ -462,7 +442,7 @@ public class ProxyHandler {
                 }
 
                 // Validate that the response is well-formed JSON using a streaming parser
-                try (JsonParser parser = MAPPER.createParser(responseBytes)) {
+                try (JsonParser parser = JacksonUtil.MAPPER.createParser(responseBytes)) {
                     int depth = 0;
                     JsonToken token;
 
@@ -609,7 +589,7 @@ public class ProxyHandler {
 
         // Parses the request body as JSON
         try {
-            incoming = MAPPER.readValue(bytes, MAP_TYPE);
+            incoming = JacksonUtil.MAPPER.readValue(bytes, JacksonUtil.MAP_TYPE_STRING);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
                     "Blocked request with malformed JSON body: " + e.getMessage() + " (" + e.getClass().getName() + ")");
@@ -629,7 +609,7 @@ public class ProxyHandler {
         }
 
         // Rejects non-string url values
-        try (JsonParser validator = MAPPER.createParser(bytes)) {
+        try (JsonParser validator = JacksonUtil.MAPPER.createParser(bytes)) {
             JsonToken token;
             boolean inUrlValue = false;
 
