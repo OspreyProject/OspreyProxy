@@ -20,9 +20,9 @@ package net.foulest.ospreyproxy.util;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import org.jspecify.annotations.NonNull;
-import org.springframework.http.ResponseEntity;
 
 /**
  * Utility class for rate limit checks and invalid request handling.
@@ -97,25 +97,21 @@ public final class RateLimitUtil {
      * @param hashedIp The hashed IP address to check and consume from.
      * @param providerName The provider name for logging purposes.
      * @param logMessage The warning message to log when the request is rejected.
-     * @param errorResponse The error response to return when the request is rejected normally.
-     * @return {@code errorResponse}, or a 429 if the IP has now been blocked.
      */
-    public static ResponseEntity<String> rejectInvalidRequest(@NonNull Provider provider,
-                                                              @NonNull String hashedIp,
-                                                              @NonNull String providerName,
-                                                              @NonNull String logMessage,
-                                                              @NonNull ResponseEntity<String> errorResponse) {
+    public static void rejectInvalidRequest(@NonNull Provider provider,
+                                            @NonNull String hashedIp,
+                                            @NonNull String providerName,
+                                            @NonNull String logMessage) {
         String violatorId = provider.getViolatorId(hashedIp);
 
         // Consumes a token to check if the IP has hit the rate limit
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] 'Invalid request' rate limit hit for {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);
-            return ErrorUtil.RESP_429;
+            throw new StatusCodeException(ErrorUtil.RESP_429);
         }
 
-        // If the IP is not yet blocked, log the reason and return the provided error response
+        // If the IP is not yet blocked, log the reason
         log.warn("[{}] {}", providerName, logMessage);
-        return errorResponse;
     }
 }
