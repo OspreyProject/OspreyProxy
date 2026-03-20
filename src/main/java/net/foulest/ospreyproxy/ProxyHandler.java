@@ -571,7 +571,7 @@ public class ProxyHandler {
     private static void validateApiKeyHeader(@NonNull HttpServletRequest request, Provider provider,
                                              String providerName, String hashedIp) {
         String providedKey = request.getHeader("API-Key");
-        String expectedKey = PhishingBoxProvider.getApiKey();
+        String expectedKey = provider.getApiKey();
 
         if (providedKey == null || providedKey.isBlank()) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked PhishingBox request with missing API-Key header");

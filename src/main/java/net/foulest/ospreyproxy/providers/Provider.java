@@ -59,6 +59,15 @@ public interface Provider {
     }
 
     /**
+     * The base upstream API key.
+     *
+     * @return The upstream API key.
+     */
+    default @NonNull String getApiKey() {
+        return "";
+    }
+
+    /**
      * HTTP method to use for the upstream request.
      * Defaults to POST. Override to return "GET" for GET-based providers.
      *
