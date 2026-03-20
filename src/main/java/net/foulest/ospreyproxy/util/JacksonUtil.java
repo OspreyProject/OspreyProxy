@@ -23,7 +23,7 @@ public final class JacksonUtil {
     public static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
                             .maxNumberLength(1000)
-                            .maxNestingDepth(50)
+                            .maxNestingDepth(10)
                             .maxStringLength(500_000)
                             .build())
                     .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
