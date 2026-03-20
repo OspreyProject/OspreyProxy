@@ -778,10 +778,8 @@ public class ProxyHandler {
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
-        boolean isIpLiteral = host.contains(":") || host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
-
         // Rejects hostnames that don't exist in DNS (doesn't log)
-        if (!isIpLiteral && !DoHUtil.hostExists(host)) {
+        if (!IPUtil.isIpLiteral(host) && !DoHUtil.hostExists(host)) {
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
     }
