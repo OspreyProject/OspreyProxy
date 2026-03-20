@@ -11,7 +11,7 @@ for [Osprey: Browser Protection](https://osprey.ac).
   buckets ([Bucket4j](https://github.com/bucket4j/bucket4j) + [Caffeine](https://github.com/ben-manes/caffeine))
   tracking up to 100K IPs per cache with HMAC-SHA256 hashing (random per-restart key). Repeated violations trigger
   exponential backoff blocking to mitigate abuse and DoS attempts.
-- **SSRF-hardened**: Custom Apache HttpClient `DnsResolver` blocks private and reserved IP ranges at connection time,
+- **SSRF-hardened**: Custom Apache HttpClient DNS resolver blocks private and reserved IP ranges at connection time,
   preventing DNS rebinding attacks. Also blocks private hostnames and raw IP literals before the request is sent.
 - **Input & output validation**: Enforces a URL scheme allowlist, request body and URL length limits, port range
   validation, strict single-field JSON body parsing, and DNS existence validation via Cloudflare's DoH API before
