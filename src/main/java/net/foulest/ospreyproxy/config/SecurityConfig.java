@@ -89,6 +89,7 @@ public class SecurityConfig implements WebMvcConfigurer {
             response.setHeader("Referrer-Policy", "no-referrer");
             response.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
             response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+            response.setHeader("Cache-Control", "no-store");
 
             String method = request.getMethod();
 
