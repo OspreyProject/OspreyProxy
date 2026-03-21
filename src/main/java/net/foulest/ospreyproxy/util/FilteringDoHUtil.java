@@ -39,7 +39,9 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Executes filtering DNS-over-HTTPS lookups against each security resolver used by PhishingBox.
@@ -179,7 +181,14 @@ public final class FilteringDoHUtil {
                 }
 
                 Object comment = data.get("Comment");
-                return comment instanceof String value && value.contains("EDE(16): Censored");
+                String commentStr;
+
+                switch (comment) {
+                    case List<?> list -> commentStr = list.stream().map(Object::toString).collect(Collectors.joining(" "));
+                    case String s -> commentStr = s;
+                    default -> commentStr = "";
+                }
+                return commentStr.contains("EDE(16): Censored");
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[Cloudflare Security] Failed to check host '{}': {} ({})", host, e.getMessage(), e.getClass().getName());
