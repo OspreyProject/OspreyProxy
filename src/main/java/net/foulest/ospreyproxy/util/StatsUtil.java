@@ -95,7 +95,7 @@ public final class StatsUtil {
                 // If two threads somehow raced here (they won't with single-thread scheduler), the
                 // compareAndSet ensures only one wins and the other skips cleanly.
                 long prevNanos = stats.lastTickNanos.get();
-                double elapsedSecs = Math.max((nowNanos - prevNanos) / 1_000_000_000.0, 0.001);
+                double elapsedSecs = Math.min(Math.max((nowNanos - prevNanos) / 1_000_000_000.0, 0.001), 5.0);
                 stats.lastTickNanos.compareAndSet(prevNanos, nowNanos);
 
                 // Drains the raw count accumulated since the last tick
