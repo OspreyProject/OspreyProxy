@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PhishingBox extends AbstractProvider {
 
-    private static final String API_KEY = "29dfd5c1-bc34-4c2d-9390-ea803c5fe246";
+    private static final String API_KEY = System.getenv("PHISHINGBOX_API_KEY");
 
     @PostConstruct
     public void validateConfig() {
