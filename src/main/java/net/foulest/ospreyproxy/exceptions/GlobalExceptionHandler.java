@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.config;
+package net.foulest.ospreyproxy.exceptions;
 
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.ErrorUtil;
@@ -38,11 +38,23 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     /**
+     * Handles {@link StatusCodeException} that escape controller code.
+     * Returns the encapsulated status directly rather than logging it as unexpected.
+     *
+     * @param ex The exception to handle.
+     */
+    @ExceptionHandler(StatusCodeException.class)
+    public ResponseEntity<String> handleStatusCode(@NonNull StatusCodeException ex) {
+        return ex.getStatus();
+    }
+
+    /**
      * Handles requests whose body exceeds the configured size limit.
      * Tomcat rejects these before any controller code runs.
      *
      * @param ex The exception to handle.
      */
+    @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxUploadSize(@NonNull MaxUploadSizeExceededException ex) {
         log.warn("Request body exceeded size limit: {}", ex.getMessage());
@@ -64,6 +76,7 @@ public class GlobalExceptionHandler {
      *
      * @param ex The exception to handle.
      */
+    @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<String> handleNotReadable(@NonNull HttpMessageNotReadableException ex) {
         Throwable cause = ex.getCause();
@@ -89,9 +102,10 @@ public class GlobalExceptionHandler {
      *
      * @param ex The exception to handle.
      */
+    @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleUnexpected(Exception ex) {
-        log.error("Unexpected exception: {} | {}", ex.getMessage(), ex.getClass().getName(), ex);
+        log.error("Unexpected exception: {}", ex.getMessage(), ex);
         return ErrorUtil.RESP_502;
     }
 }
