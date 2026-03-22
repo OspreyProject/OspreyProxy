@@ -15,24 +15,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.util;
+package net.foulest.ospreyproxy.util.list;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.HttpClientFactory;
+import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.config.ConnectionConfig;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -46,33 +41,18 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Utility class for managing local lists of domains fetched from external sources.
+ * <p>
+ * Each {@link Descriptor} declares its own endpoint name and result type, making this
+ * class fully data-driven — adding a new list requires only a new {@link Descriptor} constant.
  */
 @Slf4j
 @Component
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class LocalListUtil {
 
-    // HTTP/2 client for list fetches
-    // Multiplexing handles max conn. total and max conn. per route
-    // 30s connect timeout, 30s connection request timeout, 30s response timeout, 35s operation timeout
-    private static final CloseableHttpClient FETCH_CLIENT;
-
-    static {
-        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
-                .setDefaultConnectionConfig(ConnectionConfig.custom()
-                        .setConnectTimeout(Timeout.ofSeconds(30))
-                        .build())
-                .setDefaultRequestConfig(RequestConfig.custom()
-                        .setConnectionRequestTimeout(Timeout.ofSeconds(30))
-                        .setResponseTimeout(Timeout.ofSeconds(30))
-                        .build())
-                .disableRedirectHandling()
-                .disableAutomaticRetries()
-                .build();
-
-        asyncClient.start();
-        FETCH_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(35));
-    }
+    // HTTP/2 client for list fetches.
+    // 30s connect, 30s connection-request, 30s response, 35s operation timeout.
+    private static final CloseableHttpClient FETCH_CLIENT =
+            HttpClientFactory.createHttp2Client(30, 30, 30, 35);
 
     // How often to re-fetch each list
     private static final long UPDATE_INTERVAL_SECONDS = 5 * 60L;
@@ -85,66 +65,23 @@ public final class LocalListUtil {
     });
 
     // Runtime state per descriptor, keyed by descriptor identity
-    private static final Map<Descriptor, AtomicReference<State>> stateMap = new EnumMap<>(Descriptor.class);
+    private static final Map<Descriptor, AtomicReference<ListSnapshot>> stateMap = new EnumMap<>(Descriptor.class);
 
-    /**
-     * Enumeration of supported list descriptors, each with its URL, content format, and short name for logging.
-     * The content format determines how the raw response is parsed into a set of hostnames.
-     */
-    @AllArgsConstructor
-    public enum Descriptor {
-        PHISH_DESTROY(
-                "https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.json",
-                Format.JSON,
-                "PhishDestroy"
-        ),
+    // Descriptors keyed by endpoint name for O(1) routing in ProxyHandler
+    private static final Map<String, Descriptor> descriptorsByEndpointName;
 
-        PHISHING_DATABASE(
-                "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt",
-                Format.TEXT,
-                "Phishing.Database"
-        );
-
-        final String url;
-        final Format format;
-        final String shortName;
-    }
-
-    /**
-     * List content format.
-     */
-    private enum Format {
-        JSON,
-        TEXT
-    }
-
-    /**
-     * Runtime state for a single descriptor, including the live set of
-     * domains and the raw content string from the last successful fetch.
-     */
-    private static final class State {
-
-        /**
-         * The live set of domains for this descriptor, or null if the list has not yet been loaded.
-         */
-        volatile @Nullable Set<String> domainSet;
-
-        /**
-         * The raw content string from the last successful fetch.
-         * Used to detect changes and avoid unnecessary rebuilds.
-         */
-        volatile @Nullable String rawContent;
-
-        State() {
-            domainSet = null;
-            rawContent = null;
+    static {
+        Map<String, Descriptor> map = new HashMap<>();
+        for (Descriptor descriptor : Descriptor.values()) {
+            map.put(descriptor.endpointName, descriptor);
         }
+        descriptorsByEndpointName = Collections.unmodifiableMap(map);
     }
 
     @PostConstruct
     public void init() {
         for (Descriptor descriptor : Descriptor.values()) {
-            stateMap.put(descriptor, new AtomicReference<>(new State()));
+            stateMap.put(descriptor, new AtomicReference<>(new ListSnapshot()));
         }
 
         for (Descriptor descriptor : Descriptor.values()) {
@@ -164,19 +101,61 @@ public final class LocalListUtil {
     }
 
     /**
+     * Returns the {@link Descriptor} whose {@link Descriptor#endpointName} matches the given name,
+     * or {@code null} if no descriptor has that endpoint name.
+     * <p>
+     * Used by {@link net.foulest.ospreyproxy.ProxyHandler} to route incoming requests to the
+     * correct local list without iterating all descriptors.
+     *
+     * @param endpointName The endpoint name to look up (e.g., {@code "phishdestroy"}).
+     * @return The matching {@link Descriptor}, or {@code null} if none.
+     */
+    public static @Nullable Descriptor findByEndpointName(@NonNull String endpointName) {
+        return descriptorsByEndpointName.get(endpointName);
+    }
+
+    /**
+     * Checks if the given host is listed in the live set for the specified descriptor and returns
+     * the appropriate {@link LookupResult}.
+     * <p>
+     * Returns {@link LookupResult#FAILED} if the list has not yet been loaded (fail-open).
+     * Returns {@link Descriptor#resultType} if the host is listed, or {@link LookupResult#ALLOWED} otherwise.
+     *
+     * @param descriptor The list descriptor to lookup against.
+     * @param host       The hostname to check.
+     * @return The {@link LookupResult} for this host.
+     */
+    public static @NonNull LookupResult lookupHost(@NonNull Descriptor descriptor, @NonNull String host) {
+        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
+
+        if (ref == null) {
+            return LookupResult.FAILED;
+        }
+
+        Set<String> domainSet = ref.get().domainSet;
+
+        if (domainSet == null) {
+            log.warn("[{}] List not yet loaded; skipping lookup for '{}'", descriptor.shortName, host);
+            return LookupResult.FAILED;
+        }
+
+        return isHostInSet(domainSet, host) ? descriptor.resultType : LookupResult.ALLOWED;
+    }
+
+    /**
      * Checks if the given host is listed in the live set for the specified descriptor.
      * If the list has not yet been loaded, this method returns {@code false} (fail-open).
      * <p>
-     * The check is case-insensitive and ignores leading/trailing whitespace.
+     * The lookup is case-insensitive and ignores leading/trailing whitespace.
      * It also implements subdomain walk-up: a hostname is considered listed if the hostname itself,
      * or any ancestor domain up to (but not including) the TLD, appears in the set.
      *
-     * @param descriptor The list descriptor to check against.
-     * @param host The hostname to check for listing.
+     * @param descriptor The list descriptor to lookup against.
+     * @param host       The hostname to lookup for listing.
      * @return {@code true} if the host is listed, {@code false} if it is not listed or if the list has not yet been loaded.
      */
     public static boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
-        AtomicReference<State> ref = stateMap.get(descriptor);
+        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
 
         if (ref == null) {
             return false;
@@ -185,13 +164,41 @@ public final class LocalListUtil {
         Set<String> domainSet = ref.get().domainSet;
 
         if (domainSet == null) {
-            log.warn("[{}] List not yet loaded; skipping check for '{}'", descriptor.shortName, host);
+            log.warn("[{}] List not yet loaded; skipping lookup for '{}'", descriptor.shortName, host);
             return false;
         }
 
+        return isHostInSet(domainSet, host);
+    }
+
+    /**
+     * Returns the number of domains currently in the given descriptor's live set.
+     *
+     * @param descriptor The list descriptor to lookup.
+     * @return The number of domains in the live set, or 0 if the list has not yet been loaded.
+     */
+    public static int size(@NonNull Descriptor descriptor) {
+        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
+
+        if (ref == null) {
+            return 0;
+        }
+
+        Set<String> domainSet = ref.get().domainSet;
+        return domainSet != null ? domainSet.size() : 0;
+    }
+
+    /**
+     * Checks whether the given hostname or any of its ancestor domains (up to but not including
+     * the TLD) appears in the given domain set.
+     *
+     * @param domainSet  The set of normalized hostnames to check against.
+     * @param host       The raw hostname to check.
+     * @return {@code true} if the host or any ancestor domain is in the set.
+     */
+    private static boolean isHostInSet(@NonNull Set<String> domainSet, @NonNull String host) {
         String normalized = host.trim().toLowerCase(Locale.ROOT);
 
-        // Check the hostname itself first
         if (domainSet.contains(normalized)) {
             return true;
         }
@@ -211,34 +218,19 @@ public final class LocalListUtil {
     }
 
     /**
-     * Returns the number of domains currently in the given descriptor's live set.
-     *
-     * @param descriptor The list descriptor to check.
-     * @return The number of domains in the live set, or 0 if the list has not yet been loaded.
-     */
-    public int size(@NonNull Descriptor descriptor) {
-        AtomicReference<State> ref = stateMap.get(descriptor);
-
-        if (ref == null) {
-            return 0;
-        }
-
-        Set<String> domainSet = ref.get().domainSet;
-        return domainSet != null ? domainSet.size() : 0;
-    }
-
-    /**
      * Fetches the list content from the descriptor's URL and updates the live domain set.
      * If the content is unchanged from the last successful fetch, the update is skipped.
      *
      * @param descriptor The list descriptor to fetch and update.
      */
-    private void fetchAndUpdate(@NonNull Descriptor descriptor) {
+    @SuppressWarnings("NestedMethodCall")
+    private static void fetchAndUpdate(@NonNull Descriptor descriptor) {
         try {
             String rawContent = fetchRaw(descriptor);
             applyContent(descriptor, rawContent);
         } catch (Exception e) {
-            log.warn("[{}] Failed to fetch list update: {} ({})", descriptor.shortName, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to fetch list update: {} ({})",
+                    descriptor.shortName, e.getMessage(), e.getClass().getName());
         }
     }
 
@@ -250,6 +242,7 @@ public final class LocalListUtil {
      * @param descriptor The list descriptor to fetch.
      * @return The raw content string from the response.
      */
+    @SuppressWarnings({"NestedMethodCall", "ProhibitedExceptionDeclared"})
     private static @NonNull String fetchRaw(@NonNull Descriptor descriptor) throws Exception {
         HttpGet request = new HttpGet(descriptor.url);
         request.addHeader("Accept", "application/json, text/plain, */*");
@@ -286,11 +279,12 @@ public final class LocalListUtil {
      * @param descriptor The list descriptor to update.
      * @param rawContent The raw content string to parse and apply.
      */
+    @SuppressWarnings("NestedMethodCall")
     private static void applyContent(@NonNull Descriptor descriptor, @NonNull String rawContent) {
-        AtomicReference<State> ref = stateMap.get(descriptor);
-        State current = ref.get();
+        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
+        ListSnapshot current = ref.get();
 
-        // Skip rebuild if content is unchanged (mirrors the rawJson equality check in the extension)
+        // Skip rebuild if content is unchanged (mirrors the rawJson equality lookup in the extension)
         if (rawContent.equals(current.rawContent)) {
             return;
         }
@@ -301,12 +295,13 @@ public final class LocalListUtil {
                     ? parsePlainText(rawContent)
                     : parseJson(rawContent);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to parse list; keeping current: {} ({})", descriptor.shortName, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to parse list; keeping current: {} ({})",
+                    descriptor.shortName, e.getMessage(), e.getClass().getName());
             return;
         }
 
         // Atomically swap in the new state
-        State next = new State();
+        ListSnapshot next = new ListSnapshot();
         next.domainSet = newSet;
         next.rawContent = rawContent;
         ref.set(next);
@@ -320,10 +315,10 @@ public final class LocalListUtil {
      * @param rawJson The raw JSON content from the list endpoint.
      * @return A set of hostnames.
      */
+    @SuppressWarnings("NestedMethodCall")
     private static @NonNull Set<String> parseJson(@NonNull String rawJson) {
         List<String> parsed = JacksonUtil.MAPPER.readValue(rawJson, JacksonUtil.LIST_TYPE);
 
-        // Checks if the parsed list is null
         if (parsed == null) {
             throw new IllegalArgumentException("Expected a JSON array but got null");
         }

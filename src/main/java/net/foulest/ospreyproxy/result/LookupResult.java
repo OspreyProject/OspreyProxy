@@ -15,15 +15,21 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.util.dns;
+package net.foulest.ospreyproxy.result;
 
-/**
- * Functional interface for testing DNS answer records in the raw response bytes.
- * The predicate takes the RR type and RDATA bytes as input and returns a boolean
- * indicating whether the record matches the filtering criteria.
- */
-@FunctionalInterface
-public interface RecordPredicate {
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-    boolean test(int rrType, byte[] rdata);
+@Getter
+@AllArgsConstructor
+public enum LookupResult {
+
+    FAILED("failed"),
+    ALLOWED("allowed"),
+    MALICIOUS("malicious"),
+    PHISHING("phishing"),
+    UNTRUSTED("untrusted"),
+    ADULT_CONTENT("adult_content");
+
+    private final String value;
 }

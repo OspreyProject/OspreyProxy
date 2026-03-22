@@ -35,11 +35,11 @@ import java.util.Locale;
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class IPUtil {
+public final class NetworkUtil {
 
     /**
      * Custom {@link DnsResolver} that validates every resolved IP against the private/internal
-     * address blocklist in {@link IPUtil} before returning it to the connection manager.
+     * address blocklist in {@link NetworkUtil} before returning it to the connection manager.
      */
     public static final DnsResolver DNS_RESOLVER = new DnsResolver() {
 
@@ -85,9 +85,10 @@ public final class IPUtil {
      * Checks if an {@link InetAddress} is private or internal.
      * Used by the SSRF-safe DNS resolver at connection time.
      *
-     * @param addr The {@link InetAddress} to check.
+     * @param addr The {@link InetAddress} to lookup.
      * @return {@code true} if the address is private/internal, {@code false} otherwise.
      */
+    @SuppressWarnings("NestedMethodCall")
     private static boolean isPrivateAddress(@NonNull InetAddress addr) {
         // Block standard private and special-use ranges
         if (addr.isLoopbackAddress()
@@ -205,10 +206,10 @@ public final class IPUtil {
      * is handled by {@code DNS_RESOLVER} at connection time to avoid
      * DNS rebinding (TOCTOU) vulnerabilities from double-resolution.
      *
-     * @param host The hostname to check.
+     * @param host The hostname to lookup.
      * @return {@code true} if the host is considered private/internal, {@code false} otherwise.
      */
-    public static boolean isPrivateHost(@NonNull String host) {
+    static boolean isPrivateHost(@NonNull String host) {
         host = normalize(host);
 
         // Checks if the host is empty
@@ -253,7 +254,7 @@ public final class IPUtil {
      * @return {@code true} if the host looks like an IP literal, {@code false} if it's a domain name.
      */
     @SuppressWarnings("CharacterComparison")
-    public static boolean isIpLiteral(@NonNull String host) {
+    static boolean isIpLiteral(@NonNull String host) {
         // IPv6 literals from URI.getHost() come without brackets (e.g., "::1").
         // Port-separated colons (e.g., "host:8080") cannot appear here because
         // URI.getHost() returns only the host component with the port stripped.
@@ -288,7 +289,7 @@ public final class IPUtil {
      * @param url The URL string to encode.
      * @return The encoded URL.
      */
-    public static @NonNull String encodeIllegalUriChars(@NonNull String url) {
+    static @NonNull String encodeIllegalUriChars(@NonNull String url) {
         url = Normalizer.normalize(url, Normalizer.Form.NFC);
         String result = url.replaceAll("%(?![0-9a-fA-F]{2})", "%25");
 
@@ -309,7 +310,8 @@ public final class IPUtil {
      * @return The normalized domain name, suitable for case-insensitive comparison.
      *         For example, "Example.COM. " becomes "example.com".
      */
-    static @NonNull String normalize(@NonNull String name) {
+    @SuppressWarnings("NestedMethodCall")
+    public static @NonNull String normalize(@NonNull String name) {
         String n = name.trim().toLowerCase(Locale.ROOT);
         return !n.isEmpty() && n.charAt(n.length() - 1) == '.' ? n.substring(0, n.length() - 1) : n;
     }

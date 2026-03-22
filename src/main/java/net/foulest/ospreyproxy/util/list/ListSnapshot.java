@@ -15,15 +15,29 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.util.dns;
+package net.foulest.ospreyproxy.util.list;
+
+import org.jspecify.annotations.Nullable;
+
+import java.util.Set;
 
 /**
- * Functional interface for testing DNS answer records in the raw response bytes.
- * The predicate takes the RR type and RDATA bytes as input and returns a boolean
- * indicating whether the record matches the filtering criteria.
+ * Represents a snapshot of a list, containing the live set of domains and the raw content string.
  */
-@FunctionalInterface
-public interface RecordPredicate {
+final class ListSnapshot {
 
-    boolean test(int rrType, byte[] rdata);
+    /**
+     * The live set of domains from the last successful fetch.
+     */
+    volatile @Nullable Set<String> domainSet;
+
+    /**
+     * The raw content string from the last successful fetch, used for hash verification and debugging.
+     */
+    volatile @Nullable String rawContent;
+
+    ListSnapshot() {
+        domainSet = null;
+        rawContent = null;
+    }
 }

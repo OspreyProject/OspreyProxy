@@ -17,13 +17,15 @@
  */
 package net.foulest.ospreyproxy.util.dns;
 
-/**
- * Functional interface for testing DNS answer records in the raw response bytes.
- * The predicate takes the RR type and RDATA bytes as input and returns a boolean
- * indicating whether the record matches the filtering criteria.
- */
-@FunctionalInterface
-public interface RecordPredicate {
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
-    boolean test(int rrType, byte[] rdata);
+/**
+ * DNS RR type constants for the record types we care about in filtering responses.
+ */
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public final class Record {
+
+    public static final int A = 1;
+    public static final int CNAME = 5;
 }

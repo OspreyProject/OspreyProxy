@@ -1,3 +1,20 @@
+/*
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
+ * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
@@ -31,19 +48,19 @@ public final class JacksonUtil {
             .build();
 
     // Pre-resolved JavaType for Map<String, String> to avoid construction overhead
-    public static final JavaType MAP_TYPE_STRING = MAPPER.constructType(
+    static final JavaType MAP_TYPE_STRING = MAPPER.constructType(
             new TypeReference<Map<String, String>>() {
             }
     );
 
     // Pre-resolved JavaType for Map<String, Object> to avoid construction overhead
-    static final JavaType MAP_TYPE_OBJECT = MAPPER.constructType(
+    public static final JavaType MAP_TYPE_OBJECT = MAPPER.constructType(
             new TypeReference<Map<String, Object>>() {
             }
     );
 
     // Pre-resolved JavaType for List<String> to avoid construction overhead
-    static final JavaType LIST_TYPE = MAPPER.constructType(
+    public static final JavaType LIST_TYPE = MAPPER.constructType(
             new TypeReference<List<String>>() {
             }
     );

@@ -29,29 +29,28 @@ import org.jspecify.annotations.NonNull;
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class RateLimitUtil {
+final class RateLimitUtil {
 
     /**
      * Checks if the given {@code hashedIp} is burst-blocked or has exceeded the burst rate limit.
      * Consumes one token from the burst bucket if not already blocked.
      *
-     * @param provider The provider to check the burst bucket from.
-     * @param hashedIp The hashed IP address to check and consume from.
+     * @param provider The provider to lookup the burst bucket from.
+     * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
      * @return {@code true} if the IP is blocked or has exceeded the rate limit, {@code false} otherwise.
      */
-    public static boolean isBurstBlocked(@NonNull Provider provider,
-                                         @NonNull String hashedIp,
-                                         @NonNull String providerName) {
+    static boolean isBurstBlocked(@NonNull Provider provider,
+                                  @NonNull String hashedIp,
+                                  @NonNull String providerName) {
         String violatorId = provider.getViolatorId(hashedIp);
 
         // Checks if the IP is already blocked
         if (provider.isBurstBlocked(hashedIp)) {
-            log.warn("[{}] 'Burst' rate limit active for {}", providerName, violatorId);
             return true;
         }
 
-        // Consumes a token to check if the IP has hit the rate limit
+        // Consumes a token to lookup if the IP has hit the rate limit
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] 'Burst' rate limit hit for {}", providerName, violatorId);
             provider.blockBurst(hashedIp);
@@ -64,23 +63,22 @@ public final class RateLimitUtil {
      * Checks if the given {@code hashedIp} is sustained-blocked or has exceeded the sustained rate limit.
      * Consumes one token from the sustained bucket if not already blocked.
      *
-     * @param provider The provider to check the sustained bucket from.
-     * @param hashedIp The hashed IP address to check and consume from.
+     * @param provider The provider to lookup the sustained bucket from.
+     * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
      * @return {@code true} if the IP is blocked or has exceeded the rate limit, {@code false} otherwise.
      */
-    public static boolean isSustainedBlocked(@NonNull Provider provider,
-                                             @NonNull String hashedIp,
-                                             @NonNull String providerName) {
+    static boolean isSustainedBlocked(@NonNull Provider provider,
+                                      @NonNull String hashedIp,
+                                      @NonNull String providerName) {
         String violatorId = provider.getViolatorId(hashedIp);
 
         // Checks if the IP is already blocked
         if (provider.isSustainedBlocked(hashedIp)) {
-            log.warn("[{}] 'Sustained' rate limit active for {}", providerName, violatorId);
             return true;
         }
 
-        // Consumes a token to check if the IP has hit the rate limit
+        // Consumes a token to lookup if the IP has hit the rate limit
         if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] 'Sustained' rate limit hit for {}", providerName, violatorId);
             provider.blockSustained(hashedIp);
@@ -94,17 +92,17 @@ public final class RateLimitUtil {
      * Blocks the {@code hashedIp} if the bucket is exhausted. Logs the rejection reason.
      *
      * @param provider The provider to consume the invalid request token from.
-     * @param hashedIp The hashed IP address to check and consume from.
+     * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
      * @param logMessage The warning message to log when the request is rejected.
      */
-    public static void rejectInvalidRequest(@NonNull Provider provider,
-                                            @NonNull String hashedIp,
-                                            @NonNull String providerName,
-                                            @NonNull String logMessage) {
+    static void rejectInvalidRequest(@NonNull Provider provider,
+                                     @NonNull String hashedIp,
+                                     @NonNull String providerName,
+                                     @NonNull String logMessage) {
         String violatorId = provider.getViolatorId(hashedIp);
 
-        // Consumes a token to check if the IP has hit the rate limit
+        // Consumes a token to lookup if the IP has hit the rate limit
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
             log.warn("[{}] 'Invalid request' rate limit hit for {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);

@@ -35,7 +35,7 @@ import java.util.function.Function;
  * Utility class for hashing IP addresses with a salt.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class HashUtil {
+final class HashUtil {
 
     // Random salt for hashing IPs; intentionally regenerated on each restart
     private static final byte[] IP_SALT = generateSalt();
@@ -76,13 +76,13 @@ public final class HashUtil {
     /**
      * Hashes the IP address using HMAC-SHA-256 with a salt to prevent rainbow table attacks.
      * Caffeine's {@link Cache#get(Object, Function)} uses an optimistic fast-path for cache
-     * hits internally without locking, so no manual {@code getIfPresent()} check is needed.
+     * hits internally without locking, so no manual {@code getIfPresent()} lookup is needed.
      * Uses {@code ThreadLocal<Mac>} to avoid getInstance() overhead on misses.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
      */
-    public static String hashIp(@NonNull String ip) {
+    static String hashIp(@NonNull String ip) {
         return HASH_CACHE.get(ip, k -> {
             Mac mac = HMAC.get();
             mac.reset();

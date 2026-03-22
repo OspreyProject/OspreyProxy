@@ -18,7 +18,8 @@
 package net.foulest.ospreyproxy.providers;
 
 import io.github.bucket4j.Bucket;
-import net.foulest.ospreyproxy.ProxyHandler;
+import net.foulest.ospreyproxy.result.LookupResult;
+import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -30,7 +31,7 @@ import java.util.Map;
  * Each provider implements only the methods relevant to its API style.
  * POST providers override {@link #buildBody}; GET providers override
  * {@link #getMethod} and {@link #buildRequestUrl}.
- * All validation and proxying logic lives in {@link ProxyHandler#proxyRequest}.
+ * DNS providers extend {@link AbstractDnsProvider} and implement {@code interpret}.
  */
 public interface Provider {
 
@@ -40,7 +41,23 @@ public interface Provider {
      * @return The display name of the provider.
      */
     @NonNull
-    String getName();
+    String getDisplayName();
+
+    /**
+     * A short name for this provider, used in JSON results.
+     *
+     * @return The short name of the provider.
+     */
+    @NonNull
+    String getShortName();
+
+    /**
+     * A unique endpoint name for this provider, used in configuration and routing.
+     *
+     * @return The unique endpoint name of the provider.
+     */
+    @NonNull
+    String getEndpointName();
 
     /**
      * Whether the provider is enabled.
@@ -69,12 +86,11 @@ public interface Provider {
 
     /**
      * HTTP method to use for the upstream request.
-     * Defaults to POST. Override to return "GET" for GET-based providers.
      *
-     * @return The HTTP method string.
+     * @return The HTTP method to use (e.g., GET, POST).
      */
-    default @NonNull String getMethod() {
-        return "POST";
+    default @NonNull Method getMethod() {
+        return Method.GET;
     }
 
     /**
@@ -91,7 +107,7 @@ public interface Provider {
      * Builds the request body for POST providers.
      * Returns {@code null} for GET providers.
      *
-     * @param url The validated URL to check.
+     * @param url The validated URL to lookup.
      * @return The request body map, or {@code null} for GET providers.
      */
     default @Nullable Map<String, Object> buildBody(@NonNull String url) {
@@ -103,11 +119,40 @@ public interface Provider {
      * For POST providers this defaults to {@link #getApiUrl()}.
      * For GET providers this should encode the target URL into the path.
      *
-     * @param url The validated URL to check.
+     * @param url The validated URL to lookup.
      * @return The full upstream request URL.
      */
     default @NonNull String buildRequestUrl(@NonNull String url) {
         return getApiUrl();
+    }
+
+    /**
+     * Whether to strip the URL down to a bare hostname before forwarding to this provider.
+     * Providers like PrecisionSec only accept a domain with no scheme, path, query, or fragment.
+     * Defaults to {@code false}.
+     *
+     * @return {@code true} if only the bare host should be forwarded, {@code false} otherwise.
+     */
+    default boolean stripToHost() {
+        return false;
+    }
+
+    /**
+     * Interprets the raw upstream response bytes and returns a {@link LookupResult}.
+     * <p>
+     * API providers (e.g. AlphaMountain, PrecisionSec) override this to parse their
+     * upstream JSON and map it to a result. DNS providers use a separate
+     * {@link AbstractDnsProvider#interpret} contract and do not override this method.
+     * <p>
+     * The default implementation returns {@link LookupResult#FAILED}, which is safe
+     * for DNS providers since they never reach {@code executeUpstream}.
+     *
+     * @param responseBytes The validated, non-empty upstream response bytes.
+     * @param normalizedUrl The normalized URL that was checked, for logging context.
+     * @return The {@link LookupResult} for this lookup.
+     */
+    default @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+        return LookupResult.FAILED;
     }
 
     /**
@@ -137,7 +182,7 @@ public interface Provider {
     /**
      * Checks if the given IP address is currently blocked due to exceeding the burst rate limit.
      *
-     * @param ip The IP address to check for burst block status.
+     * @param ip The IP address to lookup for burst block status.
      * @return {@code true} if the IP is currently blocked for burst violations, {@code false} otherwise.
      */
     boolean isBurstBlocked(@NonNull String ip);
@@ -145,7 +190,7 @@ public interface Provider {
     /**
      * Checks if the given IP address is currently blocked due to exceeding the sustained rate limit.
      *
-     * @param ip The IP address to check for sustained block status.
+     * @param ip The IP address to lookup for sustained block status.
      * @return {@code true} if the IP is currently blocked for sustained violations, {@code false} otherwise.
      */
     boolean isSustainedBlocked(@NonNull String ip);
@@ -153,7 +198,7 @@ public interface Provider {
     /**
      * Checks if the given IP address is currently blocked due to making invalid requests.
      *
-     * @param ip The IP address to check for invalid request block status.
+     * @param ip The IP address to lookup for invalid request block status.
      * @return {@code true} if the IP is currently blocked for invalid requests, {@code false} otherwise.
      */
     boolean isInvalidRequestBlocked(@NonNull String ip);

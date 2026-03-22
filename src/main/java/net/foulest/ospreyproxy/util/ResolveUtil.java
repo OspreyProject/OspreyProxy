@@ -23,14 +23,9 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.config.ConnectionConfig;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 
 import java.net.URLEncoder;
@@ -41,48 +36,34 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Utility class for performing DNS-over-HTTPS (DoH) queries to Cloudflare's DoH API.
+ * Utility class for performing DNS-over-HTTPS (DoH) existence checks via Cloudflare's DoH API.
+ * <p>
+ * Used exclusively by {@link RequestUtil#validateDNS} to confirm that a hostname resolves
+ * before forwarding it to an upstream provider. This is not a filtering lookup — it only
+ * answers "does this hostname exist in DNS?".
+ * <p>
+ * Package-private: only {@link RequestUtil} (same package) should call {@link #hostResolves}.
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class DoHUtil {
+final class ResolveUtil {
 
-    // HTTP/2 client for DoH queries
-    // Multiplexing handles max conn. total and max conn. per route
-    // 2s connect timeout, 2s connection request timeout, 5s response timeout, 10s operation timeout
-    private static final CloseableHttpClient DOH_CLIENT;
-
-    static {
-        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
-                .setDefaultConnectionConfig(ConnectionConfig.custom()
-                        .setConnectTimeout(Timeout.ofSeconds(2))
-                        .build())
-                .setDefaultRequestConfig(RequestConfig.custom()
-                        .setConnectionRequestTimeout(Timeout.ofSeconds(2))
-                        .setResponseTimeout(Timeout.ofSeconds(5))
-                        .build())
-                .disableRedirectHandling()
-                .disableAutomaticRetries()
-                .build();
-
-        asyncClient.start();
-        DOH_CLIENT = HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(10));
-    }
+    // HTTP/2 client for DoH queries.
+    // 2s connect, 2s connection-request, 5s response, 10s operation timeout.
+    private static final CloseableHttpClient DOH_CLIENT =
+            HttpClientFactory.createHttp2Client(2, 2, 5, 10);
 
     // Cloudflare's DoH JSON endpoint
     private static final String DOH_URL = "https://cloudflare-dns.com/dns-query";
 
-    // Cache TTLs
-    private static final Duration POSITIVE_TTL = Duration.ofMinutes(5);
-    private static final Duration NEGATIVE_TTL = Duration.ofMinutes(1);
-
-    // Separate caches so each has its own TTL
+    // Separate caches per result so each can have its own TTL.
+    // Positive results (host hostResolves) cached for 5 minutes; negative for 1 minute.
     private static final Cache<String, Boolean> POSITIVE_CACHE = Caffeine.newBuilder()
-            .expireAfterWrite(POSITIVE_TTL)
+            .expireAfterWrite(Duration.ofMinutes(5))
             .maximumSize(50_000)
             .build();
     private static final Cache<String, Boolean> NEGATIVE_CACHE = Caffeine.newBuilder()
-            .expireAfterWrite(NEGATIVE_TTL)
+            .expireAfterWrite(Duration.ofMinutes(1))
             .maximumSize(50_000)
             .build();
 
@@ -90,30 +71,27 @@ public final class DoHUtil {
      * Checks if the hostname is resolvable via Cloudflare's DoH.
      *
      * @param host The hostname to resolve.
-     * @return {@code true} if the host exists or the check could not be completed,
+     * @return {@code true} if the host hostResolves or the lookup could not be completed (fail-open),
      *         {@code false} only if Cloudflare returned no answer records.
      */
     @SuppressWarnings("NestedMethodCall")
-    public static boolean hostExists(@NonNull String host) {
-        // Cache hit: previously confirmed to exist
+    static boolean hostResolves(@NonNull String host) {
         if (Boolean.TRUE.equals(POSITIVE_CACHE.getIfPresent(host))) {
             return true;
         }
 
-        // Cache hit: previously confirmed as non-existent
         if (Boolean.TRUE.equals(NEGATIVE_CACHE.getIfPresent(host))) {
             return false;
         }
 
-        boolean queryResult = queryHasAnswers(host);
+        boolean result = queryHasAnswers(host);
 
-        if (queryResult) {
+        if (result) {
             POSITIVE_CACHE.put(host, Boolean.TRUE);
-            return true;
+        } else {
+            NEGATIVE_CACHE.put(host, Boolean.TRUE);
         }
-
-        NEGATIVE_CACHE.put(host, Boolean.TRUE);
-        return false;
+        return result;
     }
 
     /**
@@ -124,10 +102,11 @@ public final class DoHUtil {
      * {@code Status === 0 && Answer && Answer.length > 0} in the browser extension.
      *
      * @param host The hostname to query.
-     * @return {@code true} if the host has answer records,
-     *         {@code false} if Status is non-zero, the Answer array is absent/empty,
-     *         or the response could not be parsed. Fail-open on I/O errors.
+     * @return {@code true} if the host has answer records; {@code false} if Status is non-zero,
+     *         the Answer array is absent/empty, or the response could not be parsed.
+     *         Fail-open on I/O errors.
      */
+    @SuppressWarnings("NestedMethodCall")
     private static boolean queryHasAnswers(@NonNull String host) {
         try {
             String encodedHost = URLEncoder.encode(host, StandardCharsets.UTF_8);

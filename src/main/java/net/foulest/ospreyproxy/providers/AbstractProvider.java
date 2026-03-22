@@ -1,19 +1,7 @@
 /*
  * OspreyProxy - backend code for our proxy server using Spring MVC.
  * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * ...
  */
 package net.foulest.ospreyproxy.providers;
 
@@ -21,24 +9,28 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import jakarta.annotation.PostConstruct;
-import net.foulest.ospreyproxy.util.PatternUtil;
 import org.jspecify.annotations.NonNull;
-import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 /**
- * Provider implementation for PhishingBox.
+ * Abstract base class providing shared rate limiting infrastructure for all providers.
+ * Subclasses implement only API-specific configuration.
+ * <p>
+ * <b>Important:</b> All rate limiting state is held in instance fields. This class
+ * assumes every subclass is a Spring singleton ({@code @Component} default scope).
+ * If a subclass is ever given a non-singleton scope, rate limiting state will reset
+ * per instantiation and silently stop working.
  */
-@Component
-public class PhishingBoxProvider implements Provider {
+public abstract class AbstractProvider implements Provider {
 
-    // API Key configuration
-    // Note: This API key is for THEM to access OUR API
-    private static final String API_KEY = System.getenv("PHISHINGBOX_API_KEY");
+    // Pattern for validating UUIDs
+    protected static final Pattern UUID_PATTERN = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    );
 
     // Rate limiting capacity
     private static final int BURST_CAPACITY = 11;
@@ -70,148 +62,124 @@ public class PhishingBoxProvider implements Provider {
             .build();
 
     // Caches for storing buckets per IP address
-    private static final Cache<String, Bucket> BURST_BUCKET_CACHE = Caffeine.newBuilder()
+    private final Cache<String, Bucket> burstBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Bucket> SUSTAINED_BUCKET_CACHE = Caffeine.newBuilder()
+    private final Cache<String, Bucket> sustainedBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Bucket> INVALID_REQUEST_BUCKET_CACHE = Caffeine.newBuilder()
+    private final Cache<String, Bucket> invalidRequestBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
 
-    // Caches for tracking temporarily blocked IPs; entries expire after their block duration
-    private static final Cache<String, Instant> BURST_BLOCKED_CACHE = Caffeine.newBuilder()
+    // Caches for tracking temporarily blocked IPs
+    private final Cache<String, Instant> burstBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Instant> SUSTAINED_BLOCKED_CACHE = Caffeine.newBuilder()
+    private final Cache<String, Instant> sustainedBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(2))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Instant> INVALID_REQUEST_BLOCKED_CACHE = Caffeine.newBuilder()
+    private final Cache<String, Instant> invalidRequestBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(2))
             .maximumSize(100_000)
             .build();
 
     // Caches for counting violations to implement exponential backoff blocking
-    private static final Cache<String, Integer> BURST_VIOLATION_COUNT = Caffeine.newBuilder()
+    private final Cache<String, Integer> burstViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Integer> SUSTAINED_VIOLATION_COUNT = Caffeine.newBuilder()
+    private final Cache<String, Integer> sustainedViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
-    private static final Cache<String, Integer> INVALID_REQUEST_VIOLATION_COUNT = Caffeine.newBuilder()
+    private final Cache<String, Integer> invalidRequestViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
 
     // Assigns a stable, session-scoped numeric ID to each violating IP for log correlation
     // without logging the hashed IP itself. Resets on restart.
-    private static final AtomicInteger VIOLATOR_COUNTER = new AtomicInteger(0);
-    private static final Cache<String, String> VIOLATOR_ID_CACHE = Caffeine.newBuilder()
+    private final AtomicInteger violatorCounter = new AtomicInteger(0);
+    private final Cache<String, String> violatorIdCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
             .maximumSize(100_000)
             .build();
 
-    @PostConstruct
-    public void validateConfig() {
-        // Check if the key is blank or doesn't match UUID spec
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank()
-                || !PatternUtil.UUID_PATTERN.matcher(API_KEY).matches())) {
-            throw new IllegalStateException("PHISHINGBOX_API_KEY environment variable is invalid or not set");
-        }
-    }
-
-    @Override
-    public @NonNull String getName() {
-        return "PhishingBox";
-    }
-
-    @Override
-    public boolean isEnabled() {
-        return true;
-    }
-
-    @Override
-    public @NonNull String getApiKey() {
-        return API_KEY;
-    }
-
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getBurstBucket(@NonNull String ip) {
-        return BURST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
+        return burstBucketCache.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
-        return SUSTAINED_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
+        return sustainedBucketCache.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
-        return INVALID_REQUEST_BUCKET_CACHE.get(ip, k -> Bucket.builder().addLimit(INVALID_REQUEST_BANDWIDTH).build());
+        return invalidRequestBucketCache.get(ip, k -> Bucket.builder().addLimit(INVALID_REQUEST_BANDWIDTH).build());
     }
 
     @Override
     public boolean isBurstBlocked(@NonNull String ip) {
-        Instant unblockTime = BURST_BLOCKED_CACHE.getIfPresent(ip);
+        Instant unblockTime = burstBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isSustainedBlocked(@NonNull String ip) {
-        Instant unblockTime = SUSTAINED_BLOCKED_CACHE.getIfPresent(ip);
+        Instant unblockTime = sustainedBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isInvalidRequestBlocked(@NonNull String ip) {
-        Instant unblockTime = INVALID_REQUEST_BLOCKED_CACHE.getIfPresent(ip);
+        Instant unblockTime = invalidRequestBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockBurst(@NonNull String ip) {
-        int violations = BURST_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
+        int violations = burstViolationCount.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(BURST_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
-        BURST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
-        BURST_BUCKET_CACHE.invalidate(ip);
+        burstBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
+        burstBucketCache.invalidate(ip);
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockSustained(@NonNull String ip) {
-        int violations = SUSTAINED_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
+        int violations = sustainedViolationCount.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(SUSTAINED_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
-        SUSTAINED_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
-        SUSTAINED_BUCKET_CACHE.invalidate(ip);
+        sustainedBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
+        sustainedBucketCache.invalidate(ip);
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockInvalidRequest(@NonNull String ip) {
-        int violations = INVALID_REQUEST_VIOLATION_COUNT.asMap().merge(ip, 1, Integer::sum);
+        int violations = invalidRequestViolationCount.asMap().merge(ip, 1, Integer::sum);
         long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
-        INVALID_REQUEST_BLOCKED_CACHE.put(ip, Instant.now().plusSeconds(blockSeconds));
-        INVALID_REQUEST_BUCKET_CACHE.invalidate(ip);
+        invalidRequestBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
+        invalidRequestBucketCache.invalidate(ip);
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull String getViolatorId(@NonNull String ip) {
-        return VIOLATOR_ID_CACHE.get(ip, k -> "#" + VIOLATOR_COUNTER.incrementAndGet());
+        return violatorIdCache.get(ip, k -> "#" + violatorCounter.incrementAndGet());
     }
 }
