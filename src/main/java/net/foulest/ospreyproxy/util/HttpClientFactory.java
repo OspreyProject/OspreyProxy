@@ -19,14 +19,21 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import org.apache.hc.client5.http.HttpRequestRetryStrategy;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ConnectionClosedException;
+import org.apache.hc.core5.http.HttpRequest;
+import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
+
+import java.io.IOException;
 
 /**
  * Factory class for creating configured HTTP clients.
@@ -35,11 +42,35 @@ import org.jspecify.annotations.NonNull;
 public final class HttpClientFactory {
 
     /**
-     * Creates a classic HTTP/2 client backed by an async client with the given timeouts.
-     * <p>
-     * The underlying async client uses HTTP/2 multiplexing, which handles connection
-     * pooling automatically (no explicit max-conn-total or per-route limit needed).
-     * Redirect handling and automatic retries are both disabled.
+     * Retry strategy that retries a single time on {@link ConnectionClosedException} (stale connection),
+     * and does not retry on any other exceptions or on any HTTP responses.
+     */
+    private static final HttpRequestRetryStrategy STALE_CONNECTION_RETRY = new HttpRequestRetryStrategy() {
+        @Override
+        public boolean retryRequest(HttpRequest request, IOException exception,
+                                    int execCount, HttpContext context) {
+            return execCount <= 1 && exception instanceof ConnectionClosedException;
+        }
+
+        @Override
+        public boolean retryRequest(HttpResponse response, int execCount, HttpContext context) {
+            return false;
+        }
+
+        @Override
+        public TimeValue getRetryInterval(HttpRequest request, IOException exception,
+                                          int execCount, HttpContext context) {
+            return HttpRequestRetryStrategy.super.getRetryInterval(request, exception, execCount, context);
+        }
+
+        @Override
+        public TimeValue getRetryInterval(HttpResponse response, int execCount, HttpContext context) {
+            return TimeValue.ZERO_MILLISECONDS;
+        }
+    };
+
+    /**
+     * Creates a shared HTTP/2 client with the given timeout settings.
      *
      * @param connectTimeoutSeconds Connection establishment timeout in seconds.
      * @param connectionRequestTimeoutSeconds Timeout for requesting a connection from the connection manager, in seconds.
@@ -55,14 +86,13 @@ public final class HttpClientFactory {
         CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
-                        .setValidateAfterInactivity(TimeValue.ofSeconds(1))
                         .build())
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))
                         .setResponseTimeout(Timeout.ofSeconds(responseTimeoutSeconds))
                         .build())
                 .disableRedirectHandling()
-                .disableAutomaticRetries()
+                .setRetryStrategy(STALE_CONNECTION_RETRY)
                 .build();
 
         asyncClient.start();
