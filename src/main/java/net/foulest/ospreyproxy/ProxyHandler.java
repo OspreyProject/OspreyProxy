@@ -165,6 +165,7 @@ public class ProxyHandler {
                                                 @NonNull HttpServletRequest request,
                                                 @NonNull Provider provider) {
         String providerName = provider.getDisplayName();
+        String endpointName = provider.getEndpointName();
 
         try {
             String hashedIp = RequestUtil.validateIP(request, provider, providerName);
@@ -202,7 +203,7 @@ public class ProxyHandler {
             }
 
             // Local list providers look up the host against an in-memory domain set.
-            Descriptor listDescriptor = LocalListUtil.findByEndpointName(provider.getEndpointName());
+            Descriptor listDescriptor = LocalListUtil.findByEndpointName(endpointName);
             if (listDescriptor != null) {
                 return executeLocalList(listDescriptor, host);
             }
