@@ -26,6 +26,7 @@ public enum LookupResult {
 
     FAILED("failed"),
     ALLOWED("allowed"),
+
     MALICIOUS("malicious"),
     PHISHING("phishing"),
     UNTRUSTED("untrusted"),

@@ -29,11 +29,7 @@ import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Factory for creating shared HTTP/2 clients with consistent configuration.
- * <p>
- * Centralizes all async-client setup so that {@code ResolveUtil}, {@code AbstractDnsProvider},
- * and {@code LocalListUtil} don't each duplicate the same
- * {@code HttpAsyncClients.customHttp2()} boilerplate.
+ * Factory class for creating configured HTTP clients.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HttpClientFactory {
@@ -45,11 +41,11 @@ public final class HttpClientFactory {
      * pooling automatically (no explicit max-conn-total or per-route limit needed).
      * Redirect handling and automatic retries are both disabled.
      *
-     * @param connectTimeoutSeconds          TCP connect timeout in seconds.
-     * @param connectionRequestTimeoutSeconds Time to wait for a connection from the pool, in seconds.
-     * @param responseTimeoutSeconds         Time to wait for the first response byte, in seconds.
-     * @param operationTimeoutSeconds        Hard ceiling on the entire operation, in seconds.
-     * @return A ready-to-use {@link CloseableHttpClient} wrapping the async client.
+     * @param connectTimeoutSeconds Connection establishment timeout in seconds.
+     * @param connectionRequestTimeoutSeconds Timeout for requesting a connection from the connection manager, in seconds.
+     * @param responseTimeoutSeconds Socket timeout for waiting for a response, in seconds.
+     * @param operationTimeoutSeconds Overall timeout for the entire request execution, in seconds.
+     * @return A configured {@link CloseableHttpClient} instance.
      */
     @SuppressWarnings("NestedMethodCall")
     public static @NonNull CloseableHttpClient createHttp2Client(int connectTimeoutSeconds,

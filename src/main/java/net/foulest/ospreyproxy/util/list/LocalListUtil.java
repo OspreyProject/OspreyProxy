@@ -40,10 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Utility class for managing local lists of domains fetched from external sources.
- * <p>
- * Each {@link Descriptor} declares its own endpoint name and result type, making this
- * class fully data-driven — adding a new list requires only a new {@link Descriptor} constant.
+ * Utility class for managing local lists of domains fetched from external providers.
  */
 @Slf4j
 @Component
@@ -98,29 +95,22 @@ public final class LocalListUtil {
     }
 
     /**
-     * Returns the {@link Descriptor} whose {@link Descriptor#endpointName} matches the given name,
-     * or {@code null} if no descriptor has that endpoint name.
-     * <p>
-     * Used by {@link net.foulest.ospreyproxy.ProxyHandler} to route incoming requests to the
-     * correct local list without iterating all descriptors.
+     * Finds the descriptor corresponding to the given endpoint name, or returns {@code null} if no match is found.
      *
-     * @param endpointName The endpoint name to look up (e.g., {@code "phishdestroy"}).
-     * @return The matching {@link Descriptor}, or {@code null} if none.
+     * @param endpointName The endpoint name to look up, e.g. "quad9".
+     * @return The matching {@link Descriptor}, or {@code null} if no match is found.
      */
     public static @Nullable Descriptor findByEndpointName(@NonNull String endpointName) {
         return descriptorsByEndpointName.get(endpointName);
     }
 
     /**
-     * Checks if the given host is listed in the live set for the specified descriptor and returns
-     * the appropriate {@link LookupResult}.
-     * <p>
-     * Returns {@link LookupResult#FAILED} if the list has not yet been loaded (fail-open).
-     * Returns {@link Descriptor#resultType} if the host is listed, or {@link LookupResult#ALLOWED} otherwise.
+     * Looks up the given host in the live set for the specified descriptor, returning the appropriate {@link LookupResult}.
      *
      * @param descriptor The list descriptor to lookup against.
-     * @param host       The hostname to check.
-     * @return The {@link LookupResult} for this host.
+     * @param host The hostname to lookup for listing.
+     * @return The {@link LookupResult} for this host: either the descriptor's configured result type if listed,
+     *         or {@link LookupResult#ALLOWED} if not listed or if the list has not yet been loaded (fail-open).
      */
     public static @NonNull LookupResult lookupHost(@NonNull Descriptor descriptor, @NonNull String host) {
         AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
@@ -140,15 +130,11 @@ public final class LocalListUtil {
 
     /**
      * Checks if the given host is listed in the live set for the specified descriptor.
-     * If the list has not yet been loaded, this method returns {@code false} (fail-open).
-     * <p>
-     * The lookup is case-insensitive and ignores leading/trailing whitespace.
-     * It also implements subdomain walk-up: a hostname is considered listed if the hostname itself,
-     * or any ancestor domain up to (but not including) the TLD, appears in the set.
      *
      * @param descriptor The list descriptor to lookup against.
-     * @param host       The hostname to lookup for listing.
-     * @return {@code true} if the host is listed, {@code false} if it is not listed or if the list has not yet been loaded.
+     * @param host The hostname to lookup for listing.
+     * @return {@code true} if the host is listed (i.e., lookupHost returns the descriptor's result type),
+     *         {@code false} if not listed or if the list has not yet been loaded (fail-open).
      */
     public static boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
         return lookupHost(descriptor, host) == descriptor.resultType;
@@ -175,8 +161,8 @@ public final class LocalListUtil {
      * Checks whether the given hostname or any of its ancestor domains (up to but not including
      * the TLD) appears in the given domain set.
      *
-     * @param domainSet  The set of normalized hostnames to check against.
-     * @param host       The raw hostname to check.
+     * @param domainSet The set of normalized hostnames to check against.
+     * @param host The raw hostname to check.
      * @return {@code true} if the host or any ancestor domain is in the set.
      */
     private static boolean isHostInSet(@NonNull Set<String> domainSet, @NonNull String host) {
@@ -353,7 +339,7 @@ public final class LocalListUtil {
             int tabIndex = trimmed.indexOf('\t');
             String entry = tabIndex == -1 ? trimmed : trimmed.substring(tabIndex + 1).trim();
 
-            // Strip leading www. and normalize to lower-case (mirrors the extension)
+            // Strip leading www. and normalize to lower-case
             String normalized = entry.toLowerCase(Locale.ROOT);
             if (normalized.startsWith("www.")) {
                 normalized = normalized.substring(4);

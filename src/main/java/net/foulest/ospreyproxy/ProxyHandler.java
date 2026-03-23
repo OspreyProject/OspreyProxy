@@ -330,12 +330,7 @@ public class ProxyHandler {
     }
 
     /**
-     * Executes the upstream request to an API provider synchronously, then interprets
-     * the response bytes via {@link Provider#interpret} and returns a normalized
-     * {@code {"result": "<value>"}} JSON object — identical in shape to DNS provider responses.
-     * <p>
-     * Runs on a virtual thread: the blocking {@code HTTP_CLIENT.execute()} call parks
-     * the virtual thread during I/O without blocking any platform thread.
+     * Executes an upstream API provider request and returns the interpreted result as JSON.
      *
      * @param provider      The provider configuration.
      * @param providerName  The provider display name for logging.

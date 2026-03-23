@@ -91,14 +91,6 @@ public class PrecisionSec extends AbstractProvider {
         return API_URL + url;
     }
 
-    /**
-     * Parses the PrecisionSec response and maps the result string to a {@link LookupResult}.
-     * <p>
-     * Response shape: {@code {"result": "<string>"}}
-     * <p>
-     * Known result values: {@code "Malicious"} → MALICIOUS, {@code "No result"} → ALLOWED.
-     * Any other value is treated as FAILED and logged for investigation.
-     */
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {

@@ -36,13 +36,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Utility class for performing DNS-over-HTTPS (DoH) existence checks via Cloudflare's DoH API.
- * <p>
- * Used exclusively by {@link RequestUtil#validateDNS} to confirm that a hostname resolves
- * before forwarding it to an upstream provider. This is not a filtering lookup — it only
- * answers "does this hostname exist in DNS?".
- * <p>
- * Package-private: only {@link RequestUtil} (same package) should call {@link #hostResolves}.
+ * Utility class for resolving hostnames using Cloudflare's DNS-over-HTTPS (DoH) API.
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -98,8 +92,7 @@ final class ResolveUtil {
      * Queries Cloudflare's DoH API for the given {@code host}.
      * <p>
      * A host is considered to have records only when {@code Status == 0} AND
-     * the {@code Answer} array is present and non-empty. Mirrors
-     * {@code Status === 0 && Answer && Answer.length > 0} in the browser extension.
+     * the {@code Answer} array is present and non-empty.
      *
      * @param host The hostname to query.
      * @return {@code true} if the host has answer records; {@code false} if Status is non-zero,

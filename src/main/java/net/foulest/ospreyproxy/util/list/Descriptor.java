@@ -21,12 +21,7 @@ import lombok.AllArgsConstructor;
 import net.foulest.ospreyproxy.result.LookupResult;
 
 /**
- * Enumeration of supported list descriptors, each with its URL, content format, short name for logging,
- * endpoint name for HTTP routing, the {@link LookupResult} to return when a host is found in the list,
- * and the refresh interval in seconds.
- * <p>
- * Adding a new local list requires only a new enum constant here — no changes to
- * {@link LocalListUtil} or {@link net.foulest.ospreyproxy.ProxyHandler} are needed.
+ * Represents a descriptor for a list provider, containing all necessary information to fetch and interpret the list.
  */
 @AllArgsConstructor
 public enum Descriptor {
@@ -53,18 +48,17 @@ public enum Descriptor {
     public final String shortName;
 
     /**
-     * The HTTP endpoint path suffix for this list (e.g., {@code "phishdestroy"} → {@code POST /phishdestroy}).
-     * Must be unique across all descriptors and must not collide with any provider endpoint name.
+     * A human-readable name for this list, used in logs and metrics.
      */
     public final String endpointName;
 
     /**
-     * The {@link LookupResult} to return when a host is found in this list.
+     * The type of result to return when a domain is found in this list.
      */
     public final LookupResult resultType;
 
     /**
-     * How often to re-fetch this list, in seconds.
+     * The interval in seconds at which this list should be refreshed.
      */
     public final long refreshIntervalSeconds;
 }

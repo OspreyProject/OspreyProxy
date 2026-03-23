@@ -22,7 +22,7 @@ import java.util.Set;
 @Slf4j
 public class SecurityFilter implements Filter {
 
-    // Maximum allowed body size (10 KB). Mirrors server.tomcat.max-http-form-post-size
+    // Maximum allowed body size (10 KB)
     private static final int MAX_BODY_SIZE = 10_240;
 
     // HTTP methods that carry no request body; exempt from Content-Type enforcement

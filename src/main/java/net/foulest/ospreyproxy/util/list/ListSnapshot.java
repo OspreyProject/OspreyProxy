@@ -22,14 +22,10 @@ import org.jspecify.annotations.Nullable;
 import java.util.Set;
 
 /**
- * An immutable snapshot of a list, containing the live set of domains and the ETag from the last fetch.
- * <p>
- * Both fields are written together atomically via the {@link java.util.concurrent.atomic.AtomicReference}
- * held in {@link LocalListUtil} — replacing the whole snapshot on each update rather than mutating fields
- * in place. This makes per-field synchronization unnecessary.
+ * Represents a snapshot of the list content, including the set of domains and the associated ETag.
  *
- * @param domainSet The live set of domains from the last successful fetch.
- * @param etag The ETag from the last successful fetch, used as {@code If-None-Match} on the next request.
+ * @param domainSet The set of domains in the snapshot, or null if not available.
+ * @param etag The ETag associated with the snapshot, or null if not available.
  */
 record ListSnapshot(@Nullable Set<String> domainSet, @Nullable String etag) {
 

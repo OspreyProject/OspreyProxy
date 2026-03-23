@@ -99,13 +99,6 @@ public class AlphaMountain extends AbstractProvider {
         );
     }
 
-    /**
-     * Parses the AlphaMountain response and maps category IDs to a {@link LookupResult}.
-     * <p>
-     * Response shape: {@code {"category": {"categories": [<int>, ...]}, ...}}
-     * <p>
-     * Category precedence (highest to lowest): UNTRUSTED (CSAM/PUA) → MALICIOUS → PHISHING → ALLOWED.
-     */
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {

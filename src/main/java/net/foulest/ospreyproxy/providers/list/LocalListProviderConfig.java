@@ -22,13 +22,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Registers one {@link LocalListProvider} bean per {@link Descriptor} constant.
- * <p>
- * Spring collects all {@link net.foulest.ospreyproxy.providers.Provider} beans into the
- * {@code List<Provider>} injected into {@link net.foulest.ospreyproxy.ProxyHandler}.
- * This configuration ensures local lists participate in that collection automatically,
- * so adding a new {@link Descriptor} constant is the only step required to expose a new
- * local list endpoint — no changes needed here or in {@code ProxyHandler}.
+ * Configuration class for defining beans related to local list providers.
  */
 @Configuration
 public class LocalListProviderConfig {
