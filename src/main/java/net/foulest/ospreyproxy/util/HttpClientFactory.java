@@ -24,6 +24,7 @@ import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 
@@ -58,6 +59,7 @@ public final class HttpClientFactory {
         CloseableHttpAsyncClient asyncClient = HttpAsyncClients.customHttp2()
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
+                        .setValidateAfterInactivity(TimeValue.ofSeconds(1))
                         .build())
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))
