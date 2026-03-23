@@ -20,6 +20,10 @@ import java.util.regex.Pattern;
  * Abstract base class providing shared rate limiting infrastructure for all providers.
  * Subclasses implement only API-specific configuration.
  * <p>
+ * Rate limiting is fully configurable per provider by overriding the protected
+ * {@code rateLimitXxx()} methods. To disable rate limiting entirely for a provider,
+ * override {@link #isRateLimitingEnabled()} to return {@code false}.
+ * <p>
  * <b>Important:</b> All rate limiting state is held in instance fields. This class
  * assumes every subclass is a Spring singleton ({@code @Component} default scope).
  * If a subclass is ever given a non-singleton scope, rate limiting state will reset
@@ -32,34 +36,122 @@ public abstract class AbstractProvider implements Provider {
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     );
 
-    // Rate limiting capacity
-    private static final int BURST_CAPACITY = 11;
-    private static final int SUSTAINED_CAPACITY = 400;
-    private static final int INVALID_REQUEST_CAPACITY = 5;
+    // Per-instance Bandwidth definitions, built once from this provider's config methods
+    private final Bandwidth burstBandwidth;
+    private final Bandwidth sustainedBandwidth;
+    private final Bandwidth invalidRequestBandwidth;
 
-    // Rate limiting windows
-    private static final Duration BURST_WINDOW = Duration.ofSeconds(1);
-    private static final Duration SUSTAINED_WINDOW = Duration.ofMinutes(1);
-    private static final Duration INVALID_REQUEST_WINDOW = Duration.ofMinutes(1);
+    // Per-instance block durations, captured from config methods at construction time
+    private final Duration burstBlockDuration;
+    private final Duration sustainedBlockDuration;
+    private final Duration invalidRequestBlockDuration;
 
-    // Rate limiting block durations
-    private static final Duration BURST_BLOCK_DURATION = Duration.ofSeconds(5);
-    private static final Duration SUSTAINED_BLOCK_DURATION = Duration.ofMinutes(1);
-    private static final Duration INVALID_REQUEST_BLOCK_DURATION = Duration.ofSeconds(5);
+    protected AbstractProvider() {
+        int burstCapacity = rateLimitBurstCapacity();
+        Duration burstWindow = rateLimitBurstWindow();
 
-    // Bandwidth definitions for Bucket4j
-    private static final Bandwidth BURST_BANDWIDTH = Bandwidth.builder()
-            .capacity(BURST_CAPACITY)
-            .refillGreedy(BURST_CAPACITY, BURST_WINDOW)
-            .build();
-    private static final Bandwidth SUSTAINED_BANDWIDTH = Bandwidth.builder()
-            .capacity(SUSTAINED_CAPACITY)
-            .refillGreedy(SUSTAINED_CAPACITY, SUSTAINED_WINDOW)
-            .build();
-    private static final Bandwidth INVALID_REQUEST_BANDWIDTH = Bandwidth.builder()
-            .capacity(INVALID_REQUEST_CAPACITY)
-            .refillGreedy(INVALID_REQUEST_CAPACITY, INVALID_REQUEST_WINDOW)
-            .build();
+        burstBandwidth = Bandwidth.builder()
+                .capacity(burstCapacity)
+                .refillGreedy(burstCapacity, burstWindow)
+                .build();
+
+        int sustainedCapacity = rateLimitSustainedCapacity();
+        Duration sustainedWindow = rateLimitSustainedWindow();
+
+        sustainedBandwidth = Bandwidth.builder()
+                .capacity(sustainedCapacity)
+                .refillGreedy(sustainedCapacity, sustainedWindow)
+                .build();
+
+        int invalidRequestCapacity = rateLimitInvalidRequestCapacity();
+        Duration invalidRequestWindow = rateLimitInvalidRequestWindow();
+
+        invalidRequestBandwidth = Bandwidth.builder()
+                .capacity(invalidRequestCapacity)
+                .refillGreedy(invalidRequestCapacity, invalidRequestWindow)
+                .build();
+
+        burstBlockDuration = rateLimitBurstBlockDuration();
+        sustainedBlockDuration = rateLimitSustainedBlockDuration();
+        invalidRequestBlockDuration = rateLimitInvalidRequestBlockDuration();
+    }
+
+    /**
+     * Whether rate limiting is enabled for this provider.
+     * Override to return {@code false} to disable all rate limiting.
+     */
+    public boolean isRateLimitingEnabled() {
+        return true;
+    }
+
+    /**
+     * Maximum burst request capacity per IP within {@link #rateLimitBurstWindow()}.
+     */
+    private int rateLimitBurstCapacity() {
+        return 11;
+    }
+
+    /**
+     * Maximum sustained request capacity per IP within {@link #rateLimitSustainedWindow()}.
+     */
+    private int rateLimitSustainedCapacity() {
+        return 400;
+    }
+
+    /**
+     * Maximum invalid request capacity per IP within {@link #rateLimitInvalidRequestWindow()}.
+     */
+    private int rateLimitInvalidRequestCapacity() {
+        return 5;
+    }
+
+    /**
+     * Rolling window for burst rate limiting.
+     */
+    @NonNull
+    private Duration rateLimitBurstWindow() {
+        return Duration.ofSeconds(1);
+    }
+
+    /**
+     * Rolling window for sustained rate limiting.
+     */
+    @NonNull
+    private Duration rateLimitSustainedWindow() {
+        return Duration.ofMinutes(1);
+    }
+
+    /**
+     * Rolling window for invalid request rate limiting.
+     */
+    @NonNull
+    private Duration rateLimitInvalidRequestWindow() {
+        return Duration.ofMinutes(1);
+    }
+
+    /**
+     * How long to block an IP on the first burst violation (doubles on each repeat).
+     */
+    @NonNull
+    private Duration rateLimitBurstBlockDuration() {
+        return Duration.ofSeconds(5);
+    }
+
+    /**
+     * How long to block an IP on the first sustained violation (doubles on each repeat).
+     */
+    @NonNull
+    private Duration rateLimitSustainedBlockDuration() {
+        return Duration.ofMinutes(1);
+    }
+
+    /**
+     * How long to block an IP on the first invalid-request violation (doubles on each repeat).
+     */
+    @NonNull
+    private Duration rateLimitInvalidRequestBlockDuration() {
+        return Duration.ofSeconds(5);
+    }
 
     // Caches for storing buckets per IP address
     private final Cache<String, Bucket> burstBucketCache = Caffeine.newBuilder()
@@ -114,35 +206,47 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getBurstBucket(@NonNull String ip) {
-        return burstBucketCache.get(ip, k -> Bucket.builder().addLimit(BURST_BANDWIDTH).build());
+        return burstBucketCache.get(ip, k -> Bucket.builder().addLimit(burstBandwidth).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
-        return sustainedBucketCache.get(ip, k -> Bucket.builder().addLimit(SUSTAINED_BANDWIDTH).build());
+        return sustainedBucketCache.get(ip, k -> Bucket.builder().addLimit(sustainedBandwidth).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
-        return invalidRequestBucketCache.get(ip, k -> Bucket.builder().addLimit(INVALID_REQUEST_BANDWIDTH).build());
+        return invalidRequestBucketCache.get(ip, k -> Bucket.builder().addLimit(invalidRequestBandwidth).build());
     }
 
     @Override
     public boolean isBurstBlocked(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return false;
+        }
+
         Instant unblockTime = burstBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isSustainedBlocked(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return false;
+        }
+
         Instant unblockTime = sustainedBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
 
     @Override
     public boolean isInvalidRequestBlocked(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return false;
+        }
+
         Instant unblockTime = invalidRequestBlockedCache.getIfPresent(ip);
         return unblockTime != null && Instant.now().isBefore(unblockTime);
     }
@@ -150,8 +254,12 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockBurst(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return;
+        }
+
         int violations = burstViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(BURST_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(burstBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         burstBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         burstBucketCache.invalidate(ip);
@@ -160,8 +268,12 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockSustained(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return;
+        }
+
         int violations = sustainedViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(SUSTAINED_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(sustainedBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         sustainedBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         sustainedBucketCache.invalidate(ip);
@@ -170,8 +282,12 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockInvalidRequest(@NonNull String ip) {
+        if (!isRateLimitingEnabled()) {
+            return;
+        }
+
         int violations = invalidRequestViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(INVALID_REQUEST_BLOCK_DURATION.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(invalidRequestBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         invalidRequestBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         invalidRequestBucketCache.invalidate(ip);

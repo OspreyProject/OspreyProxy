@@ -68,4 +68,9 @@ public class PhishingBox extends AbstractProvider {
     public @NonNull Method getMethod() {
         return Method.POST;
     }
+
+    @Override
+    public boolean isRateLimitingEnabled() {
+        return false;
+    }
 }
