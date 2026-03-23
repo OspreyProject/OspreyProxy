@@ -22,7 +22,8 @@ import net.foulest.ospreyproxy.result.LookupResult;
 
 /**
  * Enumeration of supported list descriptors, each with its URL, content format, short name for logging,
- * endpoint name for HTTP routing, and the {@link LookupResult} to return when a host is found in the list.
+ * endpoint name for HTTP routing, the {@link LookupResult} to return when a host is found in the list,
+ * and the refresh interval in seconds.
  * <p>
  * Adding a new local list requires only a new enum constant here — no changes to
  * {@link LocalListUtil} or {@link net.foulest.ospreyproxy.ProxyHandler} are needed.
@@ -34,7 +35,8 @@ public enum Descriptor {
             Format.TEXT,
             "PhishDestroy",
             "phishdestroy",
-            LookupResult.PHISHING
+            LookupResult.PHISHING,
+            60L
     ),
 
     PHISHING_DATABASE(
@@ -42,7 +44,8 @@ public enum Descriptor {
             Format.TEXT,
             "Phishing.Database",
             "phishing-database",
-            LookupResult.PHISHING
+            LookupResult.PHISHING,
+            60L
     );
 
     final String url;
@@ -59,4 +62,9 @@ public enum Descriptor {
      * The {@link LookupResult} to return when a host is found in this list.
      */
     public final LookupResult resultType;
+
+    /**
+     * How often to re-fetch this list, in seconds.
+     */
+    public final long refreshIntervalSeconds;
 }

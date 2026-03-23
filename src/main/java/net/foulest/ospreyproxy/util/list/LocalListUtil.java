@@ -54,9 +54,6 @@ public final class LocalListUtil {
     private static final CloseableHttpClient FETCH_CLIENT =
             HttpClientFactory.createHttp2Client(30, 30, 30, 35);
 
-    // How often to re-fetch each list
-    private static final long UPDATE_INTERVAL_SECONDS = 5 * 60L;
-
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "local-list-refresh");
@@ -81,15 +78,15 @@ public final class LocalListUtil {
     @PostConstruct
     public void init() {
         for (Descriptor descriptor : Descriptor.values()) {
-            stateMap.put(descriptor, new AtomicReference<>(new ListSnapshot()));
+            stateMap.put(descriptor, new AtomicReference<>(ListSnapshot.EMPTY));
         }
 
         for (Descriptor descriptor : Descriptor.values()) {
-            // Immediate fetch on startup, then repeat every 5 minutes
+            // Immediate fetch on startup, then repeat at this descriptor's configured interval
             scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
                     0L,
-                    UPDATE_INTERVAL_SECONDS,
+                    descriptor.refreshIntervalSeconds,
                     TimeUnit.SECONDS
             );
         }
@@ -132,13 +129,12 @@ public final class LocalListUtil {
             return LookupResult.FAILED;
         }
 
-        Set<String> domainSet = ref.get().domainSet;
+        Set<String> domainSet = ref.get().domainSet();
 
         if (domainSet == null) {
             log.warn("[{}] List not yet loaded; skipping lookup for '{}'", descriptor.shortName, host);
             return LookupResult.FAILED;
         }
-
         return isHostInSet(domainSet, host) ? descriptor.resultType : LookupResult.ALLOWED;
     }
 
@@ -155,20 +151,7 @@ public final class LocalListUtil {
      * @return {@code true} if the host is listed, {@code false} if it is not listed or if the list has not yet been loaded.
      */
     public static boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
-        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
-
-        if (ref == null) {
-            return false;
-        }
-
-        Set<String> domainSet = ref.get().domainSet;
-
-        if (domainSet == null) {
-            log.warn("[{}] List not yet loaded; skipping lookup for '{}'", descriptor.shortName, host);
-            return false;
-        }
-
-        return isHostInSet(domainSet, host);
+        return lookupHost(descriptor, host) == descriptor.resultType;
     }
 
     /**
@@ -184,7 +167,7 @@ public final class LocalListUtil {
             return 0;
         }
 
-        Set<String> domainSet = ref.get().domainSet;
+        Set<String> domainSet = ref.get().domainSet();
         return domainSet != null ? domainSet.size() : 0;
     }
 
@@ -219,15 +202,20 @@ public final class LocalListUtil {
 
     /**
      * Fetches the list content from the descriptor's URL and updates the live domain set.
-     * If the content is unchanged from the last successful fetch, the update is skipped.
+     * Sends the stored ETag as {@code If-None-Match} so the server can return 304 Not Modified
+     * when the content is unchanged, avoiding a full download.
      *
      * @param descriptor The list descriptor to fetch and update.
      */
     @SuppressWarnings("NestedMethodCall")
     private static void fetchAndUpdate(@NonNull Descriptor descriptor) {
         try {
-            String rawContent = fetchRaw(descriptor);
-            applyContent(descriptor, rawContent);
+            ListSnapshot current = stateMap.get(descriptor).get();
+            FetchResult result = fetchRaw(descriptor, current.etag());
+
+            if (result != null) {
+                applyContent(descriptor, result.rawContent(), result.etag());
+            }
         } catch (Exception e) {
             log.warn("[{}] Failed to fetch list update: {} ({})",
                     descriptor.shortName, e.getMessage(), e.getClass().getName());
@@ -236,19 +224,32 @@ public final class LocalListUtil {
 
     /**
      * Fetches the raw content string from the descriptor's URL.
-     * Validates that the response has a 200 status code and an expected content type.
-     * Enforces a maximum response size of 50 MiB to prevent OOM errors.
+     * <p>
+     * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. A 304 Not Modified
+     * response causes this method to return {@code null}, signaling that the caller should skip
+     * the update. A 200 response is read, size-limited to 50 MiB, and returned as a {@link FetchResult}
+     * alongside the response ETag (if present). Any other status code is treated as an error.
      *
      * @param descriptor The list descriptor to fetch.
-     * @return The raw content string from the response.
+     * @param currentEtag The ETag from the last successful fetch, or {@code null} on first fetch.
+     * @return A {@link FetchResult} with the body and ETag, or {@code null} if the server returned 304 Not Modified.
      */
     @SuppressWarnings({"NestedMethodCall", "ProhibitedExceptionDeclared"})
-    private static @NonNull String fetchRaw(@NonNull Descriptor descriptor) throws Exception {
+    private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
+                                                  @Nullable String currentEtag) throws Exception {
         HttpGet request = new HttpGet(descriptor.url);
         request.addHeader("Accept", "application/json, text/plain, */*");
 
+        if (currentEtag != null) {
+            request.addHeader("If-None-Match", currentEtag);
+        }
+
         return FETCH_CLIENT.execute(request, response -> {
             int statusCode = response.getCode();
+
+            if (statusCode == 304) {
+                return null;
+            }
 
             if (statusCode != 200) {
                 throw new IllegalStateException("HTTP " + statusCode);
@@ -268,27 +269,25 @@ public final class LocalListUtil {
             if (body == null || body.length == 0) {
                 throw new IllegalStateException("Response body was empty");
             }
-            return new String(body, StandardCharsets.UTF_8);
+
+            String etag = Optional.ofNullable(response.getFirstHeader("ETag"))
+                    .map(Header::getValue)
+                    .orElse(null);
+            return new FetchResult(new String(body, StandardCharsets.UTF_8), etag);
         });
     }
 
     /**
      * Parses the raw content and updates the live domain set for the given descriptor.
-     * If the content is unchanged from the last successful fetch, the update is skipped.
      *
      * @param descriptor The list descriptor to update.
      * @param rawContent The raw content string to parse and apply.
+     * @param etag The ETag from the response, or {@code null} if the server did not send one.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static void applyContent(@NonNull Descriptor descriptor, @NonNull String rawContent) {
-        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
-        ListSnapshot current = ref.get();
-
-        // Skip rebuild if content is unchanged (mirrors the rawJson equality lookup in the extension)
-        if (rawContent.equals(current.rawContent)) {
-            return;
-        }
-
+    private static void applyContent(@NonNull Descriptor descriptor,
+                                     @NonNull String rawContent,
+                                     @Nullable String etag) {
         Set<String> newSet;
         try {
             newSet = descriptor.format == Format.TEXT
@@ -300,11 +299,8 @@ public final class LocalListUtil {
             return;
         }
 
-        // Atomically swap in the new state
-        ListSnapshot next = new ListSnapshot();
-        next.domainSet = newSet;
-        next.rawContent = rawContent;
-        ref.set(next);
+        // Atomically swap in the new immutable snapshot
+        stateMap.get(descriptor).set(new ListSnapshot(newSet, etag));
     }
 
     /**
