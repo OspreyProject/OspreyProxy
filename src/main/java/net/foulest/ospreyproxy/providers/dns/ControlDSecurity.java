@@ -17,9 +17,10 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
+import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -31,7 +32,7 @@ import java.util.Map;
  * Provider implementation for Control D Security DNS.
  */
 @Component
-public class ControlDSecurity extends AbstractDnsProvider {
+public class ControlDSecurity extends AbstractDNSProvider {
 
     private static final String API_URL = "https://freedns.controld.com/no-malware-typo?name=";
     private static final String BLOCK_IP = "0.0.0.0";
@@ -59,6 +60,11 @@ public class ControlDSecurity extends AbstractDnsProvider {
     @Override
     public @NonNull String getApiUrl() {
         return API_URL;
+    }
+
+    @Override
+    protected DNSFormat getDnsFormat() {
+        return DNSFormat.NAME_MESSAGE;
     }
 
     @Override

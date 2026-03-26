@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -29,7 +29,7 @@ import java.util.Map;
  * Provider implementation for CleanBrowsing Family DNS.
  */
 @Component
-public class CleanBrowsingFamily extends AbstractDnsProvider {
+public class CleanBrowsingFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://doh.cleanbrowsing.org/doh/family-filter/?dns=";
     private static final int REFUSED_FLAGS = 131; // RCODE 5 (REFUSED) in the flags byte

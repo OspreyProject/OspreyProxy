@@ -23,6 +23,7 @@ import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.dns.Accept;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
+import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpResponse;
@@ -44,7 +45,7 @@ import java.util.stream.Collectors;
  * mappings without touching transport or logging.
  */
 @Slf4j
-public abstract class AbstractDnsProvider extends AbstractProvider {
+public abstract class AbstractDNSProvider extends AbstractProvider {
 
     // HTTP/2 client shared across all DNS providers.
     // Multiplexing handles max conn. total and max conn. per route.
@@ -64,26 +65,33 @@ public abstract class AbstractDnsProvider extends AbstractProvider {
     public final LookupResult lookup(@NonNull String host) {
         String displayName = getDisplayName();
         String url = getApiUrl();
+        DNSFormat format = getDnsFormat();
 
         try {
-            if (usesDnsJson()) {
-                String encodedHost = DNSUtil.encodeHostParam(host);
-                Map<String, Object> response = fetchDnsJson(url + encodedHost, displayName);
+            String encodedUrl = switch (format) {
+                case NAME_MESSAGE, NAME_JSON -> url + DNSUtil.encodeHostParam(host);
+                case PATH_MESSAGE, PATH_JSON -> url + DNSUtil.buildBase64Query(host);
+            };
 
-                if (response.isEmpty()) {
-                    log.warn("[{}] Empty response returned for '{}'", displayName, host);
-                    return LookupResult.FAILED;
-                }
-                return interpret(null, response, host);
-            } else {
-                String encoded = DNSUtil.buildBase64Query(host);
-                byte[] response = fetchDnsMessage(url + encoded, displayName);
+            return switch (format) {
+                case NAME_MESSAGE, PATH_MESSAGE -> {
+                    byte[] response = fetchDnsMessage(encodedUrl, displayName);
 
-                if (response == null) {
-                    return LookupResult.FAILED;
+                    if (response == null) {
+                        yield LookupResult.FAILED;
+                    }
+                    yield interpret(response, null, host);
                 }
-                return interpret(response, null, host);
-            }
+                case NAME_JSON, PATH_JSON -> {
+                    Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
+
+                    if (response.isEmpty()) {
+                        log.warn("[{}] Empty response returned for '{}'", displayName, host);
+                        yield LookupResult.FAILED;
+                    }
+                    yield interpret(null, response, host);
+                }
+            };
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to lookup host '{}': {} ({})",
                     displayName, host, e.getMessage(), e.getClass().getName(), e);
@@ -92,21 +100,25 @@ public abstract class AbstractDnsProvider extends AbstractProvider {
     }
 
     /**
-     * Whether this provider uses the DNS JSON format ({@code application/dns-json})
-     * instead of the binary wire format ({@code application/dns-message}).
-     * Defaults to {@code false}. Override to return {@code true} for JSON providers.
+     * Specifies the DNS format used by this provider, which determines how the request is built
+     * and how the response is interpreted. The default is {@link DNSFormat#PATH_MESSAGE}
+     * which works for most providers, but some (e.g. Control D Family) require {@link DNSFormat#NAME_MESSAGE}
+     * or {@link DNSFormat#NAME_JSON}.
+     * <p>
+     * The format determines whether the hostname is encoded as a query parameter or as a base64-encoded DNS message in the path,
+     * and whether the response is expected as raw bytes or as JSON.
      *
-     * @return {@code true} if this provider uses DNS JSON, {@code false} for wire format.
+     * @return The {@link DNSFormat} used by this provider.
      */
-    protected boolean usesDnsJson() {
-        return false;
+    protected DNSFormat getDnsFormat() {
+        return DNSFormat.PATH_MESSAGE;
     }
 
     /**
      * Interprets a DNS response and returns the appropriate {@link LookupResult}.
      * <p>
      * Exactly one of {@code rawBytes} or {@code jsonResponse} will be non-null,
-     * based on {@link #usesDnsJson()}.
+     * based on {@link #getDnsFormat()}.
      *
      * @param rawBytes     The raw DNS wire-format response, or {@code null} for JSON providers.
      * @param jsonResponse The parsed DNS JSON response map, or {@code null} for wire-format providers.

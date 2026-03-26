@@ -31,7 +31,7 @@ import java.util.Map;
  * Each provider implements only the methods relevant to its API style.
  * POST providers override {@link #buildBody}; GET providers override
  * {@link #getMethod} and {@link #buildRequestUrl}.
- * DNS providers extend {@link AbstractDnsProvider} and implement {@code interpret}.
+ * DNS providers extend {@link AbstractDNSProvider} and implement {@code interpret}.
  */
 public interface Provider {
 
@@ -142,7 +142,7 @@ public interface Provider {
      * <p>
      * API providers (e.g. AlphaMountain, PrecisionSec) override this to parse their
      * upstream JSON and map it to a result. DNS providers use a separate
-     * {@link AbstractDnsProvider#interpret} contract and do not override this method.
+     * {@link AbstractDNSProvider#interpret} contract and do not override this method.
      * <p>
      * The default implementation returns {@link LookupResult#FAILED}, which is safe
      * for DNS providers since they never reach {@code executeUpstream}.

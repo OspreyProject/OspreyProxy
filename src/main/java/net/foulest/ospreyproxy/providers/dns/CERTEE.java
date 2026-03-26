@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
@@ -31,7 +31,7 @@ import java.util.Map;
  * Provider implementation for CERT-EE DNS.
  */
 @Component
-public class CERTEE extends AbstractDnsProvider {
+public class CERTEE extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.cert.ee/dns-query?dns=";
     private static final String BLOCK_IP = "46.226.143.58";

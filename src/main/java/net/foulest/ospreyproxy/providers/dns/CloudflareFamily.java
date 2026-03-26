@@ -17,8 +17,9 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -29,7 +30,7 @@ import java.util.Map;
  * Provider implementation for Cloudflare Family DNS.
  */
 @Component
-public class CloudflareFamily extends AbstractDnsProvider {
+public class CloudflareFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://family.cloudflare-dns.com/dns-query?name=";
 
@@ -59,8 +60,8 @@ public class CloudflareFamily extends AbstractDnsProvider {
     }
 
     @Override
-    protected boolean usesDnsJson() {
-        return true;
+    protected DNSFormat getDnsFormat() {
+        return DNSFormat.NAME_JSON;
     }
 
     @Override

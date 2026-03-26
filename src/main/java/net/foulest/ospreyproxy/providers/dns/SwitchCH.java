@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
@@ -32,7 +32,7 @@ import java.util.Map;
  * Provider implementation for Switch.ch DNS.
  */
 @Component
-public class SwitchCH extends AbstractDnsProvider {
+public class SwitchCH extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.switch.ch/dns-query?dns=";
     private static final String BLOCK_CNAME = "landingpage.ph.rpz.switch.ch";

@@ -20,7 +20,7 @@ package net.foulest.ospreyproxy;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.providers.other.PhishingBox;
 import net.foulest.ospreyproxy.result.LookupResult;
@@ -198,7 +198,7 @@ public class ProxyHandler {
             }
 
             // DNS providers execute their lookup() directly and return a simple result JSON.
-            if (provider instanceof AbstractDnsProvider dnsProvider) {
+            if (provider instanceof AbstractDNSProvider dnsProvider) {
                 return executeDnsProvider(dnsProvider, host);
             }
 
@@ -224,7 +224,7 @@ public class ProxyHandler {
      * @return A {@link ResponseEntity} containing {@code {"result": "<value>"}}.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static ResponseEntity<String> executeDnsProvider(@NonNull AbstractDnsProvider provider,
+    private static ResponseEntity<String> executeDnsProvider(@NonNull AbstractDNSProvider provider,
                                                              @NonNull String host) {
         LookupResult result = provider.lookup(host);
         String providerName = provider.getDisplayName();
@@ -460,20 +460,20 @@ public class ProxyHandler {
      * Uses O(1) map lookup rather than a linear scan of a separate list.
      *
      * @param endpointName The {@link Provider#getEndpointName()} value to look up.
-     * @return The matching {@link AbstractDnsProvider}.
+     * @return The matching {@link AbstractDNSProvider}.
      * @throws IllegalStateException If no DNS provider with the given short name is registered.
      */
-    private @NonNull AbstractDnsProvider getDnsProvider(@NonNull String endpointName) {
+    private @NonNull AbstractDNSProvider getDnsProvider(@NonNull String endpointName) {
         Provider provider = providersByEndpointName.get(endpointName);
 
-        if (!(provider instanceof AbstractDnsProvider dnsProvider)) {
+        if (!(provider instanceof AbstractDNSProvider dnsProvider)) {
             throw new IllegalStateException("No DNS provider registered with endpoint name: " + endpointName);
         }
         return dnsProvider;
     }
 
     /**
-     * Submits a DNS provider {@link AbstractDnsProvider#lookup} call as a
+     * Submits a DNS provider {@link AbstractDNSProvider#lookup} call as a
      * {@link CompletableFuture} on the virtual thread executor.
      *
      * @param provider The DNS provider to lookup with.
@@ -481,7 +481,7 @@ public class ProxyHandler {
      * @return A {@link CompletableFuture} that resolves to the provider's {@link LookupResult}.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static @NonNull CompletableFuture<LookupResult> supplyCheck(@NonNull AbstractDnsProvider provider,
+    private static @NonNull CompletableFuture<LookupResult> supplyCheck(@NonNull AbstractDNSProvider provider,
                                                                         @NonNull String host) {
         return CompletableFuture.supplyAsync(() -> provider.lookup(host), VIRTUAL_THREAD_EXECUTOR);
     }

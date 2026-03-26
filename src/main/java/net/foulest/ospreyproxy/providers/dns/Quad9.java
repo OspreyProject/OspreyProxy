@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import net.foulest.ospreyproxy.providers.AbstractDnsProvider;
+import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -29,7 +29,7 @@ import java.util.Map;
  * Provider implementation for Quad9 DNS.
  */
 @Component
-public class Quad9 extends AbstractDnsProvider {
+public class Quad9 extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.quad9.net/dns-query?dns=";
     private static final int NXDOMAIN_RCODE = 3; // RCODE 3 (NXDOMAIN) in the flags byte
