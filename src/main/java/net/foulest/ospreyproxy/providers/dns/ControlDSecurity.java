@@ -33,7 +33,7 @@ import java.util.Map;
 @Component
 public class ControlDSecurity extends AbstractDnsProvider {
 
-    private static final String API_URL = "https://freedns.controld.com/p1?dns=";
+    private static final String API_URL = "https://freedns.controld.com/no-malware-typo?name=";
     private static final String BLOCK_IP = "0.0.0.0";
 
     @Override
