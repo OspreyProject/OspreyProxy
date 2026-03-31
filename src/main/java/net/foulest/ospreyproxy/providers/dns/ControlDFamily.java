@@ -19,8 +19,8 @@ package net.foulest.ospreyproxy.providers.dns;
 
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
+import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -40,11 +40,6 @@ public class ControlDFamily extends AbstractDNSProvider {
     @Override
     public @NonNull String getDisplayName() {
         return "Control D Family";
-    }
-
-    @Override
-    public @NonNull String getShortName() {
-        return "controlDFamily";
     }
 
     @Override
@@ -69,8 +64,7 @@ public class ControlDFamily extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (rawBytes == null || rawBytes.length == 0) {
             return LookupResult.FAILED;
         }

@@ -40,11 +40,6 @@ public class CloudflareSecurity extends AbstractDNSProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "cloudflareSecurity";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "cloudflare-security";
     }
@@ -66,8 +61,7 @@ public class CloudflareSecurity extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (jsonResponse == null || jsonResponse.isEmpty()) {
             return LookupResult.FAILED;
         }

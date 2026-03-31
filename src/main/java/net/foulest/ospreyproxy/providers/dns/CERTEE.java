@@ -42,11 +42,6 @@ public class CERTEE extends AbstractDNSProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "certEE";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "cert-ee";
     }
@@ -63,8 +58,7 @@ public class CERTEE extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (rawBytes == null || rawBytes.length == 0) {
             return LookupResult.FAILED;
         }

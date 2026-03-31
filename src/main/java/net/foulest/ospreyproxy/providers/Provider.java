@@ -44,14 +44,6 @@ public interface Provider {
     String getDisplayName();
 
     /**
-     * A short name for this provider, used in JSON results.
-     *
-     * @return The short name of the provider.
-     */
-    @NonNull
-    String getShortName();
-
-    /**
      * A unique endpoint name for this provider, used in configuration and routing.
      *
      * @return The unique endpoint name of the provider.
@@ -154,6 +146,8 @@ public interface Provider {
     default @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
         return LookupResult.FAILED;
     }
+
+    @NonNull LookupResult cachedLookup(@NonNull String lookupStr);
 
     /**
      * Whether rate limiting is enabled for this provider.

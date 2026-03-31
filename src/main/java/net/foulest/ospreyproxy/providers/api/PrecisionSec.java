@@ -51,11 +51,6 @@ public class PrecisionSec extends AbstractProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "precisionSec";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "precisionsec";
     }
@@ -75,6 +70,7 @@ public class PrecisionSec extends AbstractProvider {
         return API_KEY != null ? API_KEY : "";
     }
 
+    @SuppressWarnings("NestedMethodCall")
     @Override
     public @NonNull Map<String, String> getHeaders() {
         return Map.of("API-Key", getApiKey());

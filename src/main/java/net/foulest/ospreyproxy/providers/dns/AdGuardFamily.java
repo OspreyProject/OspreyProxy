@@ -43,11 +43,6 @@ public class AdGuardFamily extends AbstractDNSProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "adGuardFamily";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "adguard-family";
     }
@@ -64,8 +59,7 @@ public class AdGuardFamily extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (rawBytes == null || rawBytes.length == 0) {
             return LookupResult.FAILED;
         }
@@ -86,8 +80,11 @@ public class AdGuardFamily extends AbstractDNSProvider {
             return false;
         });
 
-        return malicious ? LookupResult.MALICIOUS
-                : adultContent ? LookupResult.ADULT_CONTENT
-                : LookupResult.ALLOWED;
+        if (malicious) {
+            return LookupResult.MALICIOUS;
+        } else if (adultContent) {
+            return LookupResult.ADULT_CONTENT;
+        }
+        return LookupResult.ALLOWED;
     }
 }

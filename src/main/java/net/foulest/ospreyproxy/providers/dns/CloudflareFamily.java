@@ -40,11 +40,6 @@ public class CloudflareFamily extends AbstractDNSProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "cloudflareFamily";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "cloudflare-family";
     }
@@ -66,8 +61,7 @@ public class CloudflareFamily extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (jsonResponse == null || jsonResponse.isEmpty()) {
             return LookupResult.FAILED;
         }
@@ -75,8 +69,12 @@ public class CloudflareFamily extends AbstractDNSProvider {
         String commentStr = extractComment(jsonResponse);
         boolean malicious = commentStr.contains("EDE(16): Censored");
         boolean adultContent = commentStr.contains("EDE(17): Filtered");
-        return malicious ? LookupResult.MALICIOUS
-                : adultContent ? LookupResult.ADULT_CONTENT
-                : LookupResult.ALLOWED;
+
+        if (malicious) {
+            return LookupResult.MALICIOUS;
+        } else if (adultContent) {
+            return LookupResult.ADULT_CONTENT;
+        }
+        return LookupResult.ALLOWED;
     }
 }

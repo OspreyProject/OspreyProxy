@@ -43,11 +43,6 @@ public class SwitchCH extends AbstractDNSProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return "switchCH";
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return "switch-ch";
     }
@@ -64,8 +59,7 @@ public class SwitchCH extends AbstractDNSProvider {
 
     @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
-                                     @Nullable Map<String, Object> jsonResponse,
-                                     @NonNull String host) {
+                                     @Nullable Map<String, Object> jsonResponse) {
         if (rawBytes == null || rawBytes.length == 0) {
             return LookupResult.FAILED;
         }

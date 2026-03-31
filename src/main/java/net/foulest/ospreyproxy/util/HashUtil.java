@@ -29,21 +29,26 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.HexFormat;
-import java.util.function.Function;
 
 /**
- * Utility class for hashing IP addresses with a salt.
+ * Utility class for hashing IP addresses and URLs in a non-reversible way using HMAC with random salts.
+ * This allows us to generate stable identifiers for IPs and URLs without storing the original values,
+ * which is important for privacy and security.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-final class HashUtil {
+public final class HashUtil {
 
     // Random salt for hashing IPs; intentionally regenerated on each restart
     private static final byte[] IP_SALT = generateSalt();
 
+    // Separate salt for hashing URLs; kept independent of IP_SALT so the two
+    // hash spaces cannot be correlated with each other
+    private static final byte[] URL_SALT = generateSalt();
+
     // ThreadLocal Mac to avoid getInstance() overhead on every call
     // Mac is not thread-safe, so ThreadLocal is required
     @SuppressWarnings("java:S5164")
-    private static final ThreadLocal<Mac> HMAC = ThreadLocal.withInitial(() -> {
+    private static final ThreadLocal<Mac> IP_HMAC = ThreadLocal.withInitial(() -> {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(IP_SALT, "HmacSHA256"));
@@ -53,8 +58,20 @@ final class HashUtil {
         }
     });
 
+    // Separate ThreadLocal Mac for URL hashing, keyed with URL_SALT
+    @SuppressWarnings("java:S5164")
+    private static final ThreadLocal<Mac> URL_HMAC = ThreadLocal.withInitial(() -> {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(URL_SALT, "HmacSHA256"));
+            return mac;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
+    });
+
     // Cache for hashed IP addresses to improve performance and reduce CPU load on repeated hashes
-    private static final Cache<String, String> HASH_CACHE = Caffeine.newBuilder()
+    private static final Cache<String, String> IP_CACHE = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
@@ -74,22 +91,33 @@ final class HashUtil {
     }
 
     /**
-     * Hashes the IP address using HMAC-SHA-256 with a salt to prevent rainbow table attacks.
-     * Caffeine's {@link Cache#get(Object, Function)} uses an optimistic fast-path for cache
-     * hits internally without locking, so no manual {@code getIfPresent()} lookup is needed.
-     * Uses {@code ThreadLocal<Mac>} to avoid getInstance() overhead on misses.
+     * Hashes the IP address using HMAC-SHA-256 with a random salt to produce a stable, non-reversible identifier.
      *
      * @param ip The IP address to hash.
      * @return A hexadecimal string representation of the hashed IP address.
      */
     static String hashIp(@NonNull String ip) {
-        return HASH_CACHE.get(ip, k -> {
-            Mac mac = HMAC.get();
+        return IP_CACHE.get(ip, k -> {
+            Mac mac = IP_HMAC.get();
             mac.reset();
 
             byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
             byte[] hash = mac.doFinal(bytes);
             return HexFormat.of().formatHex(hash);
         });
+    }
+
+    /**
+     * Hashes the URL using HMAC-SHA-256 with a separate salt to prevent correlation with IP hashes.
+     *
+     * @param url The URL to hash.
+     * @return A hexadecimal string representation of the hashed URL, truncated to 16 bytes (32 hex chars).
+     */
+    @SuppressWarnings("NestedMethodCall")
+    public static @NonNull String hashUrl(@NonNull String url) {
+        Mac mac = URL_HMAC.get();
+        mac.reset();
+        byte[] digest = mac.doFinal(url.getBytes(StandardCharsets.UTF_8));
+        return HexFormat.of().formatHex(digest, 0, 16);
     }
 }

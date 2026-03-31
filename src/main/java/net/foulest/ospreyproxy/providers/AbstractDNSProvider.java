@@ -22,8 +22,8 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.dns.Accept;
-import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
+import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpResponse;
@@ -38,11 +38,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Abstract base class for DNS-over-HTTPS filtering providers.
- * <p>
- * Owns the shared HTTP/2 client and the standard fetch-and-interpret pipeline.
- * Subclasses implement {@link #interpret} to declare their own response-to-result
- * mappings without touching transport or logging.
+ * Abstract base class for DNS providers, handling the common logic of fetching and interpreting DNS responses.
  */
 @Slf4j
 public abstract class AbstractDNSProvider extends AbstractProvider {
@@ -54,6 +50,25 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
             HttpClientFactory.createHttp2Client(5, 5, 5, 10);
 
     /**
+     * Performs a cached lookup for the given host, using the provider's DNS filter.
+     *
+     * @param host The validated string to look up (host or URL).
+     * @return The {@link LookupResult} for this host, from cache if available or freshly looked up if not.
+     */
+    @Override
+    public final @NonNull LookupResult cachedLookup(@NonNull String host) {
+        LookupResult cached = getCachedResult(host);
+
+        if (cached != null) {
+            return cached;
+        }
+
+        LookupResult result = lookup(host);
+        putCachedResult(host, result);
+        return result;
+    }
+
+    /**
      * Checks a hostname against this provider's DNS filter.
      * <p>
      * Handles the full fetch-and-interpret cycle; subclasses only implement {@link #interpret}.
@@ -62,7 +77,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @return The {@link LookupResult} for this host.
      */
     @SuppressWarnings("NestedMethodCall")
-    public final LookupResult lookup(@NonNull String host) {
+    private LookupResult lookup(@NonNull String host) {
         String displayName = getDisplayName();
         String url = getApiUrl();
         DNSFormat format = getDnsFormat();
@@ -80,7 +95,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     if (response == null) {
                         yield LookupResult.FAILED;
                     }
-                    yield interpret(response, null, host);
+                    yield interpret(response, (Map<String, Object>) null);
                 }
                 case NAME_JSON, PATH_JSON -> {
                     Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
@@ -89,7 +104,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                         log.warn("[{}] Empty response returned for '{}'", displayName, host);
                         yield LookupResult.FAILED;
                     }
-                    yield interpret(null, response, host);
+                    yield interpret(null, response);
                 }
             };
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
@@ -125,8 +140,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @return The {@link LookupResult} for this host.
      */
     protected abstract LookupResult interpret(byte @Nullable [] rawBytes,
-                                              @Nullable Map<String, Object> jsonResponse,
-                                              @NonNull String host);
+                                              @Nullable Map<String, Object> jsonResponse);
 
     /**
      * Extracts the {@code Comment} field from a Cloudflare-style DNS JSON response as a single string.

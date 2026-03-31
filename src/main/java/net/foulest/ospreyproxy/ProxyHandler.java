@@ -195,18 +195,24 @@ public class ProxyHandler {
                 return executeAggregateCheck(host, providerName);
             }
 
-            // DNS providers execute their lookup() directly and return a simple result JSON.
+            // DNS providers submit only the hostname upstream.
+            // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             if (provider instanceof AbstractDNSProvider dnsProvider) {
-                return executeDnsProvider(dnsProvider, host);
+                LookupResult result = dnsProvider.cachedLookup(host);
+                return resultResponse(result, providerName, host);
             }
 
-            // Local list providers look up the host against an in-memory domain set.
+            // Local list providers check against an in-memory domain set.
+            // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             Descriptor listDescriptor = LocalListUtil.findByEndpointName(endpointName);
             if (listDescriptor != null) {
-                return executeLocalList(listDescriptor, host);
+                LookupResult result = provider.cachedLookup(host);
+                return resultResponse(result, providerName, host);
             }
 
-            // API providers that only accept a bare domain (no scheme/path/query/fragment)
+            // API providers require HTTP_CLIENT which lives here, so execution stays in
+            // executeUpstream. The cache read/write is done there via getCachedResult /
+            // putCachedResult rather than through cachedLookup.
             String forwardUrl = provider.stripToHost() ? host : normalizedUrl;
             return executeUpstream(provider, providerName, forwardUrl);
         } catch (StatusCodeException e) {
@@ -344,16 +350,25 @@ public class ProxyHandler {
     @SuppressWarnings("NestedMethodCall")
     private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
                                                           @NonNull String providerName,
-                                                          @NonNull String normalizedUrl) {
+                                                          @NonNull String forwardUrl) {
+        // Returns the cached result if present
+        if (provider instanceof AbstractProvider ap) {
+            LookupResult cached = ap.getCachedResult(forwardUrl);
+
+            if (cached != null) {
+                return resultResponse(cached, providerName, forwardUrl);
+            }
+        }
+
         Method method = provider.getMethod();
         ClassicRequestBuilder requestBuilder;
-        String requestUrl = provider.buildRequestUrl(normalizedUrl);
+        String requestUrl = provider.buildRequestUrl(forwardUrl);
 
         // Builds the request based on the provider's specified method (GET or POST)
         if (method == Method.GET) {
             requestBuilder = ClassicRequestBuilder.get(requestUrl);
         } else {
-            Map<String, Object> requestBody = provider.buildBody(normalizedUrl);
+            Map<String, Object> requestBody = provider.buildBody(forwardUrl);
             String jsonBody = "";
 
             // buildBody() returns null for GET providers;
@@ -363,7 +378,7 @@ public class ProxyHandler {
                     jsonBody = JacksonUtil.MAPPER.writeValueAsString(requestBody);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                     log.error("[{}] Failed to serialize request body for '{}': {} ({})",
-                            providerName, normalizedUrl, e.getMessage(), e.getClass().getName());
+                            providerName, forwardUrl, e.getMessage(), e.getClass().getName());
                     return ErrorUtil.RESP_502;
                 }
             }
@@ -377,9 +392,9 @@ public class ProxyHandler {
         }
 
         try {
-            ClassicHttpRequest request = requestBuilder.build();
+            ClassicHttpRequest httpRequest = requestBuilder.build();
 
-            return HTTP_CLIENT.execute(request, (ClassicHttpResponse response) -> {
+            return HTTP_CLIENT.execute(httpRequest, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
                 byte[] responseBytes = EntityUtils.toByteArray(entity, 10_000);
@@ -387,7 +402,7 @@ public class ProxyHandler {
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
                     if (statusCode == 400) {
-                        log.warn("[{}] Upstream request failed with status code: 400 ({})", providerName, normalizedUrl);
+                        log.warn("[{}] Upstream request failed with status code: 400 ({})", providerName, forwardUrl);
                     } else {
                         log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
                     }
@@ -408,21 +423,13 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                // Delegates response parsing and result mapping to the provider
-                LookupResult result = provider.interpret(responseBytes, normalizedUrl);
+                LookupResult result = provider.interpret(responseBytes, forwardUrl);
 
-                try {
-                    String responseBody = JacksonUtil.MAPPER.writeValueAsString(
-                            Map.of("result", result.getValue())
-                    );
-                    return ResponseEntity.ok()
-                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                            .body(responseBody);
-                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.error("[{}] Failed to serialize result for '{}': {} ({})",
-                            providerName, normalizedUrl, e.getMessage(), e.getClass().getName());
-                    return ErrorUtil.RESP_502;
+                // Caches the result for future requests
+                if (provider instanceof AbstractProvider ap) {
+                    ap.putCachedResult(forwardUrl, result);
                 }
+                return resultResponse(result, providerName, forwardUrl);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             log.error("[{}] Upstream request timed out: {} ({})", providerName, e.getMessage(), e.getClass().getName());
@@ -432,6 +439,31 @@ public class ProxyHandler {
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            return ErrorUtil.RESP_502;
+        }
+    }
+
+    /**
+     * Serializes a {@link LookupResult} into a {@code {"result": "<value>"}} JSON response.
+     * Centralizes the response-building pattern shared by all execute paths.
+     *
+     * @param result       The result to serialize.
+     * @param providerName The provider display name for error logging.
+     * @param lookupStr    The lookup string (host or URL) for error logging.
+     * @return A {@link ResponseEntity} with the JSON body, or a 502 on serialization failure.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    private static @NonNull ResponseEntity<String> resultResponse(@NonNull LookupResult result,
+                                                                  @NonNull String providerName,
+                                                                  @NonNull String lookupStr) {
+        try {
+            String responseBody = JacksonUtil.MAPPER.writeValueAsString(
+                    Map.of("result", result.getValue())
+            );
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.error("[{}] Failed to serialize result for '{}': {} ({})",
+                    providerName, lookupStr, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }

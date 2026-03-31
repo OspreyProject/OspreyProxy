@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
@@ -30,37 +31,31 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Provider implementation for AlphaMountain.
+ * Provider implementation for ChainPatrol.
  */
 @Slf4j
 @Component
-public class AlphaMountain extends AbstractProvider {
+public class ChainPatrol extends AbstractProvider {
 
-    private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
-    private static final String API_URL = "https://api.alphamountain.ai/category/uri";
-
-    // AlphaMountain category IDs mapped to results
-    private static final int CATEGORY_CSAM = 11;           // Child Sexual Abuse Material
-    private static final int CATEGORY_PUA = 55;            // Potentially Unwanted Applications
-    private static final int CATEGORY_MALICIOUS = 39;      // Malicious
-    private static final int CATEGORY_PHISHING = 51;       // Phishing
+    private static final String API_KEY = System.getenv("CHAINPATROL_API_KEY");
+    private static final String API_URL = "https://app.chainpatrol.io/api/v2/asset/check";
 
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank()
                 || !UUID_PATTERN.matcher(API_KEY).matches())) {
-            throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is invalid or not set");
+            throw new IllegalStateException("CHAINPATROL_API_KEY environment variable is invalid or not set");
         }
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "AlphaMountain";
+        return "ChainPatrol";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "alphamountain";
+        return "chainpatrol";
     }
 
     @Override
@@ -83,14 +78,18 @@ public class AlphaMountain extends AbstractProvider {
         return Method.POST;
     }
 
-    @Override
     @SuppressWarnings("NestedMethodCall")
+    @Override
+    public @NonNull Map<String, String> getHeaders() {
+        return Map.of(
+                "X-API-KEY", getApiKey()
+        );
+    }
+
+    @Override
     public @NonNull Map<String, Object> buildBody(@NonNull String url) {
         return Map.of(
-                "uri", url,
-                "license", getApiKey(),
-                "version", 1,
-                "type", "partner.info"
+                "content", url
         );
     }
 
@@ -101,38 +100,25 @@ public class AlphaMountain extends AbstractProvider {
 
         try {
             Map<String, Object> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.MAP_TYPE_OBJECT);
-            Object categoryBlock = data.get("category");
+            Object status = data.get("status");
 
-            if (!(categoryBlock instanceof Map<?, ?> categoryMap)) {
-                log.warn("[{}] Response for '{}' missing 'category' block", displayName, normalizedUrl);
+            if (!(status instanceof String statusStr)) {
+                log.warn("[{}] Response for '{}' missing or invalid 'status' field", displayName, normalizedUrl);
                 return LookupResult.FAILED;
             }
 
-            Object categoriesObj = categoryMap.get("categories");
-
-            if (!(categoriesObj instanceof List<?> categories) || categories.isEmpty()) {
-                log.info("[{}] No categories found for '{}'", displayName, normalizedUrl);
-                return LookupResult.FAILED;
+            switch (statusStr) {
+                case "BLOCKED" -> {
+                    return LookupResult.PHISHING;
+                }
+                case "UNKNOWN", "ALLOWED" -> {
+                    return LookupResult.ALLOWED;
+                }
+                default -> {
+                    log.warn("[{}] Unexpected 'status' value for '{}': {}", displayName, normalizedUrl, statusStr);
+                    return LookupResult.FAILED;
+                }
             }
-
-            boolean isPhishing = categories.stream().anyMatch(c -> c instanceof Number n
-                    && n.intValue() == CATEGORY_PHISHING);
-            if (isPhishing) {
-                return LookupResult.PHISHING;
-            }
-
-            boolean isMalicious = categories.stream().anyMatch(c -> c instanceof Number n
-                    && n.intValue() == CATEGORY_MALICIOUS);
-            if (isMalicious) {
-                return LookupResult.MALICIOUS;
-            }
-
-            boolean hasUntrusted = categories.stream().anyMatch(c -> c instanceof Number n
-                    && (n.intValue() == CATEGORY_CSAM || n.intValue() == CATEGORY_PUA));
-            if (hasUntrusted) {
-                return LookupResult.UNTRUSTED;
-            }
-            return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response for '{}': {} ({})",
                     displayName, normalizedUrl, e.getMessage(), e.getClass().getName());

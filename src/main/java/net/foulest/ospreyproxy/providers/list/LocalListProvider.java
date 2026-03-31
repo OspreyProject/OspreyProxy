@@ -19,8 +19,9 @@ package net.foulest.ospreyproxy.providers.list;
 
 import lombok.RequiredArgsConstructor;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
+import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.list.Descriptor;
-import org.apache.hc.core5.http.Method;
+import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -43,11 +44,6 @@ public class LocalListProvider extends AbstractProvider {
     }
 
     @Override
-    public @NonNull String getShortName() {
-        return descriptor.endpointName;
-    }
-
-    @Override
     public @NonNull String getEndpointName() {
         return descriptor.endpointName;
     }
@@ -58,7 +54,15 @@ public class LocalListProvider extends AbstractProvider {
     }
 
     @Override
-    public @NonNull Method getMethod() {
-        return Method.GET;
+    public final @NonNull LookupResult cachedLookup(@NonNull String host) {
+        LookupResult cached = getCachedResult(host);
+
+        if (cached != null) {
+            return cached;
+        }
+
+        LookupResult result = LocalListUtil.lookupHost(descriptor, host);
+        putCachedResult(host, result);
+        return result;
     }
 }
