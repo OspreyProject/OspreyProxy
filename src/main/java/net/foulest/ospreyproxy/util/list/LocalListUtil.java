@@ -129,35 +129,6 @@ public final class LocalListUtil {
     }
 
     /**
-     * Checks if the given host is listed in the live set for the specified descriptor.
-     *
-     * @param descriptor The list descriptor to lookup against.
-     * @param host The hostname to lookup for listing.
-     * @return {@code true} if the host is listed (i.e., lookupHost returns the descriptor's result type),
-     *         {@code false} if not listed or if the list has not yet been loaded (fail-open).
-     */
-    public static boolean isListed(@NonNull Descriptor descriptor, @NonNull String host) {
-        return lookupHost(descriptor, host) == descriptor.resultType;
-    }
-
-    /**
-     * Returns the number of domains currently in the given descriptor's live set.
-     *
-     * @param descriptor The list descriptor to lookup.
-     * @return The number of domains in the live set, or 0 if the list has not yet been loaded.
-     */
-    public static int size(@NonNull Descriptor descriptor) {
-        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
-
-        if (ref == null) {
-            return 0;
-        }
-
-        Set<String> domainSet = ref.get().domainSet();
-        return domainSet != null ? domainSet.size() : 0;
-    }
-
-    /**
      * Checks whether the given hostname or any of its ancestor domains (up to but not including
      * the TLD) appears in the given domain set.
      *

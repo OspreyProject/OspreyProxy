@@ -120,9 +120,8 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * Exactly one of {@code rawBytes} or {@code jsonResponse} will be non-null,
      * based on {@link #getDnsFormat()}.
      *
-     * @param rawBytes     The raw DNS wire-format response, or {@code null} for JSON providers.
+     * @param rawBytes The raw DNS wire-format response, or {@code null} for JSON providers.
      * @param jsonResponse The parsed DNS JSON response map, or {@code null} for wire-format providers.
-     * @param host         The hostname that was checked, for logging purposes.
      * @return The {@link LookupResult} for this host.
      */
     protected abstract LookupResult interpret(byte @Nullable [] rawBytes,
@@ -223,7 +222,6 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     log.warn("[{}] Empty response body for URL '{}'", displayName, url);
                     return null;
                 }
-
                 return body;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {

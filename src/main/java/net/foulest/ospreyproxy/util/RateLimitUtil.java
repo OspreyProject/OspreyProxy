@@ -35,7 +35,7 @@ final class RateLimitUtil {
      * Checks if the given {@code hashedIp} is burst-blocked or has exceeded the burst rate limit.
      * Consumes one token from the burst bucket if not already blocked.
      *
-     * @param provider The provider to lookup the burst bucket from.
+     * @param provider The provider to look up the burst bucket from.
      * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
      * @return {@code true} if the IP is blocked or has exceeded the rate limit, {@code false} otherwise.
@@ -63,7 +63,7 @@ final class RateLimitUtil {
      * Checks if the given {@code hashedIp} is sustained-blocked or has exceeded the sustained rate limit.
      * Consumes one token from the sustained bucket if not already blocked.
      *
-     * @param provider The provider to lookup the sustained bucket from.
+     * @param provider The provider to look up the sustained bucket from.
      * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
      * @return {@code true} if the IP is blocked or has exceeded the rate limit, {@code false} otherwise.

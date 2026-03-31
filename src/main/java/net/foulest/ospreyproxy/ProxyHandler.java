@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
+import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.providers.other.CheckEndpoint;
 import net.foulest.ospreyproxy.result.LookupResult;
@@ -59,11 +60,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * REST controller for all proxy endpoints.
- * <p>
- * Providers are injected as a {@link List} by Spring; a single dynamic endpoint
- * dispatches to the correct provider by short name. PhishingBox uses a dedicated
- * endpoint that fans out to selected DNS providers and local lists in parallel.
+ * Central controller for all incoming requests. Performs IP extraction, rate limiting, body validation,
+ * URL normalization and SSRF checks, and upstream request execution for all providers.
  */
 @Slf4j
 @RestController
