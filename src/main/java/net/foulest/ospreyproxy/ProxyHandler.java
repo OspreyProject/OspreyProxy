@@ -223,7 +223,7 @@ public class ProxyHandler {
     /**
      * Executes the CheckEndpoint aggregate lookup synchronously.
      *
-     * @param host         The validated, normalized host to lookup.
+     * @param host The validated, normalized host to lookup.
      * @param providerName The display name of the provider, for logging.
      * @return A {@link ResponseEntity} containing the JSON result map, or a 502 on serialization failure.
      */
@@ -232,35 +232,29 @@ public class ProxyHandler {
                                                          @NonNull String providerName) {
         // Providers to check
         AbstractDNSProvider adGuard = getDnsProvider("adguard-security");
-        AbstractDNSProvider certEE = getDnsProvider("cert-ee");
         AbstractDNSProvider cleanBrowsing = getDnsProvider("cleanbrowsing-security");
         AbstractDNSProvider cloudflare = getDnsProvider("cloudflare-security");
         AbstractDNSProvider controlD = getDnsProvider("controld-security");
         AbstractDNSProvider quad9 = getDnsProvider("quad9");
         AbstractDNSProvider switchCh = getDnsProvider("switch-ch");
-        Provider phishDestroy = providersByEndpointName.get(Descriptor.PHISH_DESTROY.endpointName);
         Provider phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.endpointName);
 
         // Futures for parallel execution of all checks
         CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> certEEFuture = CompletableFuture.supplyAsync(() -> certEE.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> cloudflareFuture = CompletableFuture.supplyAsync(() -> cloudflare.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> controlDFuture = CompletableFuture.supplyAsync(() -> controlD.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> quad9Future = CompletableFuture.supplyAsync(() -> quad9.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> switchChFuture = CompletableFuture.supplyAsync(() -> switchCh.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> phishDestroyFuture = phishDestroy != null ? CompletableFuture.supplyAsync(() -> phishDestroy.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
         CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null ? CompletableFuture.supplyAsync(() -> phishingDatabase.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
 
         // Wait for all futures to complete
         try {
             CompletableFuture.allOf(
                     adGuardFuture,
-                    certEEFuture,
                     cleanBrowsingFuture,
                     cloudflareFuture,
                     controlDFuture,
-                    phishDestroyFuture,
                     phishingDatabaseFuture,
                     quad9Future,
                     switchChFuture
@@ -269,22 +263,18 @@ public class ProxyHandler {
         }
 
         boolean adGuardResult = safeGet(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
-        boolean certEEResult = safeGet(certEEFuture, providerName, "certEE") == LookupResult.MALICIOUS;
         boolean cleanBrowsingResult = safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
         boolean cloudflareResult = safeGet(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
         boolean controlDResult = safeGet(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
-        boolean phishDestroyResult = safeGet(phishDestroyFuture, providerName, "phishDestroy") == LookupResult.PHISHING;
         boolean phishingDatabaseResult = safeGet(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
         boolean quad9Result = safeGet(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
         boolean switchChResult = safeGet(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
 
         List<Boolean> results = List.of(
                 adGuardResult,
-                certEEResult,
                 cleanBrowsingResult,
                 cloudflareResult,
                 controlDResult,
-                phishDestroyResult,
                 phishingDatabaseResult,
                 quad9Result,
                 switchChResult
@@ -317,11 +307,9 @@ public class ProxyHandler {
         // "providers" subkey
         Map<String, Boolean> providersMap = new LinkedHashMap<>();
         providersMap.put("adGuard", adGuardResult);
-        providersMap.put("certEE", certEEResult);
         providersMap.put("cleanBrowsing", cleanBrowsingResult);
         providersMap.put("cloudflare", cloudflareResult);
         providersMap.put("controlD", controlDResult);
-        providersMap.put("phishDestroy", phishDestroyResult);
         providersMap.put("phishingDatabase", phishingDatabaseResult);
         providersMap.put("quad9", quad9Result);
         providersMap.put("switchCH", switchChResult);
