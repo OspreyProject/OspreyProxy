@@ -92,14 +92,8 @@ public abstract class AbstractProvider implements Provider {
             .build();
 
     // Separate caches per TTL tier; Caffeine does not support per-entry TTLs.
-    private final Cache<String, LookupResult> allowedCache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofHours(1))
-            .maximumSize(100_000)
-            .build();
-    private final Cache<String, LookupResult> blockedCache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofMinutes(15))
-            .maximumSize(10_000)
-            .build();
+    private final Cache<String, LookupResult> allowedCache;
+    private final Cache<String, LookupResult> blockedCache;
 
     // Per-instance Bandwidth definitions, built once from this provider's config methods
     private final Bandwidth burstBandwidth;
@@ -112,6 +106,16 @@ public abstract class AbstractProvider implements Provider {
     private final Duration invalidRequestBlockDuration;
 
     protected AbstractProvider() {
+        allowedCache = Caffeine.newBuilder()
+                .expireAfterWrite(allowedCacheTtl())
+                .maximumSize(100_000)
+                .build();
+
+        blockedCache = Caffeine.newBuilder()
+                .expireAfterWrite(blockedCacheTtl())
+                .maximumSize(10_000)
+                .build();
+
         int burstCapacity = rateLimitBurstCapacity();
         Duration burstWindow = rateLimitBurstWindow();
 
@@ -188,6 +192,23 @@ public abstract class AbstractProvider implements Provider {
         } else {
             blockedCache.put(key, result);
         }
+    }
+
+    /**
+     * TTL for cached ALLOWED results. Override per provider to tune freshness.
+     */
+    @NonNull
+    protected Duration allowedCacheTtl() {
+        return Duration.ofHours(1);
+    }
+
+    /**
+     * TTL for cached blocked results (MALICIOUS, PHISHING, etc.).
+     * Shorter default since threat status can change quickly.
+     */
+    @NonNull
+    protected Duration blockedCacheTtl() {
+        return Duration.ofMinutes(15);
     }
 
     /**

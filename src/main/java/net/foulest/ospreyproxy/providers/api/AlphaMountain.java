@@ -26,6 +26,7 @@ import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -92,6 +93,16 @@ public class AlphaMountain extends AbstractProvider {
                 "version", 1,
                 "type", "partner.info"
         );
+    }
+
+    @Override
+    protected @NonNull Duration allowedCacheTtl() {
+        return Duration.ofHours(24);
+    }
+
+    @Override
+    protected @NonNull Duration blockedCacheTtl() {
+        return Duration.ofHours(24);
     }
 
     @Override
