@@ -264,7 +264,7 @@ public class ProxyHandler {
                     phishingDatabaseFuture,
                     quad9Future,
                     switchChFuture
-            ).orTimeout(5, TimeUnit.SECONDS).join();
+            ).orTimeout(700, TimeUnit.MILLISECONDS).join();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
         }
 
