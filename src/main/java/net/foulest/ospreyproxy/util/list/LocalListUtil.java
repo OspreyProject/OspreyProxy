@@ -122,7 +122,7 @@ public final class LocalListUtil {
         Set<String> domainSet = ref.get().domainSet();
 
         if (domainSet == null) {
-            log.warn("[{}] List not yet loaded; skipping lookup for '{}'", descriptor.shortName, host);
+            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.shortName);
             return LookupResult.FAILED;
         }
         return isHostInSet(domainSet, host) ? descriptor.resultType : LookupResult.ALLOWED;
