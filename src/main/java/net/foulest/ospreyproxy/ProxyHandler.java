@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.providers.Provider;
-import net.foulest.ospreyproxy.providers.other.PhishingBox;
+import net.foulest.ospreyproxy.providers.other.CheckEndpoint;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.*;
 import net.foulest.ospreyproxy.util.list.Descriptor;
@@ -89,21 +89,21 @@ public class ProxyHandler {
             .disableAutomaticRetries()
             .build();
 
-    // Virtual thread executor for parallel PhishingBox checks
+    // Virtual thread executor for parallel /check endpoint lookups
     private static final Executor VIRTUAL_THREAD_EXECUTOR =
-            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("phishingbox-", 0).factory());
+            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("check-", 0).factory());
 
-    // All providers keyed by short name for O(1) dispatch and O(1) DNS provider lookup
+    // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
     private final Map<String, Provider> providersByEndpointName;
 
-    // PhishingBox provider reference, kept for API-key validation
-    private final PhishingBox phishingBox;
+    // CheckEndpoint provider reference, kept for API-key validation
+    private final CheckEndpoint checkEndpoint;
 
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
      */
-    public ProxyHandler(@NonNull List<Provider> providers, @NonNull PhishingBox phishingBox) {
-        this.phishingBox = phishingBox;
+    public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint) {
+        this.checkEndpoint = checkEndpoint;
 
         providersByEndpointName = providers.stream()
                 .collect(Collectors.toMap(Provider::getEndpointName, Function.identity()));
@@ -115,7 +115,7 @@ public class ProxyHandler {
     }
 
     /**
-     * Dynamic endpoint for all non-PhishingBox providers.
+     * Dynamic endpoint for all non-CheckEndpoint providers.
      * Routes to the provider whose {@link Provider#getEndpointName()} matches {@code providerName}.
      * Keep @RequestBody(required = false) for rate-limiting.
      */
@@ -127,22 +127,22 @@ public class ProxyHandler {
                                                  @NonNull HttpServletRequest request) {
         Provider provider = providersByEndpointName.get(providerName);
 
-        if (provider == null || provider instanceof PhishingBox) {
+        if (provider == null || provider instanceof CheckEndpoint) {
             return ErrorUtil.RESP_404;
         }
         return proxyRequest(body, request, provider);
     }
 
     /**
-     * Dedicated endpoint for PhishingBox.
+     * Dedicated /check endpoint for aggregate lookups to all non-premium providers.
      * Keep @RequestBody(required = false) for rate-limiting.
      */
-    @PostMapping(value = "/phishingbox",
+    @PostMapping(value = "/check",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> handlePhishingBox(@RequestBody(required = false) byte[] body,
-                                                    @NonNull HttpServletRequest request) {
-        return proxyRequest(body, request, phishingBox);
+    public ResponseEntity<String> handleCheckEndpoint(@RequestBody(required = false) byte[] body,
+                                                      @NonNull HttpServletRequest request) {
+        return proxyRequest(body, request, checkEndpoint);
     }
 
     /**
@@ -176,7 +176,7 @@ public class ProxyHandler {
 
             Map<String, String> incoming = RequestUtil.validateBody(bodyBytes, provider, providerName, hashedIp);
 
-            if (provider instanceof PhishingBox) {
+            if (provider instanceof CheckEndpoint) {
                 RequestUtil.validateApiKeyHeader(request, provider, providerName, hashedIp);
             }
 
@@ -191,10 +191,10 @@ public class ProxyHandler {
             StatsUtil.recordRequest(providerName);
             String normalizedUrl = parsedUri.toString();
 
-            // PhishingBox executes a custom aggregate lookup that fans out to multiple DNS providers
+            // The /check executes a custom aggregate lookup that fans out to multiple DNS providers
             // and local lists in parallel, then assembles a custom JSON response.
-            if (provider instanceof PhishingBox) {
-                return executePhishingBox(host, providerName);
+            if (provider instanceof CheckEndpoint) {
+                return executeAggregateCheck(host, providerName);
             }
 
             // DNS providers execute their lookup() directly and return a simple result JSON.
@@ -217,107 +217,112 @@ public class ProxyHandler {
     }
 
     /**
-     * Executes a DNS provider lookup and wraps the result as a simple JSON object.
+     * Executes the CheckEndpoint aggregate lookup synchronously.
      *
-     * @param provider The DNS provider to lookup with.
-     * @param host     The validated, normalized host to lookup.
-     * @return A {@link ResponseEntity} containing {@code {"result": "<value>"}}.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private static ResponseEntity<String> executeDnsProvider(@NonNull AbstractDNSProvider provider,
-                                                             @NonNull String host) {
-        LookupResult result = provider.lookup(host);
-        String providerName = provider.getDisplayName();
-
-        try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(
-                    Map.of("result", result.getValue())
-            );
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize DNS result for '{}': {} ({})",
-                    providerName, host, e.getMessage(), e.getClass().getName());
-            return ErrorUtil.RESP_502;
-        }
-    }
-
-    /**
-     * Executes a local list lookup and wraps the result as a simple JSON object.
-     * <p>
-     * No upstream request is made; the check is performed entirely against the in-memory
-     * domain set maintained by {@link LocalListUtil}.
-     *
-     * @param descriptor The list descriptor to look up against.
-     * @param host       The validated, normalized host to lookup.
-     * @return A {@link ResponseEntity} containing {@code {"result": "<value>"}}.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private static ResponseEntity<String> executeLocalList(@NonNull Descriptor descriptor,
-                                                           @NonNull String host) {
-        LookupResult result = LocalListUtil.lookupHost(descriptor, host);
-
-        try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(
-                    Map.of("result", result.getValue())
-            );
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize local list result for '{}': {} ({})",
-                    descriptor.shortName, host, e.getMessage(), e.getClass().getName());
-            return ErrorUtil.RESP_502;
-        }
-    }
-
-    /**
-     * Executes the PhishingBox aggregate lookup synchronously.
-     *
-     * @param host The validated, normalized host to lookup.
+     * @param host         The validated, normalized host to lookup.
      * @param providerName The display name of the provider, for logging.
      * @return A {@link ResponseEntity} containing the JSON result map, or a 502 on serialization failure.
      */
     @SuppressWarnings("NestedMethodCall")
-    private ResponseEntity<String> executePhishingBox(@NonNull String host,
-                                                      @NonNull String providerName) {
-        // DNS provider fan-out (security-focused providers only)
-        CompletableFuture<LookupResult> adGuardFuture = supplyCheck(getDnsProvider("adguard-security"), host);
-        CompletableFuture<LookupResult> cleanBrowsingFuture = supplyCheck(getDnsProvider("cleanbrowsing-security"), host);
-        CompletableFuture<LookupResult> cloudflareFuture = supplyCheck(getDnsProvider("cloudflare-security"), host);
-        CompletableFuture<LookupResult> quad9Future = supplyCheck(getDnsProvider("quad9"), host);
-        CompletableFuture<LookupResult> switchChFuture = supplyCheck(getDnsProvider("switch-ch"), host);
+    private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
+                                                         @NonNull String providerName) {
+        // Providers to check
+        AbstractDNSProvider adGuard = getDnsProvider("adguard-security");
+        AbstractDNSProvider certEE = getDnsProvider("cert-ee");
+        AbstractDNSProvider cleanBrowsing = getDnsProvider("cleanbrowsing-security");
+        AbstractDNSProvider cloudflare = getDnsProvider("cloudflare-security");
+        AbstractDNSProvider controlD = getDnsProvider("controld-security");
+        AbstractDNSProvider quad9 = getDnsProvider("quad9");
+        AbstractDNSProvider switchCh = getDnsProvider("switch-ch");
+        Provider phishDestroy = providersByEndpointName.get(Descriptor.PHISH_DESTROY.endpointName);
+        Provider phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.endpointName);
 
-        // Local list checks
-        CompletableFuture<LookupResult> phishDestroyFuture = CompletableFuture.supplyAsync(
-                () -> LocalListUtil.isListed(Descriptor.PHISH_DESTROY, host)
-                        ? LookupResult.PHISHING : LookupResult.ALLOWED,
-                VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> phishingDatabaseFuture = CompletableFuture.supplyAsync(
-                () -> LocalListUtil.isListed(Descriptor.PHISHING_DATABASE, host)
-                        ? LookupResult.PHISHING : LookupResult.ALLOWED,
-                VIRTUAL_THREAD_EXECUTOR);
+        // Futures for parallel execution of all checks
+        CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> certEEFuture = CompletableFuture.supplyAsync(() -> certEE.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> cloudflareFuture = CompletableFuture.supplyAsync(() -> cloudflare.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> controlDFuture = CompletableFuture.supplyAsync(() -> controlD.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> quad9Future = CompletableFuture.supplyAsync(() -> quad9.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> switchChFuture = CompletableFuture.supplyAsync(() -> switchCh.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> phishDestroyFuture = phishDestroy != null ? CompletableFuture.supplyAsync(() -> phishDestroy.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
+        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null ? CompletableFuture.supplyAsync(() -> phishingDatabase.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
 
         // Wait for all futures to complete
         try {
             CompletableFuture.allOf(
                     adGuardFuture,
+                    certEEFuture,
                     cleanBrowsingFuture,
                     cloudflareFuture,
-                    quad9Future,
-                    switchChFuture,
+                    controlDFuture,
                     phishDestroyFuture,
-                    phishingDatabaseFuture
+                    phishingDatabaseFuture,
+                    quad9Future,
+                    switchChFuture
             ).orTimeout(5, TimeUnit.SECONDS).join();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
         }
 
-        // Collect results
-        Map<String, String> resultMap = new LinkedHashMap<>();
-        resultMap.put("adGuardSecurity", safeGet(adGuardFuture, providerName, "adGuardSecurity").getValue());
-        resultMap.put("cleanBrowsing", safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity").getValue());
-        resultMap.put("cloudflare", safeGet(cloudflareFuture, providerName, "cloudflareSecurity").getValue());
-        resultMap.put("quad9", safeGet(quad9Future, providerName, "quad9").getValue());
-        resultMap.put("switchCH", safeGet(switchChFuture, providerName, "switchCH").getValue());
-        resultMap.put("phishDestroy", safeGet(phishDestroyFuture, providerName, "phishDestroy").getValue());
-        resultMap.put("phishingDatabase", safeGet(phishingDatabaseFuture, providerName, "phishingDatabase").getValue());
+        boolean adGuardResult = safeGet(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
+        boolean certEEResult = safeGet(certEEFuture, providerName, "certEE") == LookupResult.MALICIOUS;
+        boolean cleanBrowsingResult = safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
+        boolean cloudflareResult = safeGet(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
+        boolean controlDResult = safeGet(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
+        boolean phishDestroyResult = safeGet(phishDestroyFuture, providerName, "phishDestroy") == LookupResult.PHISHING;
+        boolean phishingDatabaseResult = safeGet(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
+        boolean quad9Result = safeGet(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
+        boolean switchChResult = safeGet(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
+
+        List<Boolean> results = List.of(
+                adGuardResult,
+                certEEResult,
+                cleanBrowsingResult,
+                cloudflareResult,
+                controlDResult,
+                phishDestroyResult,
+                phishingDatabaseResult,
+                quad9Result,
+                switchChResult
+        );
+
+        int blockedCount = 0;
+        for (boolean result : results) {
+            if (result) {
+                blockedCount++;
+            }
+        }
+
+        String confidence = "unknown";
+
+        // Determines confidence
+        if (blockedCount == 1) {
+            confidence = "low";
+        } else if (blockedCount == 2) {
+            confidence = "medium";
+        } else if (blockedCount == 0 || blockedCount >= 3) {
+            confidence = "high";
+        }
+
+        // Build the JSON map
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        resultMap.put("host", host);
+        resultMap.put("detections", blockedCount);
+        resultMap.put("confidence", confidence);
+
+        // "providers" subkey
+        Map<String, Boolean> providersMap = new LinkedHashMap<>();
+        providersMap.put("adGuard", adGuardResult);
+        providersMap.put("certEE", certEEResult);
+        providersMap.put("cleanBrowsing", cleanBrowsingResult);
+        providersMap.put("cloudflare", cloudflareResult);
+        providersMap.put("controlD", controlDResult);
+        providersMap.put("phishDestroy", phishDestroyResult);
+        providersMap.put("phishingDatabase", phishingDatabaseResult);
+        providersMap.put("quad9", quad9Result);
+        providersMap.put("switchCH", switchChResult);
+
+        resultMap.put("providers", providersMap);
 
         try {
             String responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
@@ -332,9 +337,9 @@ public class ProxyHandler {
     /**
      * Executes an upstream API provider request and returns the interpreted result as JSON.
      *
-     * @param provider      The provider configuration.
-     * @param providerName  The provider display name for logging.
-     * @param normalizedUrl The validated, normalized URL to lookup.
+     * @param provider The provider configuration.
+     * @param providerName The provider display name for logging.
+     * @param forwardUrl The validated string to look up (host or normalized URL).
      * @return A {@link ResponseEntity} containing {@code {"result": "<value>"}},
      *         or an appropriate error response on failure.
      */
@@ -470,19 +475,5 @@ public class ProxyHandler {
             throw new IllegalStateException("No DNS provider registered with endpoint name: " + endpointName);
         }
         return dnsProvider;
-    }
-
-    /**
-     * Submits a DNS provider {@link AbstractDNSProvider#lookup} call as a
-     * {@link CompletableFuture} on the virtual thread executor.
-     *
-     * @param provider The DNS provider to lookup with.
-     * @param host     The hostname to lookup.
-     * @return A {@link CompletableFuture} that resolves to the provider's {@link LookupResult}.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private static @NonNull CompletableFuture<LookupResult> supplyCheck(@NonNull AbstractDNSProvider provider,
-                                                                        @NonNull String host) {
-        return CompletableFuture.supplyAsync(() -> provider.lookup(host), VIRTUAL_THREAD_EXECUTOR);
     }
 }

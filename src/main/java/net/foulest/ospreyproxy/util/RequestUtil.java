@@ -31,6 +31,7 @@ import tools.jackson.core.JsonToken;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Map;
 
@@ -88,9 +89,9 @@ public final class RequestUtil {
     }
 
     /**
-     * Validates the {@code API-Key} request header for PhishingBox requests.
+     * Validates the {@code API-Key} request header for CheckEndpoint requests.
      * The key must be present and must exactly match the value of the
-     * {@code PHISHINGBOX_API_KEY} environment variable.
+     * {@code CHECK_ENDPOINT_API_KEY} environment variable.
      *
      * @param request      The incoming servlet request.
      * @param provider     The provider to reject invalid requests with.
@@ -108,7 +109,7 @@ public final class RequestUtil {
         // Checks if either API keys are missing
         if (providedKey == null || providedKey.isBlank()) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked PhishingBox request with missing API-Key header");
+                    "Blocked CheckEndpoint request with missing API-Key header");
             throw new StatusCodeException(ErrorUtil.RESP_401);
         }
 
@@ -122,10 +123,10 @@ public final class RequestUtil {
 
             if (!MessageDigest.isEqual(providedKeyHash, expectedKeyHash)) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked PhishingBox request with invalid API-Key header");
+                        "Blocked CheckEndpoint request with invalid API-Key header");
                 throw new StatusCodeException(ErrorUtil.RESP_401);
             }
-        } catch (java.security.NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }

@@ -24,34 +24,30 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * Provider implementation for PhishingBox.
+ * Provider implementation for the /check endpoint.
  */
 @Component
-public class PhishingBox extends AbstractProvider {
+public class CheckEndpoint extends AbstractProvider {
 
-    private static final String API_KEY = System.getenv("PHISHINGBOX_API_KEY");
+    // TODO: Migrate this to paid API keys through a dashboard, somehow
+    private static final String API_KEY = System.getenv("CHECK_ENDPOINT_API_KEY");
 
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank()
                 || !UUID_PATTERN.matcher(API_KEY).matches())) {
-            throw new IllegalStateException("PHISHINGBOX_API_KEY environment variable is invalid or not set");
+            throw new IllegalStateException("CHECK_ENDPOINT_API_KEY environment variable is invalid or not set");
         }
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "PhishingBox";
-    }
-
-    @Override
-    public @NonNull String getShortName() {
-        return "phishingBox";
+        return "/check Endpoint";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "phishingbox";
+        return "check";
     }
 
     @Override
@@ -71,6 +67,7 @@ public class PhishingBox extends AbstractProvider {
 
     @Override
     public boolean isRateLimitingEnabled() {
+        // TODO: Rate-limiting should be done per API key instead of per IP
         return false;
     }
 }
