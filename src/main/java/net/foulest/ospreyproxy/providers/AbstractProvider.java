@@ -106,13 +106,16 @@ public abstract class AbstractProvider implements Provider {
     private final Duration invalidRequestBlockDuration;
 
     protected AbstractProvider() {
+        Duration allowedCacheTTL = allowedCacheTTL();
+        Duration blockedCacheTTL = blockedCacheTTL();
+
         allowedCache = Caffeine.newBuilder()
-                .expireAfterWrite(allowedCacheTtl())
+                .expireAfterWrite(allowedCacheTTL)
                 .maximumSize(100_000)
                 .build();
 
         blockedCache = Caffeine.newBuilder()
-                .expireAfterWrite(blockedCacheTtl())
+                .expireAfterWrite(blockedCacheTTL)
                 .maximumSize(10_000)
                 .build();
 
@@ -198,7 +201,7 @@ public abstract class AbstractProvider implements Provider {
      * TTL for cached ALLOWED results. Override per provider to tune freshness.
      */
     @NonNull
-    protected Duration allowedCacheTtl() {
+    protected Duration allowedCacheTTL() {
         return Duration.ofHours(1);
     }
 
@@ -207,7 +210,7 @@ public abstract class AbstractProvider implements Provider {
      * Shorter default since threat status can change quickly.
      */
     @NonNull
-    protected Duration blockedCacheTtl() {
+    protected Duration blockedCacheTTL() {
         return Duration.ofMinutes(15);
     }
 

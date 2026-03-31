@@ -96,12 +96,12 @@ public class AlphaMountain extends AbstractProvider {
     }
 
     @Override
-    protected @NonNull Duration allowedCacheTtl() {
+    protected @NonNull Duration allowedCacheTTL() {
         return Duration.ofHours(24);
     }
 
     @Override
-    protected @NonNull Duration blockedCacheTtl() {
+    protected @NonNull Duration blockedCacheTTL() {
         return Duration.ofHours(24);
     }
 
