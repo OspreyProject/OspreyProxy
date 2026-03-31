@@ -48,10 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -97,14 +94,33 @@ public class ProxyHandler {
     // CheckEndpoint provider reference, kept for API-key validation
     private final CheckEndpoint checkEndpoint;
 
+    // Cached references to DNS providers for the /check endpoint aggregate lookup
+    private final AbstractDNSProvider adGuard;
+    private final AbstractDNSProvider cleanBrowsing;
+    private final AbstractDNSProvider cloudflare;
+    private final AbstractDNSProvider controlD;
+    private final AbstractDNSProvider quad9;
+    private final AbstractDNSProvider switchCh;
+    private final Provider phishingDatabase;
+
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
      */
     public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint) {
         this.checkEndpoint = checkEndpoint;
 
+        // Build the provider map for O(1) lookup by endpoint name
         providersByEndpointName = providers.stream()
                 .collect(Collectors.toMap(Provider::getEndpointName, Function.identity()));
+
+        // Set up cached references to DNS providers for the /check endpoint aggregate lookup
+        adGuard = getDnsProvider("adguard-security");
+        cleanBrowsing = getDnsProvider("cleanbrowsing-security");
+        cloudflare = getDnsProvider("cloudflare-security");
+        controlD = getDnsProvider("controld-security");
+        quad9 = getDnsProvider("quad9");
+        switchCh = getDnsProvider("switch-ch");
+        phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.endpointName);
 
         // Pre-warm Jackson type metadata
         JacksonUtil.MAPPER.constructType(Map.class);
@@ -230,15 +246,6 @@ public class ProxyHandler {
     @SuppressWarnings("NestedMethodCall")
     private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
                                                          @NonNull String providerName) {
-        // Providers to check
-        AbstractDNSProvider adGuard = getDnsProvider("adguard-security");
-        AbstractDNSProvider cleanBrowsing = getDnsProvider("cleanbrowsing-security");
-        AbstractDNSProvider cloudflare = getDnsProvider("cloudflare-security");
-        AbstractDNSProvider controlD = getDnsProvider("controld-security");
-        AbstractDNSProvider quad9 = getDnsProvider("quad9");
-        AbstractDNSProvider switchCh = getDnsProvider("switch-ch");
-        Provider phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.endpointName);
-
         // Futures for parallel execution of all checks
         CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
         CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
@@ -280,22 +287,15 @@ public class ProxyHandler {
                 switchChResult
         );
 
-        int blockedCount = 0;
-        for (boolean result : results) {
-            if (result) {
-                blockedCount++;
-            }
-        }
-
-        String confidence = "unknown";
+        int blockedCount = Collections.frequency(results, true);
 
         // Determines confidence
-        if (blockedCount == 1) {
-            confidence = "low";
-        } else if (blockedCount == 2) {
-            confidence = "medium";
-        } else if (blockedCount == 0 || blockedCount >= 3) {
-            confidence = "high";
+        String confidence;
+        switch (blockedCount) {
+            case 0 -> confidence = "none";
+            case 1 -> confidence = "low";
+            case 2 -> confidence = "medium";
+            default -> confidence = "high";
         }
 
         // Build the JSON map
