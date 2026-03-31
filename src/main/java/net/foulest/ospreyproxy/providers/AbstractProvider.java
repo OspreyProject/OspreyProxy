@@ -36,11 +36,6 @@ import java.util.regex.Pattern;
  */
 public abstract class AbstractProvider implements Provider {
 
-    // Pattern for validating UUIDs
-    protected static final Pattern UUID_PATTERN = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-    );
-
     // Caches for storing buckets per IP address
     private final Cache<String, Bucket> burstBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))

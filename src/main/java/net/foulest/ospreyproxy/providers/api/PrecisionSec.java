@@ -39,8 +39,7 @@ public class PrecisionSec extends AbstractProvider {
 
     @PostConstruct
     public void validateConfig() {
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank()
-                || !UUID_PATTERN.matcher(API_KEY).matches())) {
+        if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {
             throw new IllegalStateException("PRECISIONSEC_API_KEY environment variable is not set");
         }
     }
