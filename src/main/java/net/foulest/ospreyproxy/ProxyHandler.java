@@ -344,8 +344,11 @@ public class ProxyHandler {
             LookupResult cached = ap.getCachedResult(forwardUrl);
 
             if (cached != null) {
+                StatsUtil.recordCacheHit();
                 return resultResponse(cached, providerName, forwardUrl);
             }
+
+            StatsUtil.recordCacheMiss();
         }
 
         Method method = provider.getMethod();

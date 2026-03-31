@@ -20,6 +20,7 @@ package net.foulest.ospreyproxy.providers.list;
 import lombok.RequiredArgsConstructor;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.StatsUtil;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.jspecify.annotations.NonNull;
@@ -58,9 +59,11 @@ public class LocalListProvider extends AbstractProvider {
         LookupResult cached = getCachedResult(host);
 
         if (cached != null) {
+            StatsUtil.recordCacheHit();
             return cached;
         }
 
+        StatsUtil.recordCacheMiss();
         LookupResult result = LocalListUtil.lookupHost(descriptor, host);
         putCachedResult(host, result);
         return result;

@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
+import net.foulest.ospreyproxy.util.StatsUtil;
 import net.foulest.ospreyproxy.util.dns.Accept;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
@@ -60,9 +61,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
         LookupResult cached = getCachedResult(host);
 
         if (cached != null) {
+            StatsUtil.recordCacheHit();
             return cached;
         }
 
+        StatsUtil.recordCacheMiss();
         LookupResult result = lookup(host);
         putCachedResult(host, result);
         return result;

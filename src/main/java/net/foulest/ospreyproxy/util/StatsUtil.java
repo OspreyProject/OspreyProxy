@@ -66,6 +66,10 @@ public final class StatsUtil {
     private static final AtomicLong GLOBAL_HIGHEST_REQ_PER_MIN = new AtomicLong(594);
     private static final AtomicLong GLOBAL_HIGHEST_PEAK_REQ_PER_SEC = new AtomicLong(29);
 
+    // Global cache hit/miss counters (across all providers, all-time since startup)
+    private static final AtomicLong GLOBAL_CACHE_HITS = new AtomicLong(0);
+    private static final AtomicLong GLOBAL_CACHE_MISSES = new AtomicLong(0);
+
     // Scheduler for periodic request statistics printing
     private static final ScheduledExecutorService REQUEST_STATS_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "RequestStats");
@@ -176,6 +180,22 @@ public final class StatsUtil {
                 log.warn("[{}] New highest req/sec across providers: {}", highestPeakSecProvider, highestPeakThisMin);
             }
         }, 60, 60, TimeUnit.SECONDS);
+
+        // Every 5 minutes: log a cache efficiency summary
+        REQUEST_STATS_SCHEDULER.scheduleWithFixedDelay(() -> {
+            long hits = GLOBAL_CACHE_HITS.get();
+            long misses = GLOBAL_CACHE_MISSES.get();
+            long total = hits + misses;
+
+            if (total == 0) {
+                return;
+            }
+
+            long hitPct = Math.round(hits * 100.0 / total);
+            log.warn("[Stats] Total: {:,} | Cache hit: {:,} ({}%) | Cache miss: {:,}"
+                    .replace("{:,}", "%,d")
+                    .formatted(total, hits, hitPct, misses));
+        }, 5, 5, TimeUnit.MINUTES);
     }
 
     /**
@@ -188,5 +208,19 @@ public final class StatsUtil {
         RequestStats stats = PROVIDER_STATS.computeIfAbsent(providerName, k -> new RequestStats());
         stats.totalRequestCount.incrementAndGet();
         stats.secondBucket.incrementAndGet();
+    }
+
+    /**
+     * Records a cache hit, incrementing the global cache hit counter.
+     */
+    public static void recordCacheHit() {
+        GLOBAL_CACHE_HITS.incrementAndGet();
+    }
+
+    /**
+     * Records a cache miss, incrementing the global cache miss counter.
+     */
+    public static void recordCacheMiss() {
+        GLOBAL_CACHE_MISSES.incrementAndGet();
     }
 }
