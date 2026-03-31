@@ -94,7 +94,7 @@ public abstract class AbstractProvider implements Provider {
     // Separate caches per TTL tier; Caffeine does not support per-entry TTLs.
     private final Cache<String, LookupResult> allowedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(1))
-            .maximumSize(50_000)
+            .maximumSize(100_000)
             .build();
     private final Cache<String, LookupResult> blockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(15))
