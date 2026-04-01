@@ -215,6 +215,10 @@ public class ProxyHandler {
             // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             if (provider instanceof AbstractDNSProvider dnsProvider) {
                 LookupResult result = dnsProvider.cachedLookup(host);
+
+                if (result == LookupResult.RATE_LIMITED) {
+                    return ErrorUtil.RESP_429;
+                }
                 return resultResponse(result, providerName, host);
             }
 
@@ -223,6 +227,10 @@ public class ProxyHandler {
             Descriptor listDescriptor = LocalListUtil.findByEndpointName(endpointName);
             if (listDescriptor != null) {
                 LookupResult result = provider.cachedLookup(host);
+
+                if (result == LookupResult.RATE_LIMITED) {
+                    return ErrorUtil.RESP_429;
+                }
                 return resultResponse(result, providerName, host);
             }
 
@@ -339,6 +347,11 @@ public class ProxyHandler {
     private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
                                                           @NonNull String providerName,
                                                           @NonNull String forwardUrl) {
+        // Rate limit check before making the upstream request to avoid unnecessary load on the provider
+        if (CooldownUtil.isCoolingDown(providerName)) {
+            return ErrorUtil.RESP_429;
+        }
+
         // Returns the cached result if present
         if (provider instanceof AbstractProvider ap) {
             LookupResult cached = ap.getCachedResult(forwardUrl);
@@ -403,7 +416,10 @@ public class ProxyHandler {
                         case 401, 498 -> ErrorUtil.RESP_401;
                         case 404 -> ErrorUtil.RESP_404;
                         case 415 -> ErrorUtil.RESP_415;
-                        case 429 -> ErrorUtil.RESP_429;
+                        case 429 -> {
+                            CooldownUtil.triggerCooldown(providerName);
+                            yield ErrorUtil.RESP_429;
+                        }
                         default -> ErrorUtil.RESP_502;
                     };
                 }

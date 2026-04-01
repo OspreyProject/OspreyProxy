@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.providers;
 
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.CooldownUtil;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.StatsUtil;
@@ -58,6 +59,13 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      */
     @Override
     public final @NonNull LookupResult cachedLookup(@NonNull String host) {
+        String displayName = getDisplayName();
+
+        // Short-circuit if the provider is in a 429 cooldown
+        if (CooldownUtil.isCoolingDown(displayName)) {
+            return LookupResult.RATE_LIMITED;
+        }
+
         LookupResult cached = getCachedResult(host);
 
         if (cached != null) {
@@ -221,7 +229,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
-                    log.warn("[{}] Unexpected status {} for URL '{}'", displayName, statusCode, url);
+                    if (statusCode == 429) {
+                        CooldownUtil.triggerCooldown(displayName);
+                    } else {
+                        log.warn("[{}] Unexpected status {} for URL '{}'", displayName, statusCode, url);
+                    }
                     return null;
                 }
 

@@ -25,6 +25,7 @@ import lombok.Getter;
 public enum LookupResult {
 
     FAILED("failed"),
+    RATE_LIMITED("rate_limited"),
     ALLOWED("allowed"),
 
     MALICIOUS("malicious"),
