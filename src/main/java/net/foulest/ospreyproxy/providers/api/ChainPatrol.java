@@ -21,13 +21,11 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.Map;
 
 /**

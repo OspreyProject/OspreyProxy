@@ -245,96 +245,6 @@ public class ProxyHandler {
     }
 
     /**
-     * Executes the CheckEndpoint aggregate lookup synchronously.
-     *
-     * @param host The validated, normalized host to lookup.
-     * @param providerName The display name of the provider, for logging.
-     * @return A {@link ResponseEntity} containing the JSON result map, or a 502 on serialization failure.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
-                                                         @NonNull String providerName) {
-        // Futures for parallel execution of all checks
-        CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> cloudflareFuture = CompletableFuture.supplyAsync(() -> cloudflare.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> controlDFuture = CompletableFuture.supplyAsync(() -> controlD.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> quad9Future = CompletableFuture.supplyAsync(() -> quad9.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> switchChFuture = CompletableFuture.supplyAsync(() -> switchCh.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null ? CompletableFuture.supplyAsync(() -> phishingDatabase.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
-
-        // Wait for all futures to complete
-        try {
-            CompletableFuture.allOf(
-                    adGuardFuture,
-                    cleanBrowsingFuture,
-                    cloudflareFuture,
-                    controlDFuture,
-                    phishingDatabaseFuture,
-                    quad9Future,
-                    switchChFuture
-            ).orTimeout(700, TimeUnit.MILLISECONDS).join();
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
-        }
-
-        boolean adGuardResult = safeGet(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
-        boolean cleanBrowsingResult = safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
-        boolean cloudflareResult = safeGet(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
-        boolean controlDResult = safeGet(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
-        boolean phishingDatabaseResult = safeGet(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
-        boolean quad9Result = safeGet(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
-        boolean switchChResult = safeGet(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
-
-        List<Boolean> results = List.of(
-                adGuardResult,
-                cleanBrowsingResult,
-                cloudflareResult,
-                controlDResult,
-                phishingDatabaseResult,
-                quad9Result,
-                switchChResult
-        );
-
-        int blockedCount = Collections.frequency(results, true);
-
-        // Determines confidence
-        String confidence;
-        switch (blockedCount) {
-            case 0 -> confidence = "none";
-            case 1 -> confidence = "low";
-            case 2 -> confidence = "medium";
-            default -> confidence = "high";
-        }
-
-        // Build the JSON map
-        Map<String, Object> resultMap = new LinkedHashMap<>();
-        resultMap.put("host", host);
-        resultMap.put("detections", blockedCount);
-        resultMap.put("confidence", confidence);
-
-        // "providers" subkey
-        Map<String, Boolean> providersMap = new LinkedHashMap<>();
-        providersMap.put("adGuard", adGuardResult);
-        providersMap.put("cleanBrowsing", cleanBrowsingResult);
-        providersMap.put("cloudflare", cloudflareResult);
-        providersMap.put("controlD", controlDResult);
-        providersMap.put("phishingDatabase", phishingDatabaseResult);
-        providersMap.put("quad9", quad9Result);
-        providersMap.put("switchCH", switchChResult);
-
-        resultMap.put("providers", providersMap);
-
-        try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize result map for '{}': {} ({})",
-                    providerName, host, e.getMessage(), e.getClass().getName());
-            return ErrorUtil.RESP_502;
-        }
-    }
-
-    /**
      * Executes an upstream API provider request and returns the interpreted result as JSON.
      *
      * @param provider The provider configuration.
@@ -471,6 +381,96 @@ public class ProxyHandler {
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Failed to serialize result for '{}': {} ({})",
                     providerName, lookupStr, e.getMessage(), e.getClass().getName());
+            return ErrorUtil.RESP_502;
+        }
+    }
+
+    /**
+     * Executes the CheckEndpoint aggregate lookup synchronously.
+     *
+     * @param host The validated, normalized host to lookup.
+     * @param providerName The display name of the provider, for logging.
+     * @return A {@link ResponseEntity} containing the JSON result map, or a 502 on serialization failure.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
+                                                         @NonNull String providerName) {
+        // Futures for parallel execution of all checks
+        CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> cloudflareFuture = CompletableFuture.supplyAsync(() -> cloudflare.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> controlDFuture = CompletableFuture.supplyAsync(() -> controlD.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> quad9Future = CompletableFuture.supplyAsync(() -> quad9.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> switchChFuture = CompletableFuture.supplyAsync(() -> switchCh.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
+        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null ? CompletableFuture.supplyAsync(() -> phishingDatabase.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
+
+        // Wait for all futures to complete
+        try {
+            CompletableFuture.allOf(
+                    adGuardFuture,
+                    cleanBrowsingFuture,
+                    cloudflareFuture,
+                    controlDFuture,
+                    phishingDatabaseFuture,
+                    quad9Future,
+                    switchChFuture
+            ).orTimeout(700, TimeUnit.MILLISECONDS).join();
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+        }
+
+        boolean adGuardResult = safeGet(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
+        boolean cleanBrowsingResult = safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
+        boolean cloudflareResult = safeGet(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
+        boolean controlDResult = safeGet(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
+        boolean phishingDatabaseResult = safeGet(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
+        boolean quad9Result = safeGet(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
+        boolean switchChResult = safeGet(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
+
+        List<Boolean> results = List.of(
+                adGuardResult,
+                cleanBrowsingResult,
+                cloudflareResult,
+                controlDResult,
+                phishingDatabaseResult,
+                quad9Result,
+                switchChResult
+        );
+
+        int blockedCount = Collections.frequency(results, true);
+
+        // Determines confidence
+        String confidence;
+        switch (blockedCount) {
+            case 0 -> confidence = "none";
+            case 1 -> confidence = "low";
+            case 2 -> confidence = "medium";
+            default -> confidence = "high";
+        }
+
+        // Build the JSON map
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        resultMap.put("host", host);
+        resultMap.put("detections", blockedCount);
+        resultMap.put("confidence", confidence);
+
+        // "providers" subkey
+        Map<String, Boolean> providersMap = new LinkedHashMap<>();
+        providersMap.put("adGuard", adGuardResult);
+        providersMap.put("cleanBrowsing", cleanBrowsingResult);
+        providersMap.put("cloudflare", cloudflareResult);
+        providersMap.put("controlD", controlDResult);
+        providersMap.put("phishingDatabase", phishingDatabaseResult);
+        providersMap.put("quad9", quad9Result);
+        providersMap.put("switchCH", switchChResult);
+
+        resultMap.put("providers", providersMap);
+
+        try {
+            String responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.error("[{}] Failed to serialize result map for '{}': {} ({})",
+                    providerName, host, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }

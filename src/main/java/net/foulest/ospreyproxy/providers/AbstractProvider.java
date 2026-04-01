@@ -29,7 +29,6 @@ import org.jspecify.annotations.Nullable;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
 
 /**
  * Abstract base class for all Provider implementations, providing common caching and rate limiting logic.
