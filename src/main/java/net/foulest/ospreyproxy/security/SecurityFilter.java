@@ -52,7 +52,7 @@ public class SecurityFilter implements Filter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("X-Frame-Options", "DENY");
-        response.setHeader("Content-Security-Policy", "default-src 'none'");
+        response.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
         response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
         response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
