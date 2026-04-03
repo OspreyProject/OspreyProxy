@@ -233,7 +233,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     if (statusCode == 429) {
                         CooldownUtil.triggerCooldown(displayName, CooldownUtil.COOLDOWN_429);
                     } else {
-                        log.warn("[{}] Unexpected status {} for URL '{}'", displayName, statusCode, url);
+                        log.warn("[{}] Unexpected status {}", displayName, statusCode);
                     }
                     return null;
                 }
@@ -241,7 +241,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 String contentType = getContentType(response);
 
                 if (!contentType.contains(accept)) {
-                    log.warn("[{}] Unexpected Content-Type '{}' for URL '{}'", displayName, contentType, url);
+                    log.warn("[{}] Unexpected Content-Type '{}'", displayName, contentType);
                     return null;
                 }
 
@@ -249,14 +249,14 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
 
                 if (body == null || body.length == 0) {
-                    log.warn("[{}] Empty response body for URL '{}'", displayName, url);
+                    log.warn("[{}] Empty response body", displayName);
                     return null;
                 }
                 return body;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] HTTP fetch failed for URL '{}': {} ({})",
-                    displayName, url, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] HTTP fetch failed: {} ({})",
+                    displayName, e.getMessage(), e.getClass().getName());
             return null;
         }
     }
