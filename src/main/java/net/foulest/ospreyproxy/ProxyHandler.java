@@ -326,11 +326,18 @@ public class ProxyHandler {
                         case 401, 498 -> ErrorUtil.RESP_401;
                         case 404 -> ErrorUtil.RESP_404;
                         case 415 -> ErrorUtil.RESP_415;
+
                         case 429 -> {
-                            CooldownUtil.triggerCooldown(providerName);
+                            CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_429);
                             yield ErrorUtil.RESP_429;
                         }
-                        default -> ErrorUtil.RESP_502;
+
+                        default -> {
+                            if (statusCode >= 500) {
+                                CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_5XX);
+                            }
+                            yield ErrorUtil.RESP_502;
+                        }
                     };
                 }
 
@@ -350,6 +357,7 @@ public class ProxyHandler {
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             log.error("[{}] Upstream request timed out: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_5XX);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
             log.error("[{}] Upstream request blocked by SSRF resolver: {} ({})", providerName, e.getMessage(), e.getClass().getName());

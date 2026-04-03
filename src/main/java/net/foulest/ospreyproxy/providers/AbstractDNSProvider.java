@@ -229,8 +229,9 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
+                    // TODO: Should this also catch 5XX errors?
                     if (statusCode == 429) {
-                        CooldownUtil.triggerCooldown(displayName);
+                        CooldownUtil.triggerCooldown(displayName, CooldownUtil.COOLDOWN_429);
                     } else {
                         log.warn("[{}] Unexpected status {} for URL '{}'", displayName, statusCode, url);
                     }

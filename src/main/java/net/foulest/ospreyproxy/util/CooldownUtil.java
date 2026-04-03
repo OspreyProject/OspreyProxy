@@ -22,8 +22,9 @@ public final class CooldownUtil {
     // Deadline nanos per provider
     private static final ConcurrentHashMap<String, Long> COOLDOWN_DEADLINES = new ConcurrentHashMap<>();
 
-    private static final long COOLDOWN_NANOS = 1_000_000_000L;
     // Cooldown durations in nanoseconds
+    public static final long COOLDOWN_429 = 1_000_000_000L;
+    public static final long COOLDOWN_5XX = 3_000_000_000L;
 
     /**
      * Checks if the given provider is currently cooling down.
@@ -42,9 +43,9 @@ public final class CooldownUtil {
      * @param providerName The display name of the provider to trigger cooldown for.
      * @param durationNanos The duration of the cooldown in nanoseconds.
      */
-    public static void triggerCooldown(@NonNull String providerName) {
-        long deadline = System.nanoTime() + COOLDOWN_NANOS;
+    public static void triggerCooldown(@NonNull String providerName, long durationNanos) {
+        long deadline = System.nanoTime() + durationNanos;
         COOLDOWN_DEADLINES.put(providerName, deadline);
-        log.warn("[{}] Upstream returned 429; provider cooling down for 1 second", providerName);
+        log.warn("[{}] Provider cooling down for {}ms", providerName, durationNanos / 1_000_000);
     }
 }
