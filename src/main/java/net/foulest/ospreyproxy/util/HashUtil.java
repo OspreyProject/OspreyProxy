@@ -111,13 +111,13 @@ public final class HashUtil {
      * Hashes the URL using HMAC-SHA-256 with a separate salt to prevent correlation with IP hashes.
      *
      * @param url The URL to hash.
-     * @return A hexadecimal string representation of the hashed URL, truncated to 16 bytes (32 hex chars).
+     * @return A hexadecimal string representation of the hashed URL.
      */
     @SuppressWarnings("NestedMethodCall")
     public static @NonNull String hashUrl(@NonNull String url) {
         Mac mac = URL_HMAC.get();
         mac.reset();
         byte[] digest = mac.doFinal(url.getBytes(StandardCharsets.UTF_8));
-        return HexFormat.of().formatHex(digest, 0, 16);
+        return HexFormat.of().formatHex(digest);
     }
 }
