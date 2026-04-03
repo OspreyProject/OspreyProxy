@@ -107,11 +107,12 @@ public class GlobalExceptionHandler {
      * Catch-all for unexpected exceptions not handled elsewhere.
      *
      * @param ex The exception to handle.
+     * @return A 500 Internal Server Error response.
      */
     @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleUnexpected(Exception ex) {
         log.error("Unexpected exception: {}", ex.getMessage(), ex);
-        return ErrorUtil.RESP_502;
+        return ErrorUtil.RESP_500;
     }
 }

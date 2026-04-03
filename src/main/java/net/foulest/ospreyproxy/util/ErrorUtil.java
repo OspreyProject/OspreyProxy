@@ -37,6 +37,7 @@ public final class ErrorUtil {
     private static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
     public static final String BODY_415 = body(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
     private static final String BODY_429 = body(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase());
+    private static final String BODY_500 = body(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase());
     private static final String BODY_502 = body(HttpStatus.BAD_GATEWAY.getReasonPhrase());
     private static final String BODY_503 = body(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase());
     private static final String BODY_504 = body(HttpStatus.GATEWAY_TIMEOUT.getReasonPhrase());
@@ -48,6 +49,7 @@ public final class ErrorUtil {
     public static final ResponseEntity<String> RESP_405 = build(HttpStatus.METHOD_NOT_ALLOWED, BODY_405);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
     public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);
+    public static final ResponseEntity<String> RESP_500 = build(HttpStatus.BAD_GATEWAY, BODY_500);
     public static final ResponseEntity<String> RESP_502 = build(HttpStatus.BAD_GATEWAY, BODY_502);
     public static final ResponseEntity<String> RESP_503 = build(HttpStatus.SERVICE_UNAVAILABLE, BODY_503);
     public static final ResponseEntity<String> RESP_504 = build(HttpStatus.GATEWAY_TIMEOUT, BODY_504);
