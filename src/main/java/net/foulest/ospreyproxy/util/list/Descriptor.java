@@ -35,7 +35,7 @@ public enum Descriptor {
             "PhishDestroy",
             "phishdestroy",
             LookupResult.PHISHING,
-            90L
+            120L
     ),
 
     /**
@@ -47,7 +47,7 @@ public enum Descriptor {
             "Phishing.Database",
             "phishing-database",
             LookupResult.PHISHING,
-            90L
+            120L
     );
 
     final String url;
