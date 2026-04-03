@@ -159,12 +159,24 @@ public interface Provider {
     /**
      * Whether rate limiting is enabled for this provider.
      * Returns {@code true} by default. Override to return {@code false} to disable all
-     * rate limiting checks ({@link #isBurstBlocked}, {@link #isSustainedBlocked},
-     * {@link #isInvalidRequestBlocked}, and all {@code blockX} methods become no-ops).
+     * rate limiting checks ({@link #isBurstBlocked}, {@link #isSustainedBlocked})
+     * and all {@code blockX} methods become no-ops).
      *
      * @return {@code true} if rate limiting is active, {@code false} to bypass it entirely.
      */
     default boolean isRateLimitingEnabled() {
+        return true;
+    }
+
+    /**
+     * Whether abuse limiting is enabled for this provider.
+     * Returns {@code true} by default. Override to return {@code false} to disable all
+     * abuse limiting checks ({@link #isInvalidRequestBlocked}) and all
+     * {@code blockInvalidRequest} methods become no-ops).
+     *
+     * @return {@code true} if abuse limiting is active, {@code false} to bypass it entirely
+     */
+    default boolean isAbuseLimitingEnabled() {
         return true;
     }
 

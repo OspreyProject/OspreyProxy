@@ -325,7 +325,7 @@ public abstract class AbstractProvider implements Provider {
 
     @Override
     public boolean isInvalidRequestBlocked(@NonNull String ip) {
-        if (!isRateLimitingEnabled()) {
+        if (!isAbuseLimitingEnabled()) {
             return false;
         }
 
@@ -364,7 +364,7 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public void blockInvalidRequest(@NonNull String ip) {
-        if (!isRateLimitingEnabled()) {
+        if (!isAbuseLimitingEnabled()) {
             return;
         }
 
