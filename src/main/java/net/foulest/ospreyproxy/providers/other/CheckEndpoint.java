@@ -32,6 +32,10 @@ public class CheckEndpoint extends AbstractProvider {
     // TODO: Migrate this to paid API keys through a dashboard, somehow
     private static final String API_KEY = System.getenv("CHECK_ENDPOINT_API_KEY");
 
+    /**
+     * Validates the provider configuration after construction.
+     * Ensures that if the provider is enabled, the API key is set and not blank.
+     */
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {

@@ -32,6 +32,11 @@ public class StatusCodeException extends RuntimeException {
     // The HTTP status to return
     private final ResponseEntity<String> status;
 
+    /**
+     * Constructor that takes a ResponseEntity containing the status code and message to return.
+     *
+     * @param status The ResponseEntity containing the HTTP status code and message to return in the response.
+     */
     @SuppressWarnings("NestedMethodCall")
     public StatusCodeException(@NonNull ResponseEntity<String> status) {
         super(String.valueOf(status.getStatusCode().value()));

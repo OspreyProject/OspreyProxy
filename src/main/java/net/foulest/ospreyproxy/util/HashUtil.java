@@ -79,7 +79,7 @@ public final class HashUtil {
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
      * Creates a new {@link SecureRandom} instance, which is acceptable because this method
-     * is called exactly once at class load time ({@code IP_SALT} initialization).
+     * is called exactly twice at class load time ({@code IP_SALT} and {@code URL_SALT} initialization).
      *
      * @return A random byte array to be used as a salt for hashing IP addresses.
      */

@@ -38,6 +38,10 @@ public class ChainPatrol extends AbstractProvider {
     private static final String API_KEY = System.getenv("CHAINPATROL_API_KEY");
     private static final String API_URL = "https://app.chainpatrol.io/api/v2/asset/check";
 
+    /**
+     * Validates the provider configuration after construction.
+     * Ensures that if the provider is enabled, the API key is set and not blank.
+     */
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {

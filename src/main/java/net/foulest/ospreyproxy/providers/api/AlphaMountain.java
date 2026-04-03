@@ -46,6 +46,10 @@ public class AlphaMountain extends AbstractProvider {
     private static final int CATEGORY_MALICIOUS = 39;      // Malicious
     private static final int CATEGORY_PHISHING = 51;       // Phishing
 
+    /**
+     * Validates the provider configuration after construction.
+     * Ensures that if the provider is enabled, the API key is set and not blank.
+     */
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {

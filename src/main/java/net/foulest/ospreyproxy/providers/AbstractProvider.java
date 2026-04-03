@@ -147,7 +147,6 @@ public abstract class AbstractProvider implements Provider {
      * performs the lookup and caches the result.
      *
      * @param lookupStr The validated string to look up (host or URL).
-     * @return The {@link LookupResult} for this lookup, from cache or live.
      * @throws UnsupportedOperationException if the provider does not support self-contained lookup.
      */
     @SuppressWarnings("NestedMethodCall")

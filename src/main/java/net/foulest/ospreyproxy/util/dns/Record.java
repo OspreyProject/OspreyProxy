@@ -26,6 +26,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Record {
 
+    /**
+     * The A record type, which maps a domain name to an IPv4 address.
+     */
     public static final int A = 1;
+
+    /**
+     * The CNAME record type, which maps a domain name to another domain name (canonical name).
+     */
     public static final int CNAME = 5;
 }

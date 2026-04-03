@@ -27,11 +27,22 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class LocalListProviderConfig {
 
+    /**
+     * Defines a bean for the PhishDestroy local list provider, which uses the PHISH_DESTROY descriptor.
+     *
+     * @return A LocalListProvider instance configured for the PhishDestroy list.
+     */
     @Bean
     public LocalListProvider phishDestroyProvider() {
         return new LocalListProvider(Descriptor.PHISH_DESTROY);
     }
 
+
+    /**
+     * Defines a bean for the Phishing Database local list provider, which uses the PHISHING_DATABASE descriptor.
+     *
+     * @return A LocalListProvider instance configured for the Phishing Database list.
+     */
     @Bean
     public LocalListProvider phishingDatabaseProvider() {
         return new LocalListProvider(Descriptor.PHISHING_DATABASE);

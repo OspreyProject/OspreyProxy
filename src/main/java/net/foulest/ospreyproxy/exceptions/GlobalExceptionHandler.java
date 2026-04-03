@@ -42,6 +42,7 @@ public class GlobalExceptionHandler {
      * Returns the encapsulated status directly rather than logging it as unexpected.
      *
      * @param ex The exception to handle.
+     * @return The response entity with the status code from the exception.
      */
     @ExceptionHandler(StatusCodeException.class)
     public ResponseEntity<String> handleStatusCode(@NonNull StatusCodeException ex) {
@@ -53,6 +54,7 @@ public class GlobalExceptionHandler {
      * Tomcat rejects these before any controller code runs.
      *
      * @param ex The exception to handle.
+     * @return A 400 Bad Request response indicating the body was too large.
      */
     @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -65,6 +67,7 @@ public class GlobalExceptionHandler {
      * Handles requests for unmapped paths (the MVC equivalent of 404).
      *
      * @param ignored The exception to handle (ignored).
+     * @return A 404 Not Found response indicating the resource was not found.
      */
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<String> handleNoResource(Exception ignored) {
@@ -75,6 +78,8 @@ public class GlobalExceptionHandler {
      * Handles I/O errors while reading the request body.
      *
      * @param ex The exception to handle.
+     * @return A 400 Bad Request response indicating the body could not be read,
+     *         or a silent failure if the client disconnected.
      */
     @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -91,6 +96,7 @@ public class GlobalExceptionHandler {
      * Handles requests that use an unsupported HTTP method (e.g. GET on a POST-only endpoint).
      *
      * @param ignored The exception to handle (ignored).
+     * @return A 405 Method Not Allowed response indicating the method is not supported for the endpoint.
      */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<String> handleMethodNotAllowed(Exception ignored) {

@@ -66,12 +66,17 @@ public final class LocalListUtil {
 
     static {
         Map<String, Descriptor> map = new HashMap<>();
+
         for (Descriptor descriptor : Descriptor.values()) {
             map.put(descriptor.endpointName, descriptor);
         }
+
         descriptorsByEndpointName = Collections.unmodifiableMap(map);
     }
 
+    /**
+     * Initializes the state map and starts the periodic refresh tasks for each descriptor.
+     */
     @PostConstruct
     public void init() {
         for (Descriptor descriptor : Descriptor.values()) {
@@ -89,6 +94,9 @@ public final class LocalListUtil {
         }
     }
 
+    /**
+     * Shuts down the scheduler and HTTP client on application shutdown.
+     */
     @PreDestroy
     public void destroy() {
         scheduler.shutdownNow();

@@ -25,5 +25,12 @@ package net.foulest.ospreyproxy.util.dns;
 @FunctionalInterface
 public interface RecordPredicate {
 
+    /**
+     * Tests whether a DNS answer record matches the criteria defined by this predicate.
+     *
+     * @param rrType The RR type of the DNS answer record (e.g., A, AAAA, CNAME, etc.) as an integer.
+     * @param rdata The raw RDATA bytes of the DNS answer record, which may need to be parsed according to the RR type.
+     * @return true if the record matches the criteria defined by this predicate, false otherwise.
+     */
     boolean test(int rrType, byte[] rdata);
 }

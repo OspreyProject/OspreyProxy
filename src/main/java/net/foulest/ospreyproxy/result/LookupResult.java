@@ -20,17 +20,45 @@ package net.foulest.ospreyproxy.result;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+/**
+ * Enum representing the possible results of a lookup operation from a provider.
+ */
 @Getter
 @AllArgsConstructor
 public enum LookupResult {
 
+    /**
+     * Returned when an error occurs during the lookup process.
+     */
     FAILED("failed"),
+
+    /**
+     * Returned when the provider returns a 429 Too Many Requests status.
+     */
     RATE_LIMITED("rate_limited"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is safe and allowed.
+     */
     ALLOWED("allowed"),
 
+    /**
+     * Returned when the provider returns a result indicating that the domain is malicious or blocked.
+     */
     MALICIOUS("malicious"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is a phishing website.
+     */
     PHISHING("phishing"),
+    /**
+     * Returned when the provider returns a result indicating that the domain is untrusted or suspicious.
+     */
     UNTRUSTED("untrusted"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain contains adult content.
+     */
     ADULT_CONTENT("adult_content");
 
     private final String value;

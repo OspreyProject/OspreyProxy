@@ -76,7 +76,8 @@ public final class HttpClientFactory {
      * @param connectionRequestTimeoutSeconds Timeout for requesting a connection from the connection manager, in seconds.
      * @param responseTimeoutSeconds Socket timeout for waiting for a response, in seconds.
      * @param operationTimeoutSeconds Overall timeout for the entire request execution, in seconds.
-     * @return A configured {@link CloseableHttpClient} instance.
+     * @return A synchronous {@link CloseableHttpClient} facade over an HTTP/2 async client, where
+     *         {@code operationTimeoutSeconds} bounds the total blocking time per request.
      */
     @SuppressWarnings("NestedMethodCall")
     public static @NonNull CloseableHttpClient createHttp2Client(int connectTimeoutSeconds,

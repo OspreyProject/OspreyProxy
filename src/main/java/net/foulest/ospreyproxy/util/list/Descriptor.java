@@ -25,6 +25,10 @@ import net.foulest.ospreyproxy.result.LookupResult;
  */
 @AllArgsConstructor
 public enum Descriptor {
+
+    /**
+     * PhishDestroy
+     */
     PHISH_DESTROY(
             "https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.txt",
             Format.TEXT,
@@ -34,6 +38,9 @@ public enum Descriptor {
             90L
     ),
 
+    /**
+     * Phishing.Database
+     */
     PHISHING_DATABASE(
             "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt",
             Format.TEXT,
@@ -45,10 +52,14 @@ public enum Descriptor {
 
     final String url;
     final Format format;
+
+    /**
+     * A human-readable name for this list, used in logging.
+     */
     public final String shortName;
 
     /**
-     * A human-readable name for this list, used in logs and metrics.
+     * The endpoint name for this list, used in configuration and routing.
      */
     public final String endpointName;
 

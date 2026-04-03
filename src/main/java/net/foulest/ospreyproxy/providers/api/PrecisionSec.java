@@ -37,6 +37,10 @@ public class PrecisionSec extends AbstractProvider {
     private static final String API_KEY = System.getenv("PRECISIONSEC_API_KEY");
     private static final String API_URL = "https://api.precisionsec.com/check_domain/";
 
+    /**
+     * Validates the provider configuration after construction.
+     * Ensures that if the provider is enabled, the API key is set and not blank.
+     */
     @PostConstruct
     public void validateConfig() {
         if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {

@@ -26,6 +26,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Accept {
 
+    /**
+     * The MIME type for DNS-over-HTTPS responses in JSON format.
+     */
     public static final String DNS_JSON = "application/dns-json";
+
+    /**
+     * The MIME type for DNS-over-HTTPS responses in binary format.
+     */
     public static final String DNS_MESSAGE = "application/dns-message";
 }

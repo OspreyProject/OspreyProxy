@@ -244,7 +244,8 @@ public final class DNSUtil {
      * Parses a domain name from the given RDATA bytes. Handles uncompressed names only, as expected in CNAME RDATA.
      *
      * @param rdata The raw RDATA bytes from a CNAME record, which should contain the domain name in DNS label format.
-     *              Compression pointers are not expected in RDATA.
+     *              Compression pointers are not supported; if encountered, name parsing stops and the partial result
+     *              (which may be empty) is returned.
      * @return The parsed domain name as a String, without the trailing dot.
      *         Returns an empty string if the RDATA is malformed.
      */

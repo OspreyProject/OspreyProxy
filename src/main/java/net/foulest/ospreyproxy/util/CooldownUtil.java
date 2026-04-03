@@ -13,28 +13,23 @@ import org.jspecify.annotations.NonNull;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tracks per-provider upstream 429 cooldowns.
- * <p>
- * When an upstream API provider responds with HTTP 429 (Too Many Requests),
- * the provider is placed into a 1-second cooldown. All requests to that provider
- * during the cooldown window are immediately rejected with 429, preventing
- * further upstream hammering while the provider recovers.
+ * Utility class for managing cooldowns of providers after receiving 429 or 5xx responses.
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class CooldownUtil {
 
-    // Deadline nanos per provider — present and in the future means cooling down.
+    // Deadline nanos per provider
     private static final ConcurrentHashMap<String, Long> COOLDOWN_DEADLINES = new ConcurrentHashMap<>();
 
-    // Cooldown duration in nanoseconds (1 second)
     private static final long COOLDOWN_NANOS = 1_000_000_000L;
+    // Cooldown durations in nanoseconds
 
     /**
-     * Returns {@code true} if the given provider is currently in a 429 cooldown.
+     * Checks if the given provider is currently cooling down.
      *
      * @param providerName The display name of the provider to check.
-     * @return {@code true} if requests should be short-circuited with 429.
+     * @return {@code true} if the provider is cooling down, {@code false} otherwise.
      */
     public static boolean isCoolingDown(@NonNull String providerName) {
         Long deadline = COOLDOWN_DEADLINES.get(providerName);
@@ -42,11 +37,10 @@ public final class CooldownUtil {
     }
 
     /**
-     * Arms a 1-second cooldown for the given provider. If a cooldown is already
-     * active, the deadline is extended from now (not stacked), so repeated 429s
-     * each add a fresh 1-second window rather than compounding indefinitely.
+     * Triggers a cooldown for the given provider for the specified duration.
      *
-     * @param providerName The display name of the provider to cool down.
+     * @param providerName The display name of the provider to trigger cooldown for.
+     * @param durationNanos The duration of the cooldown in nanoseconds.
      */
     public static void triggerCooldown(@NonNull String providerName) {
         long deadline = System.nanoTime() + COOLDOWN_NANOS;

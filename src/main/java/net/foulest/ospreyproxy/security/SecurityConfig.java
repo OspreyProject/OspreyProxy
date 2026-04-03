@@ -31,6 +31,8 @@ public class SecurityConfig implements WebMvcConfigurer {
     /**
      * Registers the security filter at order 1 (highest priority).
      * All requests pass through this filter before reaching any controller.
+     *
+     * @return A FilterRegistrationBean that registers the SecurityFilter for all URL patterns.
      */
     @Bean
     public FilterRegistrationBean<SecurityFilter> securityFilterRegistration() {

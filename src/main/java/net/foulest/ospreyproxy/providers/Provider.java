@@ -108,8 +108,9 @@ public interface Provider {
 
     /**
      * Builds the full upstream request URL.
-     * For POST providers this defaults to {@link #getApiUrl()}.
-     * For GET providers this should encode the target URL into the path.
+     * The default implementation returns {@link #getApiUrl()} unchanged, which is correct for
+     * POST providers that send the target as a request body field.
+     * GET providers that encode the target into the path should override this method.
      *
      * @param url The validated URL to lookup.
      * @return The full upstream request URL.
@@ -147,6 +148,12 @@ public interface Provider {
         return LookupResult.FAILED;
     }
 
+    /**
+     * Performs a cached lookup for the given string (IP or URL), returning a non-null result.
+     *
+     * @param lookupStr The string to lookup in the cache (e.g., an IP address or URL).
+     * @return The {@link LookupResult} for this string, either from cache or from a live lookup.
+     */
     @NonNull LookupResult cachedLookup(@NonNull String lookupStr);
 
     /**
