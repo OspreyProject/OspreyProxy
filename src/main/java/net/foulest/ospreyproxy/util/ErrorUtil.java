@@ -34,7 +34,7 @@ public final class ErrorUtil {
     public static final String BODY_400 = body(HttpStatus.BAD_REQUEST.getReasonPhrase());
     private static final String BODY_401 = body(HttpStatus.UNAUTHORIZED.getReasonPhrase());
     private static final String BODY_404 = body(HttpStatus.NOT_FOUND.getReasonPhrase());
-    private static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
+    public static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
     public static final String BODY_415 = body(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
     private static final String BODY_429 = body(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase());
     private static final String BODY_500 = body(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase());

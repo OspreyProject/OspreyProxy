@@ -25,6 +25,14 @@ public class SecurityFilter implements Filter {
     // Maximum allowed body size (10 KB)
     private static final int MAX_BODY_SIZE = 10_240;
 
+    // HTTP methods that are allowed to be processed
+    private static final Set<String> ALLOWED_METHODS = Set.of(
+            HttpMethod.GET.name(),
+            HttpMethod.POST.name(),
+            HttpMethod.OPTIONS.name(),
+            HttpMethod.HEAD.name()
+    );
+
     // HTTP methods that carry no request body; exempt from Content-Type enforcement
     private static final Set<String> BODYLESS_METHODS = Set.of(
             HttpMethod.GET.name(),
@@ -51,6 +59,12 @@ public class SecurityFilter implements Filter {
         response.setHeader("Cache-Control", "no-store");
 
         String method = request.getMethod();
+
+        // Reject requests with disallowed HTTP methods before any further processing
+        if (!ALLOWED_METHODS.contains(method)) {
+            sendError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, ErrorUtil.BODY_405);
+            return;
+        }
 
         // Skip Content-Type and size checks for bodyless methods
         if (BODYLESS_METHODS.contains(method)) {
