@@ -28,6 +28,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.*;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
+import net.foulest.ospreyproxy.util.stats.StatsUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -105,6 +106,9 @@ public class ProxyHandler {
 
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
+     *
+     * @param providers All registered providers, injected by Spring.
+     * @param checkEndpoint The CheckEndpoint provider, injected by Spring.
      */
     public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint) {
         this.checkEndpoint = checkEndpoint;
@@ -120,7 +124,7 @@ public class ProxyHandler {
         controlD = getDnsProvider("controld-security");
         quad9 = getDnsProvider("quad9");
         switchCh = getDnsProvider("switch-ch");
-        phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.endpointName);
+        phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.getEndpointName());
 
         // Pre-warm Jackson type metadata
         JacksonUtil.MAPPER.constructType(Map.class);
@@ -132,6 +136,11 @@ public class ProxyHandler {
      * Dynamic endpoint for all non-CheckEndpoint providers.
      * Routes to the provider whose {@link Provider#getEndpointName()} matches {@code providerName}.
      * Keep @RequestBody(required = false) for rate-limiting.
+     *
+     * @param providerName The path variable extracted from the URL, used to look up the provider.
+     * @param body The raw request body bytes, passed to the provider for validation and forwarding.
+     * @param request The incoming servlet request, used for IP extraction and header validation.
+     * @return A {@link ResponseEntity} containing the provider's response or an appropriate error status.
      */
     @PostMapping(value = "/{providerName}",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -150,6 +159,10 @@ public class ProxyHandler {
     /**
      * Dedicated /check endpoint for aggregate lookups to all non-premium providers.
      * Keep @RequestBody(required = false) for rate-limiting.
+     *
+     * @param body The raw request body bytes, passed to the provider for validation and forwarding.
+     * @param request The incoming servlet request, used for IP extraction and header validation.
+     * @return A {@link ResponseEntity} containing the aggregate JSON result or an appropriate error status.
      */
     @PostMapping(value = "/check",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -219,7 +232,7 @@ public class ProxyHandler {
                 if (result == LookupResult.RATE_LIMITED) {
                     return ErrorUtil.RESP_429;
                 }
-                return resultResponse(result, providerName, host);
+                return resultResponse(result, providerName);
             }
 
             // Local list providers check against an in-memory domain set.
@@ -231,7 +244,7 @@ public class ProxyHandler {
                 if (result == LookupResult.RATE_LIMITED) {
                     return ErrorUtil.RESP_429;
                 }
-                return resultResponse(result, providerName, host);
+                return resultResponse(result, providerName);
             }
 
             // API providers require HTTP_CLIENT which lives here, so execution stays in
@@ -268,7 +281,7 @@ public class ProxyHandler {
 
             if (cached != null) {
                 StatsUtil.recordCacheHit();
-                return resultResponse(cached, providerName, forwardUrl);
+                return resultResponse(cached, providerName);
             }
 
             StatsUtil.recordCacheMiss();
@@ -353,7 +366,7 @@ public class ProxyHandler {
                 if (provider instanceof AbstractProvider ap) {
                     ap.putCachedResult(forwardUrl, result);
                 }
-                return resultResponse(result, providerName, forwardUrl);
+                return resultResponse(result, providerName);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             log.error("[{}] Upstream request timed out ({})", providerName, e.getClass().getName());
@@ -374,21 +387,16 @@ public class ProxyHandler {
      *
      * @param result       The result to serialize.
      * @param providerName The provider display name for error logging.
-     * @param lookupStr    The lookup string (host or URL) for error logging.
      * @return A {@link ResponseEntity} with the JSON body, or a 502 on serialization failure.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @NonNull ResponseEntity<String> resultResponse(@NonNull LookupResult result,
-                                                                  @NonNull String providerName,
-                                                                  @NonNull String lookupStr) {
+                                                                  @NonNull String providerName) {
         try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(
-                    Map.of("result", result.getValue())
-            );
+            String responseBody = JacksonUtil.MAPPER.writeValueAsString(Map.of("result", result.getValue()));
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize result: {} ({})",
-                    providerName, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Failed to serialize result: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }

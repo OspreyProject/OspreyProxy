@@ -125,7 +125,7 @@ public class AlphaMountain extends AbstractProvider {
             Object categoriesObj = categoryMap.get("categories");
 
             if (!(categoriesObj instanceof List<?> categories) || categories.isEmpty()) {
-                log.info("[{}] No categories found", displayName);
+                log.warn("[{}] No categories found", displayName);
                 return LookupResult.FAILED;
             }
 

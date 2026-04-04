@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.util;
+package net.foulest.ospreyproxy.util.stats;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -28,7 +28,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Utility class for tracking and reporting per-provider request statistics.
@@ -36,27 +35,6 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StatsUtil {
-
-    // Request statistics per provider
-    private static final class RequestStats {
-
-        final AtomicLong totalRequestCount = new AtomicLong(0);
-        final AtomicLong secondBucket = new AtomicLong(0);
-        final AtomicLong minuteBucket = new AtomicLong(0);
-        final AtomicLong peakReqPerSec = new AtomicLong(0);
-
-        // Tracks the real wall-clock time of the last per-second tick so the scheduler
-        // can compute an accurate per-second rate even when the task fires late (e.g., GC pause).
-        // Initialised to startup time; the first tick will use the real elapsed duration.
-        final AtomicReference<Long> lastTickNanos = new AtomicReference<>(System.nanoTime());
-
-        // Greedy window simulation (scaled x100 to avoid floats in AtomicLong)
-        final AtomicLong simulatedTokenPoolScaled = new AtomicLong(SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L);
-        final AtomicLong highestMinWindowNeeded = new AtomicLong(0);
-    }
-
-    // The provider's greedy window capacity to simulate, in req/min
-    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_980;
 
     // Map of every recorded stat per provider
     private static final ConcurrentHashMap<String, RequestStats> PROVIDER_STATS = new ConcurrentHashMap<>();
@@ -76,6 +54,9 @@ public final class StatsUtil {
         thread.setDaemon(true);
         return thread;
     });
+
+    // The provider's greedy window capacity to simulate, in req/min
+    static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_980;
 
     static {
         // Every ~second: drain secondBucket into minuteBucket, update peakReqPerSec, simulate greedy window.

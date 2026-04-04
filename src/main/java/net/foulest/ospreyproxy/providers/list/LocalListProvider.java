@@ -20,9 +20,9 @@ package net.foulest.ospreyproxy.providers.list;
 import lombok.RequiredArgsConstructor;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.util.StatsUtil;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
+import net.foulest.ospreyproxy.util.stats.StatsUtil;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -41,12 +41,12 @@ public class LocalListProvider extends AbstractProvider {
 
     @Override
     public @NonNull String getDisplayName() {
-        return descriptor.shortName;
+        return descriptor.getShortName();
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return descriptor.endpointName;
+        return descriptor.getEndpointName();
     }
 
     @Override

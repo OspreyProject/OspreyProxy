@@ -27,6 +27,7 @@ import org.springframework.http.ResponseEntity;
 /**
  * Utility class for building standardized error responses in the OspreyProxy application.
  */
+@SuppressWarnings("MissingJavadoc")
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorUtil {
 

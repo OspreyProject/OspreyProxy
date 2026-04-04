@@ -31,12 +31,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Utility class for Jackson ObjectMapper and pre-resolved JavaType instances to optimize JSON parsing and validation.
+ * Utility class for Jackson JSON processing.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class JacksonUtil {
 
-    // Jackson mapper for parsing request bodies and validating upstream responses
+    /**
+     * The shared {@link ObjectMapper} instance for parsing request bodies and validating upstream responses.
+     */
     public static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
                             .maxNumberLength(1000)
@@ -47,19 +49,25 @@ public final class JacksonUtil {
                     .build())
             .build();
 
-    // Pre-resolved JavaType for Map<String, String> to avoid construction overhead
+    /**
+     * The pre-resolved {@link JavaType} for {@code Map<String, String>} to avoid construction overhead.
+     */
     static final JavaType MAP_TYPE_STRING = MAPPER.constructType(
             new TypeReference<Map<String, String>>() {
             }
     );
 
-    // Pre-resolved JavaType for Map<String, Object> to avoid construction overhead
+    /**
+     * The pre-resolved {@link JavaType} for {@code Map<String, Object>} to avoid construction overhead.
+     */
     public static final JavaType MAP_TYPE_OBJECT = MAPPER.constructType(
             new TypeReference<Map<String, Object>>() {
             }
     );
 
-    // Pre-resolved JavaType for List<String> to avoid construction overhead
+    /**
+     * The pre-resolved JavaType for {@code List<String>} to avoid construction overhead.
+     */
     public static final JavaType LIST_TYPE = MAPPER.constructType(
             new TypeReference<List<String>>() {
             }

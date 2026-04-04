@@ -18,11 +18,13 @@
 package net.foulest.ospreyproxy.util.list;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import net.foulest.ospreyproxy.result.LookupResult;
 
 /**
  * Represents a descriptor for a list provider, containing all necessary information to fetch and interpret the list.
  */
+@Getter
 @AllArgsConstructor
 public enum Descriptor {
 
@@ -50,26 +52,33 @@ public enum Descriptor {
             120L
     );
 
-    final String url;
-    final Format format;
+    /**
+     * The URL from which to fetch the list data.
+     */
+    private final String url;
+
+    /**
+     * The format of the list, which determines how it should be parsed.
+     */
+    private final Format format;
 
     /**
      * A human-readable name for this list, used in logging.
      */
-    public final String shortName;
+    private final String shortName;
 
     /**
      * The endpoint name for this list, used in configuration and routing.
      */
-    public final String endpointName;
+    private final String endpointName;
 
     /**
      * The type of result to return when a domain is found in this list.
      */
-    public final LookupResult resultType;
+    private final LookupResult resultType;
 
     /**
      * The interval in seconds at which this list should be refreshed.
      */
-    public final long refreshIntervalSeconds;
+    private final long refreshIntervalSeconds;
 }

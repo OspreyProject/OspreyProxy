@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Utility class for managing local lists of domains fetched from external providers.
  */
+@SuppressWarnings("NestedMethodCall")
 @Slf4j
 @Component
 public final class LocalListUtil {
@@ -68,7 +69,7 @@ public final class LocalListUtil {
         Map<String, Descriptor> map = new HashMap<>();
 
         for (Descriptor descriptor : Descriptor.values()) {
-            map.put(descriptor.endpointName, descriptor);
+            map.put(descriptor.getEndpointName(), descriptor);
         }
 
         descriptorsByEndpointName = Collections.unmodifiableMap(map);
@@ -88,7 +89,7 @@ public final class LocalListUtil {
             scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
                     0L,
-                    descriptor.refreshIntervalSeconds,
+                    descriptor.getRefreshIntervalSeconds(),
                     TimeUnit.SECONDS
             );
         }
@@ -130,10 +131,10 @@ public final class LocalListUtil {
         Set<String> domainSet = ref.get().domainSet();
 
         if (domainSet == null) {
-            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.shortName);
+            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.getShortName());
             return LookupResult.FAILED;
         }
-        return isHostInSet(domainSet, host) ? descriptor.resultType : LookupResult.ALLOWED;
+        return isHostInSet(domainSet, host) ? descriptor.getResultType() : LookupResult.ALLOWED;
     }
 
     /**
@@ -183,7 +184,7 @@ public final class LocalListUtil {
             }
         } catch (Exception e) {
             log.warn("[{}] Failed to fetch list update: {} ({})",
-                    descriptor.shortName, e.getMessage(), e.getClass().getName());
+                    descriptor.getShortName(), e.getMessage(), e.getClass().getName());
         }
     }
 
@@ -202,7 +203,7 @@ public final class LocalListUtil {
     @SuppressWarnings({"NestedMethodCall", "ProhibitedExceptionDeclared"})
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
                                                   @Nullable String currentEtag) throws Exception {
-        HttpGet request = new HttpGet(descriptor.url);
+        HttpGet request = new HttpGet(descriptor.getUrl());
         request.addHeader("Accept", "application/json, text/plain, */*");
 
         if (currentEtag != null) {
@@ -255,12 +256,12 @@ public final class LocalListUtil {
                                      @Nullable String etag) {
         Set<String> newSet;
         try {
-            newSet = descriptor.format == Format.TEXT
+            newSet = descriptor.getFormat() == Format.TEXT
                     ? parsePlainText(rawContent)
                     : parseJson(rawContent);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to parse list; keeping current: {} ({})",
-                    descriptor.shortName, e.getMessage(), e.getClass().getName());
+                    descriptor.getShortName(), e.getMessage(), e.getClass().getName());
             return;
         }
 

@@ -53,11 +53,11 @@ public class GlobalExceptionHandler {
      * Handles requests whose body exceeds the configured size limit.
      * Tomcat rejects these before any controller code runs.
      *
-     * @param ex The exception to handle.
+     * @param ignored The exception to handle (ignored).
      * @return A 400 Bad Request response indicating the body was too large.
      */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<String> handleMaxUploadSize(@NonNull MaxUploadSizeExceededException ex) {
+    public ResponseEntity<String> handleMaxUploadSize(@NonNull MaxUploadSizeExceededException ignored) {
         log.warn("Request body exceeded size limit");
         return ErrorUtil.RESP_400;
     }

@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Utility class for managing cooldowns of providers after receiving 429 or 5xx responses.
  */
 @Slf4j
+@SuppressWarnings("MissingJavadoc")
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class CooldownUtil {
 
