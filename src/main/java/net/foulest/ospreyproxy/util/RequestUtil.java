@@ -159,7 +159,7 @@ public final class RequestUtil {
             incoming = JacksonUtil.MAPPER.readValue(bytes, JacksonUtil.MAP_TYPE_STRING);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed JSON body: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -233,7 +233,7 @@ public final class RequestUtil {
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+                    "Blocked request with malformed URL (" + e.getClass().getName() + ")");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -244,7 +244,7 @@ public final class RequestUtil {
                 parsedUri.toURL();
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed URL: " + e.getMessage() + " (" + e.getClass().getName() + ")");
+                        "Blocked request with malformed URL (" + e.getClass().getName() + ")");
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
         }
@@ -268,7 +268,7 @@ public final class RequestUtil {
         // Rejects unsupported schemes (only http and https allowed)
         if (!"http".equals(scheme) && !"https".equals(scheme)) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with disallowed URL scheme '" + scheme + "': " + parsedUri);
+                    "Blocked request with disallowed URL scheme '" + scheme);
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
         return scheme;
@@ -296,7 +296,7 @@ public final class RequestUtil {
             // Rejects requests with no authority/host component
             if (authority == null || authority.isBlank()) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with no host: " + parsedUri);
+                        "Blocked request with no host");
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
 
@@ -325,14 +325,14 @@ public final class RequestUtil {
         // Rejects hosts that are empty after normalization
         if (host.isBlank()) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty host: " + parsedUri);
+                    "Blocked request with empty host");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
         // Rejects hosts without a . symbol
         if (!host.contains(".")) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with host missing dot: " + parsedUri);
+                    "Blocked request with host missing dot");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
         return host;
@@ -341,20 +341,19 @@ public final class RequestUtil {
     /**
      * Validates a request's DNS.
      *
-     * @param parsedUri    The parsed URI object for logging context.
      * @param host         The normalized hostname to validate.
      * @param provider     The provider to reject invalid requests with.
      * @param providerName The name of the provider.
      * @param hashedIp     The hashed IP address of the sender.
      * @throws StatusCodeException If the DNS is found to be invalid.
      */
-    public static void validateDNS(@NonNull URI parsedUri, @NonNull String host, Provider provider,
+    public static void validateDNS(@NonNull String host, Provider provider,
                                    String providerName, String hashedIp) {
         // Blocks private/internal hosts (string-based; IP-level blocking happens inside
         // NetworkUtil's DNS resolver at connection time to prevent DNS rebinding)
         if (NetworkUtil.isPrivateHost(host)) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request to private/internal host: " + parsedUri);
+                    "Blocked request to private/internal host");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -387,7 +386,7 @@ public final class RequestUtil {
             // Rejects ports outside the valid range (1-65535); -1 means no port specified
             if (port != -1 && (port < 1 || port > 65535)) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with invalid port: " + port + " (" + parsedUri + ")");
+                        "Blocked request with invalid port: " + port);
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
 
@@ -399,8 +398,8 @@ public final class RequestUtil {
                     + (rawQuery != null ? "?" + rawQuery : "");
             return new URI(scheme, schemeSpecific, null);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected URI reconstruction failure for '{}': {} ({})",
-                    providerName, parsedUri, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Unexpected URI reconstruction failure: {} ({})",
+                    providerName, e.getMessage(), e.getClass().getName());
             throw new StatusCodeException(ErrorUtil.RESP_502);
         }
     }

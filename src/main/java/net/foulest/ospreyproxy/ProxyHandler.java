@@ -200,7 +200,7 @@ public class ProxyHandler {
             String scheme = RequestUtil.validateScheme(parsedUri, provider, providerName, hashedIp);
             String host = RequestUtil.validateHost(parsedUri, provider, providerName, hashedIp);
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
-            RequestUtil.validateDNS(parsedUri, host, provider, providerName, hashedIp);
+            RequestUtil.validateDNS(host, provider, providerName, hashedIp);
 
             StatsUtil.recordRequest(providerName);
             String normalizedUrl = parsedUri.toString();
@@ -291,8 +291,8 @@ public class ProxyHandler {
                 try {
                     jsonBody = JacksonUtil.MAPPER.writeValueAsString(requestBody);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.error("[{}] Failed to serialize request body for '{}': {} ({})",
-                            providerName, forwardUrl, e.getMessage(), e.getClass().getName());
+                    log.error("[{}] Failed to serialize request body: {} ({})",
+                            providerName, e.getMessage(), e.getClass().getName());
                     return ErrorUtil.RESP_502;
                 }
             }
@@ -316,7 +316,7 @@ public class ProxyHandler {
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {
                     if (statusCode == 400) {
-                        log.warn("[{}] Upstream request failed with status code: 400 ({})", providerName, forwardUrl);
+                        log.warn("[{}] Upstream request failed with status code: 400", providerName);
                     } else {
                         log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
                     }
@@ -356,14 +356,14 @@ public class ProxyHandler {
                 return resultResponse(result, providerName, forwardUrl);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
-            log.error("[{}] Upstream request timed out: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Upstream request timed out ({})", providerName, e.getClass().getName());
             CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_5XX);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
-            log.error("[{}] Upstream request blocked by SSRF resolver: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Upstream request blocked by SSRF resolver ({})", providerName, e.getClass().getName());
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected error during upstream request: {} ({})", providerName, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }
@@ -387,8 +387,8 @@ public class ProxyHandler {
             );
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize result for '{}': {} ({})",
-                    providerName, lookupStr, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Failed to serialize result: {} ({})",
+                    providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }
@@ -477,8 +477,8 @@ public class ProxyHandler {
             String responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize result map for '{}': {} ({})",
-                    providerName, host, e.getMessage(), e.getClass().getName());
+            log.error("[{}] Failed to serialize result map: {} ({})",
+                    providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
     }

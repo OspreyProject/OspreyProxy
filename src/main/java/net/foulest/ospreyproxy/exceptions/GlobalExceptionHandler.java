@@ -56,10 +56,9 @@ public class GlobalExceptionHandler {
      * @param ex The exception to handle.
      * @return A 400 Bad Request response indicating the body was too large.
      */
-    @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxUploadSize(@NonNull MaxUploadSizeExceededException ex) {
-        log.warn("Request body exceeded size limit: {}", ex.getMessage());
+        log.warn("Request body exceeded size limit");
         return ErrorUtil.RESP_400;
     }
 
@@ -87,7 +86,7 @@ public class GlobalExceptionHandler {
         Throwable cause = ex.getCause();
 
         if (!(cause instanceof ClientAbortException)) {
-            log.warn("Could not read request body: {}", ex.getMessage());
+            log.warn("Could not read request body: {}", ex.getClass().getName());
         }
         return ErrorUtil.RESP_400;
     }
@@ -112,7 +111,7 @@ public class GlobalExceptionHandler {
     @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleUnexpected(Exception ex) {
-        log.error("Unexpected exception: {}", ex.getMessage(), ex);
+        log.error("Unexpected exception: {}", ex.getClass().getName(), ex);
         return ErrorUtil.RESP_500;
     }
 }

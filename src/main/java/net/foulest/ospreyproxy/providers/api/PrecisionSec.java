@@ -107,11 +107,11 @@ public class PrecisionSec extends AbstractProvider {
                 return LookupResult.ALLOWED;
             }
 
-            log.warn("[{}] Unexpected result value for '{}': {}", displayName, normalizedUrl, result);
+            log.warn("[{}] Unexpected result value: {}", displayName, result);
             return LookupResult.FAILED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to interpret response for '{}': {} ({})",
-                    displayName, normalizedUrl, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to interpret response: {} ({})",
+                    displayName, e.getMessage(), e.getClass().getName());
             return LookupResult.FAILED;
         }
     }

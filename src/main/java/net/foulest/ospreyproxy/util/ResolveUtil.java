@@ -112,7 +112,7 @@ final class ResolveUtil {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
-                    log.warn("DoH query for {} returned HTTP {}", host, statusCode);
+                    log.warn("DoH query returned HTTP {}", statusCode);
                     return true;
                 }
 
@@ -120,7 +120,7 @@ final class ResolveUtil {
                 byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
 
                 if (body == null || body.length == 0) {
-                    log.warn("DoH query for {} returned empty body", host);
+                    log.warn("DoH query returned empty body");
                     return true;
                 }
 
@@ -129,7 +129,7 @@ final class ResolveUtil {
                 try {
                     data = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_OBJECT);
                 } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.warn("DoH query for {} returned unparseable body ({})", host, e.getClass().getName());
+                    log.warn("DoH query returned unparseable body ({})", e.getClass().getName());
                     return true;
                 }
 
@@ -137,7 +137,7 @@ final class ResolveUtil {
                 Object answerObj = data.get("Answer");
 
                 if (!(statusObj instanceof Number)) {
-                    log.warn("DoH query for {} returned invalid Status field", host);
+                    log.warn("DoH query returned invalid Status field");
                     return true;
                 }
 
@@ -146,7 +146,7 @@ final class ResolveUtil {
                 return dnsStatus == 0 && hasAnswers;
             });
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("DoH query for {} failed ({})", host, e.getClass().getName());
+            log.warn("DoH query failed ({})", e.getClass().getName());
             return true;
         }
     }

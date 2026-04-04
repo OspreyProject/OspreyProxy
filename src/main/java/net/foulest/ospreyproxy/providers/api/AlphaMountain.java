@@ -118,14 +118,14 @@ public class AlphaMountain extends AbstractProvider {
             Object categoryBlock = data.get("category");
 
             if (!(categoryBlock instanceof Map<?, ?> categoryMap)) {
-                log.warn("[{}] Response for '{}' missing 'category' block", displayName, normalizedUrl);
+                log.warn("[{}] Response missing 'category' block", displayName);
                 return LookupResult.FAILED;
             }
 
             Object categoriesObj = categoryMap.get("categories");
 
             if (!(categoriesObj instanceof List<?> categories) || categories.isEmpty()) {
-                log.info("[{}] No categories found for '{}'", displayName, normalizedUrl);
+                log.info("[{}] No categories found", displayName);
                 return LookupResult.FAILED;
             }
 
@@ -148,8 +148,8 @@ public class AlphaMountain extends AbstractProvider {
             }
             return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to interpret response for '{}': {} ({})",
-                    displayName, normalizedUrl, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to interpret response: {} ({})",
+                    displayName, e.getMessage(), e.getClass().getName());
             return LookupResult.FAILED;
         }
     }

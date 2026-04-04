@@ -104,7 +104,7 @@ public class ChainPatrol extends AbstractProvider {
             Object status = data.get("status");
 
             if (!(status instanceof String statusStr)) {
-                log.warn("[{}] Response for '{}' missing or invalid 'status' field", displayName, normalizedUrl);
+                log.warn("[{}] Response missing or invalid 'status' field", displayName);
                 return LookupResult.FAILED;
             }
 
@@ -116,13 +116,13 @@ public class ChainPatrol extends AbstractProvider {
                     return LookupResult.ALLOWED;
                 }
                 default -> {
-                    log.warn("[{}] Unexpected 'status' value for '{}': {}", displayName, normalizedUrl, statusStr);
+                    log.warn("[{}] Unexpected 'status' value: {}", displayName, statusStr);
                     return LookupResult.FAILED;
                 }
             }
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to interpret response for '{}': {} ({})",
-                    displayName, normalizedUrl, e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to interpret response: {} ({})",
+                    displayName, e.getMessage(), e.getClass().getName());
             return LookupResult.FAILED;
         }
     }

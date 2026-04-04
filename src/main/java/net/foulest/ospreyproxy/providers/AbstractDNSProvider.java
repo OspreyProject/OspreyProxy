@@ -108,19 +108,19 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     }
                     yield interpret(response, (Map<String, Object>) null);
                 }
+
                 case NAME_JSON, PATH_JSON -> {
                     Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
 
                     if (response.isEmpty()) {
-                        log.warn("[{}] Empty response returned for '{}'", displayName, host);
+                        log.warn("[{}] Empty response returned", displayName);
                         yield LookupResult.FAILED;
                     }
                     yield interpret(null, response);
                 }
             };
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to lookup host '{}': {} ({})",
-                    displayName, host, e.getMessage(), e.getClass().getName(), e);
+            log.warn("[{}] Failed to perform lookup ({})", displayName, e.getClass().getName(), e);
             return LookupResult.FAILED;
         }
     }
@@ -204,7 +204,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
         try {
             return JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_OBJECT);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to parse DNS JSON response: {}", displayName, e.getMessage());
+            log.warn("[{}] Failed to parse DNS JSON response ({})", displayName, e.getClass().getName());
             return Map.of();
         }
     }
