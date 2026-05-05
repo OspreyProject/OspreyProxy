@@ -29,8 +29,10 @@ public interface RecordPredicate {
      * Tests whether a DNS answer record matches the criteria defined by this predicate.
      *
      * @param rrType The RR type of the DNS answer record (e.g., A, AAAA, CNAME, etc.) as an integer.
+     * @param rrClass The RR class of the DNS answer record (usually IN for Internet) as an integer.
+     * @param ttl The TTL (Time To Live) value of the DNS answer record as a long.
      * @param rdata The raw RDATA bytes of the DNS answer record, which may need to be parsed according to the RR type.
      * @return true if the record matches the criteria defined by this predicate, false otherwise.
      */
-    boolean test(int rrType, byte[] rdata);
+    boolean matches(int rrType, int rrClass, long ttl, byte[] rdata);
 }

@@ -44,7 +44,7 @@ public class ChainPatrol extends AbstractProvider {
      */
     @PostConstruct
     public void validateConfig() {
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {
+        if (API_KEY == null || API_KEY.isBlank()) {
             throw new IllegalStateException("CHAINPATROL_API_KEY environment variable is invalid or not set");
         }
     }

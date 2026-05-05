@@ -126,7 +126,17 @@ public interface Provider {
      *
      * @return {@code true} if only the bare host should be forwarded, {@code false} otherwise.
      */
-    default boolean stripToHost() {
+    default boolean isStripToHost() {
+        return false;
+    }
+
+    /**
+     * Whether this provider should use the classic HTTP/1.1 client instead of the shared HTTP/2 DNS client.
+     * Defaults to {@code false}. Override for providers whose upstream works more reliably with the old client.
+     *
+     * @return {@code true} to use the classic HTTP/1.1 client, {@code false} to use the shared HTTP/2 client.
+     */
+    default boolean useOldHTTP() {
         return false;
     }
 
@@ -221,32 +231,29 @@ public interface Provider {
     boolean isSustainedBlocked(@NonNull String ip);
 
     /**
-     * Checks if the given IP address is currently blocked due to making invalid requests.
+     * Checks if the given IP address is currently blocked due to too many invalid requests.
      *
-     * @param ip The IP address to lookup for invalid request block status.
-     * @return {@code true} if the IP is currently blocked for invalid requests, {@code false} otherwise.
+     * @param ip The IP address to lookup for invalid-request block status.
+     * @return {@code true} if the IP is currently blocked for invalid-request violations, {@code false} otherwise.
      */
     boolean isInvalidRequestBlocked(@NonNull String ip);
 
     /**
-     * Blocks the given IP address due to a burst rate limit
-     * violation by adding it to the burst blocked cache.
+     * Records a burst-rate-limit violation for the given IP.
      *
      * @param ip The IP address to block for burst violations.
      */
     void blockBurst(@NonNull String ip);
 
     /**
-     * Blocks the given IP address due to a sustained rate limit
-     * violation by adding it to the sustained blocked cache.
+     * Records a sustained-rate-limit violation for the given IP.
      *
      * @param ip The IP address to block for sustained violations.
      */
     void blockSustained(@NonNull String ip);
 
     /**
-     * Blocks the given IP address due to an invalid request by
-     * adding it to the invalid request blocked cache.
+     * Records an invalid-request violation for the given IP.
      *
      * @param ip The IP address to block for invalid requests.
      */

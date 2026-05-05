@@ -19,18 +19,22 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.HttpRequestRetryStrategy;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
+import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 
 import java.io.IOException;
@@ -38,6 +42,7 @@ import java.io.IOException;
 /**
  * Factory class for creating configured HTTP clients.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HttpClientFactory {
 
@@ -47,12 +52,14 @@ public final class HttpClientFactory {
      */
     private static final HttpRequestRetryStrategy STALE_CONNECTION_RETRY = new HttpRequestRetryStrategy() {
         @Override
+        @Contract(pure = true)
         public boolean retryRequest(HttpRequest request, IOException exception,
                                     int execCount, HttpContext context) {
             return execCount <= 1 && exception instanceof ConnectionClosedException;
         }
 
         @Override
+        @Contract(pure = true)
         public boolean retryRequest(HttpResponse response, int execCount, HttpContext context) {
             return false;
         }
@@ -64,6 +71,7 @@ public final class HttpClientFactory {
         }
 
         @Override
+        @Contract(pure = true)
         public TimeValue getRetryInterval(HttpResponse response, int execCount, HttpContext context) {
             return TimeValue.ZERO_MILLISECONDS;
         }
@@ -98,5 +106,35 @@ public final class HttpClientFactory {
 
         asyncClient.start();
         return HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(operationTimeoutSeconds));
+    }
+
+    /**
+     * Creates a classic pooled HTTP/1.1 client with the given timeout settings.
+     *
+     * @param connectTimeoutSeconds Connection establishment timeout in seconds.
+     * @param connectionRequestTimeoutSeconds Timeout for requesting a connection from the connection manager, in seconds.
+     * @param responseTimeoutSeconds Socket timeout for waiting for a response, in seconds.
+     * @return A synchronous pooled {@link CloseableHttpClient} using the classic HTTP/1.1 stack.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    public static @NonNull CloseableHttpClient createHttp1Client(int connectTimeoutSeconds,
+                                                                 int connectionRequestTimeoutSeconds,
+                                                                 int responseTimeoutSeconds) {
+        return HttpClients.custom()
+                .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
+                        .setDnsResolver(NetworkUtil.DNS_RESOLVER)
+                        .setMaxConnTotal(100)
+                        .setMaxConnPerRoute(50)
+                        .setDefaultConnectionConfig(ConnectionConfig.custom()
+                                .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
+                                .build())
+                        .build())
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))
+                        .setResponseTimeout(Timeout.ofSeconds(responseTimeoutSeconds))
+                        .build())
+                .disableRedirectHandling()
+                .setRetryStrategy(STALE_CONNECTION_RETRY)
+                .build();
     }
 }

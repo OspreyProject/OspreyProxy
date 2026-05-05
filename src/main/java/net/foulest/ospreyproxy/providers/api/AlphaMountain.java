@@ -40,19 +40,13 @@ public class AlphaMountain extends AbstractProvider {
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
 
-    // AlphaMountain category IDs mapped to results
-    private static final int CATEGORY_CSAM = 11;           // Child Sexual Abuse Material
-    private static final int CATEGORY_PUA = 55;            // Potentially Unwanted Applications
-    private static final int CATEGORY_MALICIOUS = 39;      // Malicious
-    private static final int CATEGORY_PHISHING = 51;       // Phishing
-
     /**
      * Validates the provider configuration after construction.
      * Ensures that if the provider is enabled, the API key is set and not blank.
      */
     @PostConstruct
     public void validateConfig() {
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {
+        if (API_KEY == null || API_KEY.isBlank()) {
             throw new IllegalStateException("ALPHAMOUNTAIN_API_KEY environment variable is invalid or not set");
         }
     }
@@ -129,22 +123,28 @@ public class AlphaMountain extends AbstractProvider {
                 return LookupResult.FAILED;
             }
 
-            boolean isPhishing = categories.stream().anyMatch(c -> c instanceof Number n
-                    && n.intValue() == CATEGORY_PHISHING);
+            double confidence = categoryMap.get("confidence") instanceof Number num ? num.doubleValue() : Double.NaN;
+            String source = categoryMap.get("source") instanceof String sourceValue ? sourceValue : "";
+
+            boolean isPhishing = categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 51) // Phishing category ID
+                    && confidence >= 0.970767;
             if (isPhishing) {
                 return LookupResult.PHISHING;
             }
 
-            boolean isMalicious = categories.stream().anyMatch(c -> c instanceof Number n
-                    && n.intValue() == CATEGORY_MALICIOUS);
+            boolean isMalicious = categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 39) // Malicious category ID
+                    && ("rt-medium".equals(source) || confidence >= 0.98198);
             if (isMalicious) {
                 return LookupResult.MALICIOUS;
             }
 
-            boolean hasUntrusted = categories.stream().anyMatch(c -> c instanceof Number n
-                    && (n.intValue() == CATEGORY_CSAM || n.intValue() == CATEGORY_PUA));
-            if (hasUntrusted) {
-                return LookupResult.UNTRUSTED;
+            boolean isSpam = categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 70) // Spam category ID
+                    && confidence >= 0.970767;
+            if (isSpam) {
+                return LookupResult.MALICIOUS;
             }
             return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {

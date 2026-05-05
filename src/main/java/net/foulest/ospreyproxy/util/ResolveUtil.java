@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
@@ -51,7 +52,7 @@ final class ResolveUtil {
     private static final String DOH_URL = "https://cloudflare-dns.com/dns-query";
 
     // Separate caches per result so each can have its own TTL.
-    // Positive results (host hostResolves) cached for 5 minutes; negative for 1 minute.
+    // Positive results (host.doesHostResolve) cached for 5 minutes; negative for 1 minute.
     private static final Cache<String, Boolean> POSITIVE_CACHE = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5))
             .maximumSize(50_000)
@@ -65,11 +66,11 @@ final class ResolveUtil {
      * Checks if the hostname is resolvable via Cloudflare's DoH.
      *
      * @param host The hostname to resolve.
-     * @return {@code true} if the host hostResolves or the lookup could not be completed (fail-open),
+     * @return {@code true} if the host can resolve or the lookup could not be completed (fail-open),
      *         {@code false} only if Cloudflare returned no answer records.
      */
     @SuppressWarnings("NestedMethodCall")
-    static boolean hostResolves(@NonNull String host) {
+    static boolean doesHostResolve(@NonNull String host) {
         if (Boolean.TRUE.equals(POSITIVE_CACHE.getIfPresent(host))) {
             return true;
         }
@@ -78,7 +79,7 @@ final class ResolveUtil {
             return false;
         }
 
-        boolean result = queryHasAnswers(host);
+        boolean result = doesQueryHaveAnswers(host);
 
         if (result) {
             POSITIVE_CACHE.put(host, Boolean.TRUE);
@@ -100,12 +101,12 @@ final class ResolveUtil {
      *         Fail-open on I/O errors.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static boolean queryHasAnswers(@NonNull String host) {
+    private static boolean doesQueryHaveAnswers(@NonNull String host) {
         try {
             String encodedHost = URLEncoder.encode(host, StandardCharsets.UTF_8);
             String url = DOH_URL + "?name=" + encodedHost;
 
-            HttpGet request = new HttpGet(url);
+            ClassicHttpRequest request = new HttpGet(url);
             request.addHeader("Accept", "application/dns-json");
 
             return DOH_CLIENT.execute(request, response -> {
@@ -117,7 +118,7 @@ final class ResolveUtil {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
+                byte[] body = EntityUtils.toByteArray(entity, 64 << 10);
 
                 if (body == null || body.length == 0) {
                     log.warn("DoH query returned empty body");

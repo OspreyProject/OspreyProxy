@@ -17,8 +17,11 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -30,11 +33,22 @@ import java.util.Map;
 /**
  * Provider implementation for CERT-EE DNS.
  */
+@Slf4j
 @Component
 public class CERTEE extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.cert.ee/dns-query?dns=";
     private static final String BLOCK_IP = "46.226.143.58";
+
+    /**
+     * Constructor for the provider.
+     *
+     * @param metricsService The metrics service to use for recording metrics.
+     * @param circuitBreakerService The circuit breaker service to use for handling failures.
+     */
+    public CERTEE(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+        super(metricsService, circuitBreakerService);
+    }
 
     @Override
     public @NonNull String getDisplayName() {
@@ -63,7 +77,7 @@ public class CERTEE extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rdata) -> {
+        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP.equals(ip);

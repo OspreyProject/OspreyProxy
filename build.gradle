@@ -25,6 +25,16 @@ dependencies {
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.5'
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
+    // Actuator + Micrometer - for metrics and health endpoints
+    // https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // Resilience4j - for circuit breaking on upstream API providers
+    // https://resilience4j.readme.io/docs/getting-started
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+    implementation 'io.github.resilience4j:resilience4j-micrometer:2.3.0'
+
     // JetBrains Annotations - for code inspection and documentation
     // https://mvnrepository.com/artifact/org.jetbrains/annotations
     compileOnly 'org.jetbrains:annotations:26.1.0'

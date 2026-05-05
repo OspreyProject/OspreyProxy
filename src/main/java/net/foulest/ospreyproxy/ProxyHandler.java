@@ -25,10 +25,14 @@ import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.providers.other.CheckEndpoint;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.util.*;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
+import net.foulest.ospreyproxy.util.ErrorUtil;
+import net.foulest.ospreyproxy.util.JacksonUtil;
+import net.foulest.ospreyproxy.util.NetworkUtil;
+import net.foulest.ospreyproxy.util.RequestUtil;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
-import net.foulest.ospreyproxy.util.stats.StatsUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -68,7 +72,7 @@ public class ProxyHandler {
     // HTTP/1.1 client for upstream API requests (some providers don't support HTTP/2)
     // 200 max conn. total, 100 max conn. per route
     // 5s connect timeout, 5s connection request timeout, 7s response timeout
-    private static final CloseableHttpClient HTTP_CLIENT = HttpClients.custom()
+    public static final CloseableHttpClient HTTP_CLIENT = HttpClients.custom()
             .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
                     .setDnsResolver(NetworkUtil.DNS_RESOLVER)
                     .setMaxConnTotal(200)
@@ -104,14 +108,24 @@ public class ProxyHandler {
     private final AbstractDNSProvider switchCh;
     private final Provider phishingDatabase;
 
+    // Injected services
+    private final MetricsService metrics;
+    private final CircuitBreakerService circuitBreaker;
+
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
      *
      * @param providers All registered providers, injected by Spring.
      * @param checkEndpoint The CheckEndpoint provider, injected by Spring.
+     * @param metrics Micrometer-backed metrics service, injected by Spring.
+     * @param circuitBreaker Resilience4j circuit breaker service, injected by Spring.
      */
-    public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint) {
+    public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint,
+                        @NonNull MetricsService metrics,
+                        @NonNull CircuitBreakerService circuitBreaker) {
         this.checkEndpoint = checkEndpoint;
+        this.metrics = metrics;
+        this.circuitBreaker = circuitBreaker;
 
         // Build the provider map for O(1) lookup by endpoint name
         providersByEndpointName = providers.stream()
@@ -208,14 +222,14 @@ public class ProxyHandler {
             }
 
             @SuppressWarnings("NestedMethodCall")
-            String url = Objects.toString(incoming.get("url"), "").trim();
+            String url = Objects.toString(incoming.get("url"), "").strip();
             URI parsedUri = RequestUtil.validateURI(url, provider, providerName, hashedIp);
             String scheme = RequestUtil.validateScheme(parsedUri, provider, providerName, hashedIp);
             String host = RequestUtil.validateHost(parsedUri, provider, providerName, hashedIp);
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
             RequestUtil.validateDNS(host, provider, providerName, hashedIp);
 
-            StatsUtil.recordRequest(providerName);
+            metrics.recordRequest(providerName);
             String normalizedUrl = parsedUri.toString();
 
             // The /check executes a custom aggregate lookup that fans out to multiple DNS providers
@@ -237,8 +251,7 @@ public class ProxyHandler {
 
             // Local list providers check against an in-memory domain set.
             // doLookup() is self-contained; cachedLookup() handles the cache transparently.
-            Descriptor listDescriptor = LocalListUtil.findByEndpointName(endpointName);
-            if (listDescriptor != null) {
+            if (LocalListUtil.findByEndpointName(endpointName) != null) {
                 LookupResult result = provider.cachedLookup(host);
 
                 if (result == LookupResult.RATE_LIMITED) {
@@ -250,7 +263,7 @@ public class ProxyHandler {
             // API providers require HTTP_CLIENT which lives here, so execution stays in
             // executeUpstream. The cache read/write is done there via getCachedResult /
             // putCachedResult rather than through cachedLookup.
-            String forwardUrl = provider.stripToHost() ? host : normalizedUrl;
+            String forwardUrl = provider.isStripToHost() ? host : normalizedUrl;
             return executeUpstream(provider, providerName, forwardUrl);
         } catch (StatusCodeException e) {
             return e.getStatus();
@@ -267,11 +280,11 @@ public class ProxyHandler {
      *         or an appropriate error response on failure.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static ResponseEntity<String> executeUpstream(@NonNull Provider provider,
-                                                          @NonNull String providerName,
-                                                          @NonNull String forwardUrl) {
-        // Rate limit check before making the upstream request to avoid unnecessary load on the provider
-        if (CooldownUtil.isCoolingDown(providerName)) {
+    private ResponseEntity<String> executeUpstream(@NonNull Provider provider,
+                                                   @NonNull String providerName,
+                                                   @NonNull String forwardUrl) {
+        // Skip the upstream call if the circuit breaker is open (too many recent failures)
+        if (circuitBreaker.isOpen(providerName)) {
             return ErrorUtil.RESP_429;
         }
 
@@ -280,11 +293,11 @@ public class ProxyHandler {
             LookupResult cached = ap.getCachedResult(forwardUrl);
 
             if (cached != null) {
-                StatsUtil.recordCacheHit();
+                metrics.recordCacheHit();
                 return resultResponse(cached, providerName);
             }
 
-            StatsUtil.recordCacheMiss();
+            metrics.recordCacheMiss();
         }
 
         Method method = provider.getMethod();
@@ -318,10 +331,13 @@ public class ProxyHandler {
             requestBuilder.addHeader(header.getKey(), header.getValue());
         }
 
+        long callStart = System.nanoTime();
+
         try {
             ClassicHttpRequest httpRequest = requestBuilder.build();
 
             return HTTP_CLIENT.execute(httpRequest, (ClassicHttpResponse response) -> {
+                long durationNanos = System.nanoTime() - callStart;
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
                 byte[] responseBytes = EntityUtils.toByteArray(entity, 10_000);
@@ -341,13 +357,15 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 429 -> {
-                            CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_429);
+                            circuitBreaker.recordFailure(providerName, durationNanos,
+                                    new RuntimeException("HTTP 429"));
                             yield ErrorUtil.RESP_429;
                         }
 
                         default -> {
                             if (statusCode >= 500) {
-                                CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_5XX);
+                                circuitBreaker.recordFailure(providerName, durationNanos,
+                                        new RuntimeException("HTTP " + statusCode));
                             }
                             yield ErrorUtil.RESP_502;
                         }
@@ -362,6 +380,9 @@ public class ProxyHandler {
 
                 LookupResult result = provider.interpret(responseBytes, forwardUrl);
 
+                // Record success so the circuit breaker counts this call in its sliding window
+                circuitBreaker.recordSuccess(providerName, durationNanos);
+
                 // Caches the result for future requests
                 if (provider instanceof AbstractProvider ap) {
                     ap.putCachedResult(forwardUrl, result);
@@ -369,8 +390,9 @@ public class ProxyHandler {
                 return resultResponse(result, providerName);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
+            long durationNanos = System.nanoTime() - callStart;
             log.error("[{}] Upstream request timed out ({})", providerName, e.getClass().getName());
-            CooldownUtil.triggerCooldown(providerName, CooldownUtil.COOLDOWN_5XX);
+            circuitBreaker.recordFailure(providerName, durationNanos, e);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
             log.error("[{}] Upstream request blocked by SSRF resolver ({})", providerName, e.getClass().getName());

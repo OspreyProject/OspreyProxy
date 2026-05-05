@@ -18,11 +18,12 @@
 package net.foulest.ospreyproxy.providers.list;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
-import net.foulest.ospreyproxy.util.stats.StatsUtil;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -34,10 +35,12 @@ import org.jspecify.annotations.NonNull;
  * <p>
  * One bean is registered per {@link Descriptor} constant via {@link LocalListProviderConfig}.
  */
+@Slf4j
 @RequiredArgsConstructor
 public class LocalListProvider extends AbstractProvider {
 
     private final Descriptor descriptor;
+    private final MetricsService metricsService;
 
     @Override
     public @NonNull String getDisplayName() {
@@ -55,17 +58,17 @@ public class LocalListProvider extends AbstractProvider {
     }
 
     @Override
-    public final @NonNull LookupResult cachedLookup(@NonNull String host) {
-        LookupResult cached = getCachedResult(host);
+    public final @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
+        LookupResult cached = getCachedResult(lookupStr);
 
         if (cached != null) {
-            StatsUtil.recordCacheHit();
+            metricsService.recordCacheHit();
             return cached;
         }
 
-        StatsUtil.recordCacheMiss();
-        LookupResult result = LocalListUtil.lookupHost(descriptor, host);
-        putCachedResult(host, result);
+        metricsService.recordCacheMiss();
+        LookupResult result = LocalListUtil.lookupHost(descriptor, lookupStr);
+        putCachedResult(lookupStr, result);
         return result;
     }
 }

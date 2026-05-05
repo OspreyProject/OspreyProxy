@@ -17,8 +17,11 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -30,12 +33,23 @@ import java.util.Map;
 /**
  * Provider implementation for AdGuard Family DNS.
  */
+@Slf4j
 @Component
 public class AdGuardFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://family.adguard-dns.com/dns-query?dns=";
     private static final String BLOCK_IP_MALICIOUS = "94.140.14.33";
     private static final String BLOCK_IP_ADULT = "94.140.14.35";
+
+    /**
+     * Constructor for the provider.
+     *
+     * @param metricsService The metrics service to use for recording metrics.
+     * @param circuitBreakerService The circuit breaker service to use for handling failures.
+     */
+    public AdGuardFamily(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+        super(metricsService, circuitBreakerService);
+    }
 
     @Override
     public @NonNull String getDisplayName() {
@@ -64,7 +78,7 @@ public class AdGuardFamily extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean malicious = DNSUtil.walkAnswers(rawBytes, (type, rdata) -> {
+        boolean malicious = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP_MALICIOUS.equals(ip);
@@ -72,7 +86,7 @@ public class AdGuardFamily extends AbstractDNSProvider {
             return false;
         });
 
-        boolean adultContent = DNSUtil.walkAnswers(rawBytes, (type, rdata) -> {
+        boolean adultContent = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP_ADULT.equals(ip);

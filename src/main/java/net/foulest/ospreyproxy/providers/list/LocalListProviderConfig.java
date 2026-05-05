@@ -17,6 +17,9 @@
  */
 package net.foulest.ospreyproxy.providers.list;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,8 +27,12 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Configuration class for defining beans related to local list providers.
  */
+@Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class LocalListProviderConfig {
+
+    private final MetricsService metricsService;
 
     /**
      * Defines a bean for the PhishDestroy local list provider, which uses the PHISH_DESTROY descriptor.
@@ -34,9 +41,8 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider phishDestroyProvider() {
-        return new LocalListProvider(Descriptor.PHISH_DESTROY);
+        return new LocalListProvider(Descriptor.PHISH_DESTROY, metricsService);
     }
-
 
     /**
      * Defines a bean for the Phishing Database local list provider, which uses the PHISHING_DATABASE descriptor.
@@ -45,6 +51,6 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider phishingDatabaseProvider() {
-        return new LocalListProvider(Descriptor.PHISHING_DATABASE);
+        return new LocalListProvider(Descriptor.PHISHING_DATABASE, metricsService);
     }
 }

@@ -51,10 +51,6 @@ public enum LookupResult {
      * Returned when the provider returns a result indicating that the domain is a phishing website.
      */
     PHISHING("phishing"),
-    /**
-     * Returned when the provider returns a result indicating that the domain is untrusted or suspicious.
-     */
-    UNTRUSTED("untrusted"),
 
     /**
      * Returned when the provider returns a result indicating that the domain contains adult content.

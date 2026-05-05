@@ -43,7 +43,7 @@ public class PrecisionSec extends AbstractProvider {
      */
     @PostConstruct
     public void validateConfig() {
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {
+        if (API_KEY == null || API_KEY.isBlank()) {
             throw new IllegalStateException("PRECISIONSEC_API_KEY environment variable is not set");
         }
     }
@@ -80,7 +80,7 @@ public class PrecisionSec extends AbstractProvider {
     }
 
     @Override
-    public boolean stripToHost() {
+    public boolean isStripToHost() {
         // PrecisionSec only accepts a bare domain; no scheme, path, query, or fragment.
         return true;
     }

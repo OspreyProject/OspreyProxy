@@ -17,8 +17,11 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -28,11 +31,22 @@ import java.util.Map;
 /**
  * Provider implementation for CleanBrowsing Family DNS.
  */
+@Slf4j
 @Component
 public class CleanBrowsingFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://doh.cleanbrowsing.org/doh/family-filter/?dns=";
     private static final int REFUSED_FLAGS = 131; // RCODE 5 (REFUSED) in the flags byte
+
+    /**
+     * Constructor for the provider.
+     *
+     * @param metricsService The metrics service to use for recording metrics.
+     * @param circuitBreakerService The circuit breaker service to use for handling failures.
+     */
+    public CleanBrowsingFamily(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+        super(metricsService, circuitBreakerService);
+    }
 
     @Override
     public @NonNull String getDisplayName() {

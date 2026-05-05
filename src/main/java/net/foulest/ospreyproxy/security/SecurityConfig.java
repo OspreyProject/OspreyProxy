@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.security;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +26,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * Global security configuration for the proxy server.
  */
+@Slf4j
 @Configuration
 public class SecurityConfig implements WebMvcConfigurer {
 

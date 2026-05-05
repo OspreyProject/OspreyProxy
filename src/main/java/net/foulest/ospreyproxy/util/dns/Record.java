@@ -19,10 +19,12 @@ package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * DNS RR type constants for the record types we care about in filtering responses.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Record {
 

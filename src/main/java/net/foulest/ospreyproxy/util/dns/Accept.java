@@ -19,10 +19,12 @@ package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Utility class for DNS Accept header values.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Accept {
 

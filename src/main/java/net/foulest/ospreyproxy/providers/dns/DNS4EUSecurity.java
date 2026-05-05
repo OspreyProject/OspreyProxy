@@ -22,7 +22,6 @@ import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
-import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -32,14 +31,14 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Switch.ch DNS.
+ * Provider implementation for DNS4EU Security DNS.
  */
 @Slf4j
 @Component
-public class SwitchCH extends AbstractDNSProvider {
+public class DNS4EUSecurity extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://dns.switch.ch/dns-query?dns=";
-    private static final String BLOCK_CNAME = "landingpage.ph.rpz.switch.ch";
+    private static final String API_URL = "https://protective.joindns4.eu/dns-query?dns=";
+    private static final String BLOCK_IP = "51.15.69.11";
 
     /**
      * Constructor for the provider.
@@ -47,18 +46,18 @@ public class SwitchCH extends AbstractDNSProvider {
      * @param metricsService The metrics service to use for recording metrics.
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public SwitchCH(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+    public DNS4EUSecurity(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
         super(metricsService, circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "Switch.ch";
+        return "DNS4EU Security";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "switch-ch";
+        return "dns4eu-security";
     }
 
     @Override
@@ -79,9 +78,9 @@ public class SwitchCH extends AbstractDNSProvider {
         }
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
-            if (type == Record.CNAME) {
-                String cname = DNSUtil.parseName(rdata);
-                return BLOCK_CNAME.equalsIgnoreCase(NetworkUtil.normalize(cname));
+            if (type == Record.A) {
+                String ip = DNSUtil.parseIPv4(rdata);
+                return BLOCK_IP.equals(ip);
             }
             return false;
         });

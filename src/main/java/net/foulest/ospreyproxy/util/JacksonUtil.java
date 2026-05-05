@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.json.JsonFactory;
@@ -33,6 +34,7 @@ import java.util.Map;
 /**
  * Utility class for Jackson JSON processing.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class JacksonUtil {
 

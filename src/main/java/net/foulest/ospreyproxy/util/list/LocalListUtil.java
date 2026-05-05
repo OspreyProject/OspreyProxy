@@ -25,6 +25,7 @@ import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
@@ -32,25 +33,30 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 /**
  * Utility class for managing local lists of domains fetched from external providers.
  */
-@SuppressWarnings("NestedMethodCall")
 @Slf4j
 @Component
+@SuppressWarnings("NestedMethodCall")
 public final class LocalListUtil {
 
     // HTTP/2 client for list fetches.
     // 30s connect, 30s connection-request, 30s response, 35s operation timeout.
     private static final CloseableHttpClient FETCH_CLIENT =
             HttpClientFactory.createHttp2Client(30, 30, 30, 35);
+
+    // Pre-compiled regex for splitting lines in plain text lists
+    private static final Pattern NEW_LINE_PATTERN = Pattern.compile("\\R");
 
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -82,9 +88,7 @@ public final class LocalListUtil {
     public void init() {
         for (Descriptor descriptor : Descriptor.values()) {
             stateMap.put(descriptor, new AtomicReference<>(ListSnapshot.EMPTY));
-        }
 
-        for (Descriptor descriptor : Descriptor.values()) {
             // Immediate fetch on startup, then repeat at this descriptor's configured interval
             scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
@@ -145,8 +149,8 @@ public final class LocalListUtil {
      * @param host The raw hostname to check.
      * @return {@code true} if the host or any ancestor domain is in the set.
      */
-    private static boolean isHostInSet(@NonNull Set<String> domainSet, @NonNull String host) {
-        String normalized = host.trim().toLowerCase(Locale.ROOT);
+    private static boolean isHostInSet(@NonNull Collection<String> domainSet, @NonNull String host) {
+        String normalized = host.strip().toLowerCase(Locale.ROOT);
 
         if (domainSet.contains(normalized)) {
             return true;
@@ -182,7 +186,7 @@ public final class LocalListUtil {
             if (result != null) {
                 applyContent(descriptor, result.rawContent(), result.etag());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             log.warn("[{}] Failed to fetch list update: {} ({})",
                     descriptor.getShortName(), e.getMessage(), e.getClass().getName());
         }
@@ -200,10 +204,10 @@ public final class LocalListUtil {
      * @param currentEtag The ETag from the last successful fetch, or {@code null} on first fetch.
      * @return A {@link FetchResult} with the body and ETag, or {@code null} if the server returned 304 Not Modified.
      */
-    @SuppressWarnings({"NestedMethodCall", "ProhibitedExceptionDeclared"})
+    @SuppressWarnings("NestedMethodCall")
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
-                                                  @Nullable String currentEtag) throws Exception {
-        HttpGet request = new HttpGet(descriptor.getUrl());
+                                                  @Nullable String currentEtag) throws IOException {
+        ClassicHttpRequest request = new HttpGet(descriptor.getUrl());
         request.addHeader("Accept", "application/json, text/plain, */*");
 
         if (currentEtag != null) {
@@ -285,11 +289,11 @@ public final class LocalListUtil {
             throw new IllegalArgumentException("Expected a JSON array but got null");
         }
 
-        Set<String> set = HashSet.newHashSet(parsed.size() * 2);
+        Set<String> set = HashSet.newHashSet(parsed.size() << 1);
 
         for (String entry : parsed) {
             if (entry != null && !entry.isEmpty()) {
-                set.add(entry.trim().toLowerCase(Locale.ROOT));
+                set.add(entry.strip().toLowerCase(Locale.ROOT));
             }
         }
         return set;
@@ -304,20 +308,20 @@ public final class LocalListUtil {
      * @param rawText The raw text content from the list endpoint.
      * @return A set of hostnames.
      */
-    private static @NonNull Set<String> parsePlainText(@NonNull String rawText) {
+    private static @NonNull Set<String> parsePlainText(@NonNull CharSequence rawText) {
         Set<String> set = new HashSet<>();
 
-        for (String line : rawText.split("\\R", -1)) {
-            String trimmed = line.trim();
+        for (String line : NEW_LINE_PATTERN.split(rawText, -1)) {
+            String stripped = line.strip();
 
             // Skip blank lines and comment lines
-            if (trimmed.isEmpty() || trimmed.charAt(0) == '#') {
+            if (stripped.isEmpty() || stripped.charAt(0) == '#') {
                 continue;
             }
 
             // Handle hosts file format (e.g. "127.0.0.1\thostname.com")
-            int tabIndex = trimmed.indexOf('\t');
-            String entry = tabIndex == -1 ? trimmed : trimmed.substring(tabIndex + 1).trim();
+            int tabIndex = stripped.indexOf('\t');
+            String entry = tabIndex == -1 ? stripped : stripped.substring(tabIndex + 1).strip();
 
             // Strip leading www. and normalize to lower-case
             String normalized = entry.toLowerCase(Locale.ROOT);

@@ -19,14 +19,17 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 /**
  * Utility class for building standardized error responses in the OspreyProxy application.
  */
+@Slf4j
 @SuppressWarnings("MissingJavadoc")
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorUtil {
@@ -73,7 +76,7 @@ public final class ErrorUtil {
      * @return A {@link ResponseEntity} with the given status and body,
      *         ready to return from a controller method.
      */
-    private static @NonNull ResponseEntity<String> build(@NonNull HttpStatus status,
+    private static @NonNull ResponseEntity<String> build(@NonNull HttpStatusCode status,
                                                          @NonNull String body) {
         return ResponseEntity.status(status)
                 .contentType(MediaType.APPLICATION_JSON)

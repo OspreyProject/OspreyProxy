@@ -21,6 +21,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 
 import javax.crypto.Mac;
@@ -35,6 +36,7 @@ import java.util.HexFormat;
  * This allows us to generate stable identifiers for IPs and URLs without storing the original values,
  * which is important for privacy and security.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HashUtil {
 
@@ -97,11 +99,11 @@ public final class HashUtil {
      * @return A hexadecimal string representation of the hashed IP address.
      */
     static String hashIp(@NonNull String ip) {
-        return IP_CACHE.get(ip, k -> {
+        return IP_CACHE.get(ip, ipString -> {
             Mac mac = IP_HMAC.get();
             mac.reset();
 
-            byte[] bytes = k.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = ipString.getBytes(StandardCharsets.UTF_8);
             byte[] hash = mac.doFinal(bytes);
             return HexFormat.of().formatHex(hash);
         });

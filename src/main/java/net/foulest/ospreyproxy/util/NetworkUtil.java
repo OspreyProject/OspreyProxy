@@ -21,6 +21,7 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.DnsResolver;
+import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 
 import java.net.*;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Utility class for checking if an IP address or hostname is private/internal to prevent SSRF attacks.
@@ -76,10 +78,16 @@ public final class NetworkUtil {
          * @return The canonical hostname.
          */
         @Override
+        @Contract(value = "_ -> param1", pure = true)
         public String resolveCanonicalHostname(String host) {
             return host;
         }
     };
+
+    /**
+     * Pattern to match illegal characters in URLs that should be percent-encoded.
+     */
+    private static final Pattern ENCODING_PATTERN = Pattern.compile("%(?![0-9a-fA-F]{2})");
 
     /**
      * Checks if an {@link InetAddress} is private or internal.
@@ -291,7 +299,7 @@ public final class NetworkUtil {
      */
     static @NonNull String encodeIllegalUriChars(@NonNull String url) {
         url = Normalizer.normalize(url, Normalizer.Form.NFC);
-        String result = url.replaceAll("%(?![0-9a-fA-F]{2})", "%25");
+        String result = ENCODING_PATTERN.matcher(url).replaceAll("%25");
 
         return result.replace("[", "%5B")
                 .replace("]", "%5D")
@@ -304,7 +312,7 @@ public final class NetworkUtil {
     }
 
     /**
-     * Normalizes a domain name by trimming whitespace, converting to lowercase, and removing any trailing dots.
+     * Normalizes a domain name by stripping whitespace, converting to lowercase, and removing any trailing dots.
      *
      * @param name The domain name to normalize.
      * @return The normalized domain name, suitable for case-insensitive comparison.
@@ -312,7 +320,7 @@ public final class NetworkUtil {
      */
     @SuppressWarnings("NestedMethodCall")
     public static @NonNull String normalize(@NonNull String name) {
-        String n = name.trim().toLowerCase(Locale.ROOT);
-        return !n.isEmpty() && n.charAt(n.length() - 1) == '.' ? n.substring(0, n.length() - 1) : n;
+        name = name.strip().toLowerCase(Locale.ROOT);
+        return !name.isEmpty() && name.charAt(name.length() - 1) == '.' ? name.substring(0, name.length() - 1) : name;
     }
 }

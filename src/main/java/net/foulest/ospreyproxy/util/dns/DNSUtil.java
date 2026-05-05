@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -32,6 +33,7 @@ import java.util.regex.Pattern;
 /**
  * Utility class for building DNS queries in wire format and encoding them for DoH (DNS over HTTPS) requests.
  */
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DNSUtil {
 
@@ -42,16 +44,10 @@ public final class DNSUtil {
      * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
      *
      * @param host The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
-     * @param type The DNS record type (0–65535). Use constants from {@link Record} for common types.
      * @return Base64url-encoded wire-format DNS query (no padding).
      * @throws IllegalArgumentException If the hostname or type is invalid.
      */
-    private static @NonNull String buildBase64Query(@NonNull String host, int type) {
-        // Checks if the DNS record type is valid
-        if (type < 0 || type > 65535) {
-            throw new IllegalArgumentException("Invalid DNS record type: " + type);
-        }
-
+    public static @NonNull String buildBase64Query(@NonNull String host) {
         String stripped = getStrippedHost(host);
 
         // Header: ID=0x0000, flags=0x0100 (RD), QDCOUNT=1, ANCOUNT/NSCOUNT/ARCOUNT=0
@@ -64,6 +60,33 @@ public final class DNSUtil {
                 0x00, 0x00  // ARCOUNT
         };
 
+        ByteArrayOutputStream qname = getByteArrayOutputStream(stripped);
+
+        // QTYPE (2 bytes big-endian) + QCLASS IN (0x00 0x01)
+        byte[] qtypeAndClass = {
+                (byte) (Record.A >>> 8 & 0xFF),
+                (byte) (Record.A & 0xFF),
+                0x00, 0x01  // IN
+        };
+
+        // Assembles the full packet
+        byte[] qnameBytes = qname.toByteArray();
+        byte[] packet = new byte[header.length + qnameBytes.length + qtypeAndClass.length];
+        System.arraycopy(header, 0, packet, 0, header.length);
+        System.arraycopy(qnameBytes, 0, packet, header.length, qnameBytes.length);
+        System.arraycopy(qtypeAndClass, 0, packet, header.length + qnameBytes.length, qtypeAndClass.length);
+
+        // Encodes the packet with Base64 and returns it
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(packet);
+    }
+
+    /**
+     * Builds the QNAME portion of the DNS query in wire format for the given stripped hostname.
+     *
+     * @param stripped The hostname with whitespace and trailing dots removed, and validated for allowed characters and length.
+     * @return A ByteArrayOutputStream containing the QNAME in wire format (length-prefixed labels terminated by 0x00).
+     */
+    private static @NonNull ByteArrayOutputStream getByteArrayOutputStream(@NonNull String stripped) {
         ByteArrayOutputStream qname = new ByteArrayOutputStream();
 
         // Build QNAME: length-prefixed labels terminated by 0x00
@@ -81,33 +104,7 @@ public final class DNSUtil {
 
         // End of QNAME
         qname.write(0x00);
-
-        // QTYPE (2 bytes big-endian) + QCLASS IN (0x00 0x01)
-        byte[] qtypeAndClass = {
-                (byte) (type >>> 8 & 0xFF),
-                (byte) (type & 0xFF),
-                0x00, 0x01  // IN
-        };
-
-        // Assembles the full packet
-        byte[] qnameBytes = qname.toByteArray();
-        byte[] packet = new byte[header.length + qnameBytes.length + qtypeAndClass.length];
-        System.arraycopy(header, 0, packet, 0, header.length);
-        System.arraycopy(qnameBytes, 0, packet, header.length, qnameBytes.length);
-        System.arraycopy(qtypeAndClass, 0, packet, header.length + qnameBytes.length, qtypeAndClass.length);
-
-        // Encodes the packet with Base64 and returns it
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(packet);
-    }
-
-    /**
-     * Builds a Base64url-encoded wire-format DNS query for the given hostname, using record type A (IPv4 address).
-     *
-     * @param host The hostname to query.
-     * @return Base64url-encoded wire-format DNS query for an A record.
-     */
-    public static @NonNull String buildBase64Query(@NonNull String host) {
-        return buildBase64Query(host, Record.A);
+        return qname;
     }
 
     /**
@@ -130,7 +127,7 @@ public final class DNSUtil {
      */
     @SuppressWarnings("NestedMethodCall")
     private static @NonNull String getStrippedHost(@NonNull String host) {
-        String stripped = host.trim();
+        String stripped = host.strip();
 
         if (!stripped.isEmpty() && stripped.charAt(stripped.length() - 1) == '.') {
             stripped = stripped.substring(0, stripped.length() - 1);
@@ -151,9 +148,10 @@ public final class DNSUtil {
      * and tests each record against the given predicate.
      *
      * @param response The raw DNS message response bytes.
-     * @param predicate The predicate to test each answer record against. Takes the RR type and RDATA bytes as input.
+     * @param predicate The predicate to match each answer record against. Takes the RR type and RDATA bytes as input.
      * @return {@code true} if any answer record matches the predicate, {@code false} otherwise or if the response is malformed.
      */
+    @SuppressWarnings("BooleanMethodNameMustStartWithQuestion")
     public static boolean walkAnswers(byte @NonNull [] response, @NonNull RecordPredicate predicate) {
         if (response.length < 12) {
             return false;
@@ -189,7 +187,16 @@ public final class DNSUtil {
             }
 
             int rrType = ((response[off] & 0xFF) << 8) | (response[off + 1] & 0xFF);
-            off += 8;
+            off += 2;
+
+            int rrClass = ((response[off] & 0xFF) << 8) | (response[off + 1] & 0xFF);
+            off += 2;
+
+            long ttl = ((response[off] & 0xFFL) << 24)
+                    | ((response[off + 1] & 0xFFL) << 16)
+                    | ((response[off + 2] & 0xFFL) << 8)
+                    | (response[off + 3] & 0xFFL);
+            off += 4;
 
             int rdLength = ((response[off] & 0xFF) << 8) | (response[off + 1] & 0xFF);
             off += 2;
@@ -202,7 +209,7 @@ public final class DNSUtil {
             System.arraycopy(response, off, rdata, 0, rdLength);
             off += rdLength;
 
-            if (predicate.test(rrType, rdata)) {
+            if (predicate.matches(rrType, rrClass, ttl, rdata)) {
                 return true;
             }
         }
@@ -219,25 +226,26 @@ public final class DNSUtil {
      */
     @Contract(pure = true)
     private static int skipName(byte @NonNull [] data, int off) {
+        int i = off;
         int steps = 0;
 
-        while (off < data.length && steps < data.length) {
+        while (i < data.length && steps < data.length) {
             steps++;
-            int len = data[off] & 0xFF;
+            int len = data[i] & 0xFF;
 
             if ((len & 0xC0) == 0xC0) {
-                off += 2;
+                i += 2;
                 break;
             }
 
             if (len == 0) {
-                off += 1;
+                i += 1;
                 break;
             }
 
-            off += 1 + len;
+            i += 1 + len;
         }
-        return off;
+        return i;
     }
 
     /**

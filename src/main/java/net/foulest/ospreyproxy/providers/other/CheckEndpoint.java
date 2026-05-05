@@ -18,6 +18,7 @@
 package net.foulest.ospreyproxy.providers.other;
 
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Component;
 /**
  * Provider implementation for the /check endpoint.
  */
+@Slf4j
 @Component
 public class CheckEndpoint extends AbstractProvider {
 
@@ -38,7 +40,7 @@ public class CheckEndpoint extends AbstractProvider {
      */
     @PostConstruct
     public void validateConfig() {
-        if (isEnabled() && (API_KEY == null || API_KEY.isBlank())) {
+        if (API_KEY == null || API_KEY.isBlank()) {
             throw new IllegalStateException("CHECK_ENDPOINT_API_KEY environment variable is invalid or not set");
         }
     }

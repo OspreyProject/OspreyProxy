@@ -17,20 +17,22 @@
  */
 package net.foulest.ospreyproxy.providers;
 
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.util.CooldownUtil;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.dns.Accept;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
-import net.foulest.ospreyproxy.util.stats.StatsUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.MessageHeaders;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -43,39 +45,51 @@ import java.util.stream.Collectors;
  * Abstract base class for DNS providers, handling the common logic of fetching and interpreting DNS responses.
  */
 @Slf4j
+@AllArgsConstructor
 public abstract class AbstractDNSProvider extends AbstractProvider {
 
-    // HTTP/2 client shared across all DNS providers.
-    // Multiplexing handles max conn. total and max conn. per route.
-    // 5s connect, 5s connection-request, 5s response, 10s operation timeout.
+    // Shared HTTP/2 client across DNS providers.
     private static final CloseableHttpClient FILTERING_CLIENT =
             HttpClientFactory.createHttp2Client(5, 5, 5, 10);
+
+    // Shared classic HTTP/1.1 client for providers that explicitly opt out of the HTTP/2 client.
+    private static final CloseableHttpClient LEGACY_FILTERING_CLIENT =
+            HttpClientFactory.createHttp1Client(5, 5, 10);
+
+    // Injected by Spring into each concrete @Component subclass
+    private final MetricsService metricsService;
+    private final CircuitBreakerService circuitBreakerService;
+
+    private @NonNull CloseableHttpClient getDnsHttpClient() {
+        return useOldHTTP() ? LEGACY_FILTERING_CLIENT : FILTERING_CLIENT;
+    }
 
     /**
      * Performs a cached lookup for the given host, using the provider's DNS filter.
      *
-     * @param host The validated string to look up (host or URL).
+     * @param lookupStr The validated string to look up (host or URL).
      * @return The {@link LookupResult} for this host, from cache if available or freshly looked up if not.
      */
     @Override
-    public final @NonNull LookupResult cachedLookup(@NonNull String host) {
+    public final @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
         String displayName = getDisplayName();
 
-        // Short-circuit if the provider is in a 429 cooldown
-        if (CooldownUtil.isCoolingDown(displayName)) {
+        // Short-circuit if the circuit breaker is open (too many recent failures)
+        if (circuitBreakerService.isOpen(displayName)) {
             return LookupResult.RATE_LIMITED;
         }
 
-        LookupResult cached = getCachedResult(host);
+        LookupResult cached = getCachedResult(lookupStr);
 
         if (cached != null) {
-            StatsUtil.recordCacheHit();
+            metricsService.recordCacheHit();
             return cached;
         }
 
-        StatsUtil.recordCacheMiss();
-        LookupResult result = lookup(host);
-        putCachedResult(host, result);
+        metricsService.recordCacheMiss();
+        LookupResult result = lookup(lookupStr);
+
+        putCachedResult(lookupStr, result);
         return result;
     }
 
@@ -181,8 +195,8 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @param displayName         The provider name for logging.
      * @return The raw response bytes, or {@code null} on failure.
      */
-    private static byte @Nullable [] fetchDnsMessage(@NonNull String url,
-                                                     @NonNull String displayName) {
+    private byte @Nullable [] fetchDnsMessage(@NonNull String url,
+                                              @NonNull String displayName) {
         return fetchBytes(url, Accept.DNS_MESSAGE, displayName);
     }
 
@@ -194,7 +208,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @return A map representing the parsed JSON response, or an empty map on failure.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static @NonNull Map<String, Object> fetchDnsJson(@NonNull String url, @NonNull String displayName) {
+    private @NonNull Map<String, Object> fetchDnsJson(@NonNull String url, @NonNull String displayName) {
         byte[] body = fetchBytes(url, Accept.DNS_JSON, displayName);
 
         if (body == null) {
@@ -212,33 +226,36 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
     /**
      * Fetches raw bytes from the given URL, validating HTTP status and Content-Type.
      *
-     * @param url               The full URL to fetch.
-     * @param accept            The Accept header value (also used for Content-Type validation).
-     * @param displayName       The provider name for logging.
+     * @param url The full URL to fetch.
+     * @param accept The Accept header value (also used for Content-Type validation).
+     * @param displayName The provider name for logging.
      * @return The raw response bytes, or {@code null} on failure.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static byte @Nullable [] fetchBytes(@NonNull String url,
-                                                @NonNull String accept,
-                                                @NonNull String displayName) {
+    private byte @Nullable [] fetchBytes(@NonNull String url,
+                                         @NonNull CharSequence accept,
+                                         @NonNull String displayName) {
+        long startNanos = System.nanoTime();
+        CloseableHttpClient client = getDnsHttpClient();
+
         try {
-            HttpGet request = new HttpGet(url);
+            ClassicHttpRequest request = new HttpGet(url);
             request.addHeader("Accept", accept);
 
-            return FILTERING_CLIENT.execute(request, response -> {
+            return client.execute(request, response -> {
                 int statusCode = response.getCode();
+                String contentType = getContentType(response);
 
                 if (statusCode != 200) {
-                    // TODO: Should this also catch 5XX errors?
                     if (statusCode == 429) {
-                        CooldownUtil.triggerCooldown(displayName, CooldownUtil.COOLDOWN_429);
+                        circuitBreakerService.recordFailure(displayName, 0L, new RuntimeException("HTTP 429"));
+                    } else if (statusCode >= 500) {
+                        circuitBreakerService.recordFailure(displayName, 0L, new RuntimeException("HTTP " + statusCode));
                     } else {
-                        log.warn("[{}] Unexpected status {}", displayName, statusCode);
+                        log.warn("[{}] Unexpected status code: {}", displayName, statusCode);
                     }
                     return null;
                 }
-
-                String contentType = getContentType(response);
 
                 if (!contentType.contains(accept)) {
                     log.warn("[{}] Unexpected Content-Type '{}'", displayName, contentType);
@@ -246,10 +263,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity, 64 * 1024);
+                byte[] body = EntityUtils.toByteArray(entity, 64 << 10);
+                long totalElapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
 
                 if (body == null || body.length == 0) {
-                    log.warn("[{}] Empty response body", displayName);
+                    log.warn("[{}] Empty response body after {} ms", displayName, totalElapsedMs);
                     return null;
                 }
                 return body;
@@ -267,7 +285,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @param response The response to extract the Content-Type from.
      * @return The Content-Type as a String.
      */
-    private static @NonNull String getContentType(@NonNull ClassicHttpResponse response) {
+    private static @NonNull String getContentType(@NonNull MessageHeaders response) {
         Header header = response.getFirstHeader("Content-Type");
         return header != null ? header.getValue() : "";
     }

@@ -17,8 +17,11 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -29,10 +32,21 @@ import java.util.Map;
 /**
  * Provider implementation for Cloudflare Security DNS.
  */
+@Slf4j
 @Component
 public class CloudflareSecurity extends AbstractDNSProvider {
 
     private static final String API_URL = "https://security.cloudflare-dns.com/dns-query?name=";
+
+    /**
+     * Constructor for the provider.
+     *
+     * @param metricsService The metrics service to use for recording metrics.
+     * @param circuitBreakerService The circuit breaker service to use for handling failures.
+     */
+    public CloudflareSecurity(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+        super(metricsService, circuitBreakerService);
+    }
 
     @Override
     public @NonNull String getDisplayName() {

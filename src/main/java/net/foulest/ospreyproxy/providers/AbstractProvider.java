@@ -21,8 +21,10 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
+import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HashUtil;
+import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -33,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Abstract base class for all Provider implementations, providing common caching and rate limiting logic.
  */
+@Slf4j
 public abstract class AbstractProvider implements Provider {
 
     // Caches for storing buckets per IP address
@@ -219,6 +222,7 @@ public abstract class AbstractProvider implements Provider {
     /**
      * Maximum burst request capacity per IP within {@link #rateLimitBurstWindow()}.
      */
+    @Contract(pure = true)
     private static int rateLimitBurstCapacity() {
         return 11;
     }
@@ -226,6 +230,7 @@ public abstract class AbstractProvider implements Provider {
     /**
      * Maximum sustained request capacity per IP within {@link #rateLimitSustainedWindow()}.
      */
+    @Contract(pure = true)
     private static int rateLimitSustainedCapacity() {
         return 400;
     }
@@ -233,6 +238,7 @@ public abstract class AbstractProvider implements Provider {
     /**
      * Maximum invalid request capacity per IP within {@link #rateLimitInvalidRequestWindow()}.
      */
+    @Contract(pure = true)
     private static int rateLimitInvalidRequestCapacity() {
         return 5;
     }
@@ -241,6 +247,7 @@ public abstract class AbstractProvider implements Provider {
      * Rolling window for burst rate limiting.
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitBurstWindow() {
         return Duration.ofSeconds(1);
     }
@@ -249,6 +256,7 @@ public abstract class AbstractProvider implements Provider {
      * Rolling window for sustained rate limiting.
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitSustainedWindow() {
         return Duration.ofMinutes(1);
     }
@@ -257,6 +265,7 @@ public abstract class AbstractProvider implements Provider {
      * Rolling window for invalid request rate limiting.
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitInvalidRequestWindow() {
         return Duration.ofMinutes(1);
     }
@@ -265,6 +274,7 @@ public abstract class AbstractProvider implements Provider {
      * How long to block an IP on the first burst violation (doubles on each repeat).
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitBurstBlockDuration() {
         return Duration.ofSeconds(5);
     }
@@ -273,6 +283,7 @@ public abstract class AbstractProvider implements Provider {
      * How long to block an IP on the first sustained violation (doubles on each repeat).
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitSustainedBlockDuration() {
         return Duration.ofMinutes(1);
     }
@@ -281,6 +292,7 @@ public abstract class AbstractProvider implements Provider {
      * How long to block an IP on the first invalid-request violation (doubles on each repeat).
      */
     @NonNull
+    @Contract(pure = true)
     private static Duration rateLimitInvalidRequestBlockDuration() {
         return Duration.ofSeconds(5);
     }
@@ -288,19 +300,19 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getBurstBucket(@NonNull String ip) {
-        return burstBucketCache.get(ip, k -> Bucket.builder().addLimit(burstBandwidth).build());
+        return burstBucketCache.get(ip, s -> Bucket.builder().addLimit(burstBandwidth).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
-        return sustainedBucketCache.get(ip, k -> Bucket.builder().addLimit(sustainedBandwidth).build());
+        return sustainedBucketCache.get(ip, s -> Bucket.builder().addLimit(sustainedBandwidth).build());
     }
 
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
-        return invalidRequestBucketCache.get(ip, k -> Bucket.builder().addLimit(invalidRequestBandwidth).build());
+        return invalidRequestBucketCache.get(ip, s -> Bucket.builder().addLimit(invalidRequestBandwidth).build());
     }
 
     @Override
@@ -378,6 +390,6 @@ public abstract class AbstractProvider implements Provider {
     @Override
     @SuppressWarnings("NestedMethodCall")
     public @NonNull String getViolatorId(@NonNull String ip) {
-        return violatorIdCache.get(ip, k -> "#" + violatorCounter.incrementAndGet());
+        return violatorIdCache.get(ip, s -> "#" + violatorCounter.incrementAndGet());
     }
 }

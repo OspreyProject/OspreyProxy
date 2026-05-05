@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -26,6 +27,7 @@ import org.jspecify.annotations.Nullable;
  * @param rawContent The raw content fetched from the provider.
  * @param etag The ETag associated with the fetched content, if available.
  */
+@Slf4j
 record FetchResult(@NonNull String rawContent, @Nullable String etag) {
 
 }

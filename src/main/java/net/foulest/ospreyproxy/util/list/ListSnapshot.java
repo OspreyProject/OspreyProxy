@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Set;
@@ -27,6 +28,7 @@ import java.util.Set;
  * @param domainSet The set of domains in the snapshot, or null if not available.
  * @param etag The ETag associated with the snapshot, or null if not available.
  */
+@Slf4j
 record ListSnapshot(@Nullable Set<String> domainSet, @Nullable String etag) {
 
     static final ListSnapshot EMPTY = new ListSnapshot(null, null);

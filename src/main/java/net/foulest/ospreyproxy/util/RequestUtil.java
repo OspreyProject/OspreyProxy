@@ -358,7 +358,7 @@ public final class RequestUtil {
         }
 
         // Confirms the hostname resolves in DNS before forwarding to any upstream provider.
-        if (!NetworkUtil.isIpLiteral(host) && !ResolveUtil.hostResolves(host)) {
+        if (!NetworkUtil.isIpLiteral(host) && !ResolveUtil.doesHostResolve(host)) {
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
     }

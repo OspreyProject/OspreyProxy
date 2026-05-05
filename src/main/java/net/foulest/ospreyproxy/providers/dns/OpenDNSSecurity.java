@@ -22,7 +22,6 @@ import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
-import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -32,14 +31,13 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Switch.ch DNS.
+ * Provider implementation for OpenDNS Security DNS.
  */
 @Slf4j
 @Component
-public class SwitchCH extends AbstractDNSProvider {
+public class OpenDNSSecurity extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://dns.switch.ch/dns-query?dns=";
-    private static final String BLOCK_CNAME = "landingpage.ph.rpz.switch.ch";
+    private static final String API_URL = "https://doh.opendns.com/dns-query?dns=";
 
     /**
      * Constructor for the provider.
@@ -47,22 +45,27 @@ public class SwitchCH extends AbstractDNSProvider {
      * @param metricsService The metrics service to use for recording metrics.
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public SwitchCH(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
+    public OpenDNSSecurity(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
         super(metricsService, circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "Switch.ch";
+        return "OpenDNS Security";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "switch-ch";
+        return "opendns-security";
     }
 
     @Override
     public boolean isEnabled() {
+        return true;
+    }
+
+    @Override
+    public boolean useOldHTTP() {
         return true;
     }
 
@@ -79,9 +82,8 @@ public class SwitchCH extends AbstractDNSProvider {
         }
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
-            if (type == Record.CNAME) {
-                String cname = DNSUtil.parseName(rdata);
-                return BLOCK_CNAME.equalsIgnoreCase(NetworkUtil.normalize(cname));
+            if (type == Record.A) {
+                return ttl == 0;
             }
             return false;
         });

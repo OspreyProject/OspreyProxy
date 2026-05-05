@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.ErrorUtil;
+import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -42,13 +43,63 @@ public class SecurityFilter implements Filter {
     );
 
     @Override
-    public void doFilter(@NonNull ServletRequest servletRequest,
-                         @NonNull ServletResponse servletResponse,
+    public void doFilter(@NonNull ServletRequest request,
+                         @NonNull ServletResponse response,
                          @NonNull FilterChain chain) throws IOException, ServletException {
-        HttpServletRequest request = (HttpServletRequest) servletRequest;
-        HttpServletResponse response = (HttpServletResponse) servletResponse;
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = getServletResponse((HttpServletResponse) response);
+        String method = httpRequest.getMethod();
 
-        // Security headers on every response
+        // Reject requests with disallowed HTTP methods before any further processing
+        if (!ALLOWED_METHODS.contains(method)) {
+            sendError(httpResponse, HttpServletResponse.SC_METHOD_NOT_ALLOWED, ErrorUtil.BODY_405);
+            return;
+        }
+
+        // Skip Content-Type and size checks for bodyless methods
+        if (BODYLESS_METHODS.contains(method)) {
+            chain.doFilter(httpRequest, httpResponse);
+            return;
+        }
+
+        long contentLength = httpRequest.getContentLengthLong();
+
+        // Reject requests with no declared Content-Length (e.g. chunked transfer encoding)
+        // to prevent body size enforcement bypass
+        if (contentLength < 0) {
+            log.warn("Rejected request with missing Content-Length");
+            sendError(httpResponse, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
+            return;
+        }
+
+        // Early rejection for requests declaring an oversized Content-Length
+        if (contentLength > MAX_BODY_SIZE) {
+            log.warn("Rejected request with oversized Content-Length: {} bytes", contentLength);
+            sendError(httpResponse, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
+            return;
+        }
+
+        String rawContentType = httpRequest.getHeader(HttpHeaders.CONTENT_TYPE);
+        int length = MediaType.APPLICATION_JSON_VALUE.length();
+
+        // Sends error if the Content-Type is not valid
+        if (!isContentTypeValid(rawContentType, length)) {
+            log.warn("Rejected request with invalid Content-Type");
+            sendError(httpResponse, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, ErrorUtil.BODY_415);
+            return;
+        }
+
+        chain.doFilter(httpRequest, httpResponse);
+    }
+
+    /**
+     * Applies security headers to the response and returns it for further processing.
+     *
+     * @param response The HttpServletResponse to apply headers to.
+     * @return The same HttpServletResponse instance with security headers applied, ready for further processing.
+     */
+    @Contract("_ -> param1")
+    private static @NonNull HttpServletResponse getServletResponse(@NonNull HttpServletResponse response) {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("X-Frame-Options", "DENY");
@@ -57,56 +108,39 @@ public class SecurityFilter implements Filter {
         response.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()");
         response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
         response.setHeader("Cache-Control", "no-store");
+        return response;
+    }
 
-        String method = request.getMethod();
-
-        // Reject requests with disallowed HTTP methods before any further processing
-        if (!ALLOWED_METHODS.contains(method)) {
-            sendError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, ErrorUtil.BODY_405);
-            return;
+    /**
+     * Validates the Content-Type header against "application/json" with optional parameters.
+     *
+     * @param rawContentType The raw Content-Type header value from the request.
+     * @param length The length of the "application/json" string constant, precomputed for efficiency.
+     * @return {@code true} if the Content-Type is valid, {@code false} otherwise.
+     */
+    @Contract("null, _ -> false")
+    private static boolean isContentTypeValid(String rawContentType, int length) {
+        // Checks if the content type is null
+        if (rawContentType == null) {
+            return false;
         }
 
-        // Skip Content-Type and size checks for bodyless methods
-        if (BODYLESS_METHODS.contains(method)) {
-            chain.doFilter(request, response);
-            return;
+        // Checks if the content type is exactly "application/json" (case-insensitive)
+        if (!MediaType.APPLICATION_JSON_VALUE.equalsIgnoreCase(rawContentType)) {
+            return false;
         }
 
-        long contentLength = request.getContentLengthLong();
-
-        // Reject requests with no declared Content-Length (e.g. chunked transfer encoding)
-        // to prevent body size enforcement bypass
-        if (contentLength < 0) {
-            log.warn("Rejected request with missing Content-Length");
-            sendError(response, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
-            return;
+        // Checks if the content type starts with "application/json" (case-insensitive) and is followed by a ';' for parameters
+        if (!rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE, 0, length)) {
+            return false;
         }
 
-        // Early rejection for requests declaring an oversized Content-Length
-        if (contentLength > MAX_BODY_SIZE) {
-            log.warn("Rejected request with oversized Content-Length: {} bytes", contentLength);
-            sendError(response, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
-            return;
+        // If there are additional characters after "application/json",
+        // the next character must be ';' to allow for parameters like charset
+        if (rawContentType.length() > length) {
+            return rawContentType.charAt(length) == ';';
         }
-
-        String rawContentType = request.getHeader(HttpHeaders.CONTENT_TYPE);
-        int length = MediaType.APPLICATION_JSON_VALUE.length();
-
-        // Validate Content-Type: must be application/json (with optional charset param)
-        boolean valid = rawContentType != null
-                && (MediaType.APPLICATION_JSON_VALUE.equalsIgnoreCase(rawContentType)
-                || (rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE, 0, length)
-                && rawContentType.length() > length
-                && rawContentType.charAt(length) == ';'));
-
-        // Sends error if the request is not valid
-        if (!valid) {
-            log.warn("Rejected request with invalid Content-Type: {}", rawContentType);
-            sendError(response, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, ErrorUtil.BODY_415);
-            return;
-        }
-
-        chain.doFilter(request, response);
+        return true;
     }
 
     /**
@@ -116,7 +150,6 @@ public class SecurityFilter implements Filter {
      * @param status The HTTP status code to set on the response.
      * @param body The pre-serialized JSON error body string to write.
      */
-    @SuppressWarnings("NestedMethodCall")
     private static void sendError(@NonNull HttpServletResponse response, int status,
                                   @NonNull String body) throws IOException {
         response.setStatus(status);
