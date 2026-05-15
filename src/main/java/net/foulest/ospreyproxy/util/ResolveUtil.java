@@ -114,6 +114,7 @@ final class ResolveUtil {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {
+                    EntityUtils.consumeQuietly(response.getEntity());
                     log.warn("DoH query returned HTTP {}", statusCode);
                     return true;
                 }
