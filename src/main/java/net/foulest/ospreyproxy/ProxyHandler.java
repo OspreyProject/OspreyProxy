@@ -229,8 +229,41 @@ public class ProxyHandler {
             String scheme = RequestUtil.validateScheme(parsedUri, provider, providerName, hashedIp);
             String host = RequestUtil.validateHost(parsedUri, provider, providerName, hashedIp);
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
-            RequestUtil.validateDNS(host, provider, providerName, hashedIp);
 
+            // Short-circuits on cache hit before paying the DoH validation cost
+            if (!(provider instanceof CheckEndpoint)) {
+                String cacheKey = provider.isStripToHost() ? host : parsedUri.toString();
+
+                if (provider instanceof AbstractDNSProvider dnsProvider) {
+                    LookupResult cached = dnsProvider.getCachedResult(host);
+
+                    if (cached != null) {
+                        metrics.recordRequest(providerName);
+                        metrics.recordCacheHit();
+                        return resultResponse(cached, providerName);
+                    }
+                } else if (LocalListUtil.findByEndpointName(endpointName) != null
+                        && provider instanceof AbstractProvider ap) {
+                    LookupResult cached = ap.getCachedResult(host);
+
+                    if (cached != null) {
+                        metrics.recordRequest(providerName);
+                        metrics.recordCacheHit();
+                        return resultResponse(cached, providerName);
+                    }
+                } else if (provider instanceof AbstractProvider ap) {
+                    LookupResult cached = ap.getCachedResult(cacheKey);
+
+                    if (cached != null) {
+                        metrics.recordRequest(providerName);
+                        metrics.recordCacheHit();
+                        return resultResponse(cached, providerName);
+                    }
+                }
+            }
+
+            // All validations passed; record the request and proceed to upstream execution
+            RequestUtil.validateDNS(host, provider, providerName, hashedIp);
             metrics.recordRequest(providerName);
             String normalizedUrl = parsedUri.toString();
 
