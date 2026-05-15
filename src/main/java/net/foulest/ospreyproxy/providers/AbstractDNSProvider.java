@@ -248,6 +248,8 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 String contentType = getContentType(response);
 
                 if (statusCode != 200) {
+                    EntityUtils.consumeQuietly(response.getEntity());
+
                     if (statusCode == 429) {
                         circuitBreakerService.recordFailure(displayName, 0L, new RuntimeException("HTTP 429"));
                     } else if (statusCode >= 500) {
@@ -259,6 +261,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 }
 
                 if (!contentType.contains(accept)) {
+                    EntityUtils.consumeQuietly(response.getEntity());
                     log.warn("[{}] Unexpected Content-Type '{}'", displayName, contentType);
                     return null;
                 }
