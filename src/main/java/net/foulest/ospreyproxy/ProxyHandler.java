@@ -73,13 +73,14 @@ public class ProxyHandler {
     // HTTP/1.1 client for upstream API requests (some providers don't support HTTP/2)
     // 200 max conn. total, 100 max conn. per route
     // 5s connect timeout, 5s connection request timeout, 7s response timeout
-    public static final CloseableHttpClient HTTP_CLIENT = HttpClients.custom()
+    private static final CloseableHttpClient HTTP_CLIENT = HttpClients.custom()
             .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
                     .setDnsResolver(NetworkUtil.DNS_RESOLVER)
                     .setMaxConnTotal(200)
                     .setMaxConnPerRoute(100)
                     .setDefaultConnectionConfig(ConnectionConfig.custom()
                             .setConnectTimeout(Timeout.ofSeconds(5))
+                            .setTimeToLive(Timeout.ofMinutes(5))
                             .build())
                     .build())
             .setDefaultRequestConfig(RequestConfig.custom()
