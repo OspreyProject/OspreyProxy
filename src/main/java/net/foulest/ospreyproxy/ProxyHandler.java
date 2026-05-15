@@ -50,6 +50,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -340,7 +341,15 @@ public class ProxyHandler {
                 long durationNanos = System.nanoTime() - callStart;
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
-                byte[] responseBytes = EntityUtils.toByteArray(entity, 10_000);
+                byte[] responseBytes;
+
+                try {
+                    responseBytes = EntityUtils.toByteArray(entity, 10_000);
+                } catch (IOException e) {
+                    EntityUtils.consumeQuietly(entity);
+                    log.error("[{}] Failed to read response body: {}", providerName, e.getClass().getName());
+                    return ErrorUtil.RESP_502;
+                }
 
                 // Rejects non-200 responses with provider-specific logging and error mapping
                 if (statusCode != 200) {

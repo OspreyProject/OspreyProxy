@@ -222,6 +222,7 @@ public final class LocalListUtil {
             }
 
             if (statusCode != 200) {
+                EntityUtils.consumeQuietly(response.getEntity());
                 throw new IllegalStateException("HTTP " + statusCode);
             }
 
@@ -230,6 +231,7 @@ public final class LocalListUtil {
                     .orElse("");
 
             if (!contentType.contains("application/json") && !contentType.contains("text/")) {
+                EntityUtils.consumeQuietly(response.getEntity());
                 throw new IllegalStateException("Unexpected Content-Type: " + contentType);
             }
 

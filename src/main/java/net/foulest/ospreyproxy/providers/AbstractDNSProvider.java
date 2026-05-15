@@ -37,6 +37,7 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -263,7 +264,16 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity, 64 << 10);
+                byte[] body;
+
+                try {
+                    body = EntityUtils.toByteArray(entity, 64 << 10);
+                } catch (IOException e) {
+                    EntityUtils.consumeQuietly(entity);
+                    log.warn("[{}] Failed to read DNS response body", displayName);
+                    return null;
+                }
+
                 long totalElapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
 
                 if (body == null || body.length == 0) {

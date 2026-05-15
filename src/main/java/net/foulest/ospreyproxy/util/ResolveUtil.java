@@ -29,6 +29,7 @@ import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -118,7 +119,15 @@ final class ResolveUtil {
                 }
 
                 HttpEntity entity = response.getEntity();
-                byte[] body = EntityUtils.toByteArray(entity, 64 << 10);
+                byte[] body;
+
+                try {
+                    body = EntityUtils.toByteArray(entity, 64 << 10);
+                } catch (IOException e) {
+                    EntityUtils.consumeQuietly(entity);
+                    log.warn("DoH query returned unreadable body");
+                    return true;
+                }
 
                 if (body == null || body.length == 0) {
                     log.warn("DoH query returned empty body");
