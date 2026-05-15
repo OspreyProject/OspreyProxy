@@ -65,7 +65,7 @@ public class OpenDNSSecurity extends AbstractDNSProvider {
     }
 
     @Override
-    public boolean useOldHTTP() {
+    public boolean isUsingOldHTTP() {
         return true;
     }
 

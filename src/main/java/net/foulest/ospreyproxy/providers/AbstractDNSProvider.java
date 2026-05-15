@@ -61,7 +61,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
     private final CircuitBreakerService circuitBreakerService;
 
     private @NonNull CloseableHttpClient getDnsHttpClient() {
-        return useOldHTTP() ? LEGACY_FILTERING_CLIENT : FILTERING_CLIENT;
+        return isUsingOldHTTP() ? LEGACY_FILTERING_CLIENT : FILTERING_CLIENT;
     }
 
     /**

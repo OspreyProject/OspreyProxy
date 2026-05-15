@@ -136,7 +136,7 @@ public interface Provider {
      *
      * @return {@code true} to use the classic HTTP/1.1 client, {@code false} to use the shared HTTP/2 client.
      */
-    default boolean useOldHTTP() {
+    default boolean isUsingOldHTTP() {
         return false;
     }
 
