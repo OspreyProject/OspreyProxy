@@ -24,6 +24,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -35,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class CircuitBreakerService {
 
     private final CircuitBreakerRegistry registry;
+    private final Set<String> listenersRegistered = ConcurrentHashMap.newKeySet();
 
     /**
      * Check if the circuit breaker for the given provider is currently open, which indicates that the provider
@@ -78,16 +81,14 @@ public class CircuitBreakerService {
      * @return The circuit breaker instance for the provider.
      */
     private @NonNull CircuitBreaker circuitBreaker(@NonNull String providerName) {
-        // Lazily create circuit breaker if it doesn't exist
         CircuitBreaker cb = registry.circuitBreaker(providerName);
 
-        // Log state transitions for debugging
-        cb.getEventPublisher().onStateTransition(event -> {
-            CircuitBreaker.StateTransition stateTransition = event.getStateTransition();
-            CircuitBreaker.State toState = stateTransition.getToState();
-            CircuitBreaker.State fromState = stateTransition.getFromState();
-            log.warn("[{}] Circuit breaker state: {} → {}", providerName, fromState, toState);
-        });
+        if (listenersRegistered.add(providerName)) {
+            cb.getEventPublisher().onStateTransition(event ->
+                    log.warn("[{}] Circuit breaker state: {} → {}", providerName,
+                            event.getStateTransition().getFromState(),
+                            event.getStateTransition().getToState()));
+        }
         return cb;
     }
 }
