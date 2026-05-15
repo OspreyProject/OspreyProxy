@@ -236,7 +236,14 @@ public final class LocalListUtil {
             }
 
             HttpEntity entity = response.getEntity();
-            byte[] body = EntityUtils.toByteArray(entity, 50 * 1024 * 1024);
+            byte[] body;
+
+            try {
+                body = EntityUtils.toByteArray(entity, 50 * 1024 * 1024);
+            } catch (IOException e) {
+                EntityUtils.consumeQuietly(entity);
+                throw new IllegalStateException("Failed to read response body: " + e.getMessage(), e);
+            }
 
             if (body == null || body.length == 0) {
                 throw new IllegalStateException("Response body was empty");
