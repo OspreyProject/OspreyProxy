@@ -72,20 +72,22 @@ final class ResolveUtil {
      */
     @SuppressWarnings("NestedMethodCall")
     static boolean doesHostResolve(@NonNull String host) {
-        if (Boolean.TRUE.equals(POSITIVE_CACHE.getIfPresent(host))) {
+        String cacheKey = HashUtil.hashUrl(host);
+
+        if (Boolean.TRUE.equals(POSITIVE_CACHE.getIfPresent(cacheKey))) {
             return true;
         }
 
-        if (Boolean.TRUE.equals(NEGATIVE_CACHE.getIfPresent(host))) {
+        if (Boolean.TRUE.equals(NEGATIVE_CACHE.getIfPresent(cacheKey))) {
             return false;
         }
 
         boolean result = doesQueryHaveAnswers(host);
 
         if (result) {
-            POSITIVE_CACHE.put(host, Boolean.TRUE);
+            POSITIVE_CACHE.put(cacheKey, Boolean.TRUE);
         } else {
-            NEGATIVE_CACHE.put(host, Boolean.TRUE);
+            NEGATIVE_CACHE.put(cacheKey, Boolean.TRUE);
         }
         return result;
     }
