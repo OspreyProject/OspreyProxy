@@ -24,11 +24,12 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
-import java.net.URI;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -42,6 +43,11 @@ import java.util.Map;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class RequestUtil {
 
+    // Constants for validation limits
+    private static final int MAX_IP_LITERAL_LENGTH = 45;
+    private static final int MAX_HOST_LENGTH = 253;
+    private static final int MAX_DNS_LABEL_LENGTH = 63;
+
     /**
      * Validates and rate-limits a request's IP address, and returns a hashed IP.
      *
@@ -52,19 +58,22 @@ public final class RequestUtil {
      * @throws StatusCodeException If the IP address is found to be invalid/blocked.
      */
     public static String validateIP(@NonNull HttpServletRequest request, Provider provider, String providerName) {
-        // Resolves client IP from X-Real-IP header (set by Nginx)
-        // NOTE: Ensure your VPS is behind Cloudflare + Nginx with a firewall
-        // that blocks direct connections. Otherwise, IP spoofing bypasses rate limits
-        String realIp = request.getHeader("X-Real-IP");
+        String headerIp = request.getHeader("X-Real-IP");
+        String realIp = normalizeClientIp(headerIp);
 
-        // Fallback to remote address if X-Real-IP is missing or empty
-        if (realIp == null || realIp.isBlank()) {
-            String remoteAddr = request.getRemoteAddr();
-            realIp = (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr : "unknown";
+        // Checks if the X-Real-IP header is present but malformed
+        if (headerIp != null && !headerIp.isBlank() && realIp == null) {
+            log.warn("[{}] Ignoring malformed X-Real-IP header", providerName);
         }
 
-        // Logs a warning if we couldn't determine the client's IP address
-        if ("unknown".equals(realIp)) {
+        // Falls back to the remote address if X-Real-IP is missing or invalid
+        if (realIp == null) {
+            realIp = normalizeClientIp(request.getRemoteAddr());
+        }
+
+        // If the remote address is also invalid, treat the IP as "unknown" for rate limiting
+        if (realIp == null) {
+            realIp = "unknown";
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
         }
 
@@ -86,6 +95,115 @@ public final class RequestUtil {
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
         return hashedIp;
+    }
+
+    /**
+     * Normalizes a single client IP literal from servlet/proxy input.
+     *
+     * @param candidate The raw IP candidate.
+     * @return A normalized IP literal, or {@code null} if invalid.
+     */
+    @Contract("null -> null")
+    private static @Nullable String normalizeClientIp(@Nullable String candidate) {
+        // Returns null for missing candidates
+        if (candidate == null) {
+            return null;
+        }
+
+        String ip = candidate.strip();
+
+        // Rejects empty, excessively long, or comma-containing candidates
+        if (ip.isEmpty()
+                || ip.length() > MAX_IP_LITERAL_LENGTH
+                || ip.indexOf(',') >= 0
+                || !isValidIpLiteral(ip)) {
+            return null;
+        }
+        return ip.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Validates IPv4 and IPv6 literals without accepting hostnames.
+     *
+     * @param ip The candidate IP literal.
+     * @return {@code true} if the candidate is a valid IP literal.
+     */
+    private static boolean isValidIpLiteral(@NonNull String ip) {
+        // Quick check for valid IPv4 literals before the more expensive InetAddress parsing
+        if (isValidIpv4Literal(ip)) {
+            return true;
+        }
+
+        // Rejects candidates with characters invalid in IP literals or that contain IPv6 zone identifiers or brackets
+        if (ip.indexOf(':') < 0
+                || ip.indexOf('%') >= 0
+                || ip.indexOf('[') >= 0
+                || ip.indexOf(']') >= 0) {
+            return false;
+        }
+
+        // Validates that all characters are valid in IPv4 or IPv6 literals
+        for (int i = 0; i < ip.length(); i++) {
+            char c = ip.charAt(i);
+
+            if (c != ':' && c != '.'
+                    && !(c >= '0' && c <= '9')
+                    && !(c >= 'a' && c <= 'f')
+                    && !(c >= 'A' && c <= 'F')) {
+                return false;
+            }
+        }
+
+        // Uses InetAddress parsing as a final check to confirm the
+        // candidate is a valid IP literal and not a hostname
+        try {
+            InetAddress address = InetAddress.getByName(ip);
+            return address instanceof Inet6Address
+                    || address instanceof Inet4Address && ip.indexOf(':') >= 0;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Validates dotted-decimal IPv4 literals.
+     *
+     * @param ip The candidate IPv4 literal.
+     * @return {@code true} if the candidate is valid dotted-decimal IPv4.
+     */
+    private static boolean isValidIpv4Literal(@NonNull String ip) {
+        String[] parts = ip.split("\\.", -1);
+
+        // Rejects candidates that don't have exactly 4 dot-separated parts
+        if (parts.length != 4) {
+            return false;
+        }
+
+        for (String part : parts) {
+            // Rejects empty parts or parts longer than 3 characters (e.g., "01" or "256")
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
+
+            int value = 0;
+
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+
+                // Rejects non-digit characters
+                if (c < '0' || c > '9') {
+                    return false;
+                }
+
+                value = value * 10 + (c - '0');
+            }
+
+            // Rejects parts with values outside the valid range (0-255)
+            if (value > 255) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -295,9 +413,8 @@ public final class RequestUtil {
 
             // Rejects requests with no authority/host component
             if (authority == null || authority.isBlank()) {
-                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with no host");
-                throw new StatusCodeException(ErrorUtil.RESP_400);
+                rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with no host");
+                return "";
             }
 
             // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
@@ -310,7 +427,7 @@ public final class RequestUtil {
             }
         }
 
-        host = host.toLowerCase(Locale.ROOT);
+        host = host.strip().toLowerCase(Locale.ROOT);
 
         // Removes leading dot(s)
         while (!host.isBlank() && host.charAt(0) == '.') {
@@ -324,18 +441,113 @@ public final class RequestUtil {
 
         // Rejects hosts that are empty after normalization
         if (host.isBlank()) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with empty host");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
+            rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with empty host");
+        }
+
+        // Rejects excessively long hosts
+        if (host.length() > MAX_HOST_LENGTH) {
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with excessively long host (" + host.length() + " characters)");
+        }
+
+        // Current reconstructURI() does not bracket IPv6 literals, so keep IPv6 unsupported
+        // instead of returning a host that reconstructURI() would mishandle.
+        if (host.indexOf(':') >= 0) {
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with unsupported IPv6 literal host");
         }
 
         // Rejects hosts without a . symbol
         if (!host.contains(".")) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+            rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with host missing dot");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
         }
-        return host;
+
+        // Returns IP literals as-is without IDN processing
+        if (NetworkUtil.isIpLiteral(host)) {
+            return host;
+        }
+
+        String asciiHost;
+
+        // Converts the host to ASCII using IDN processing
+        try {
+            asciiHost = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException e) {
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with invalid IDN host");
+            return "";
+        }
+
+        // Rejects hosts that are empty after IDN normalization
+        if (asciiHost.isBlank() || asciiHost.length() > MAX_HOST_LENGTH) {
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with invalid DNS host length");
+        }
+
+        // Rejects hosts without a . symbol after IDN normalization
+        if (!asciiHost.contains(".")) {
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with host missing dot after IDN normalization");
+        }
+
+        String[] labels = asciiHost.split("\\.", -1);
+
+        for (String label : labels) {
+            // Rejects empty labels (e.g., consecutive dots or leading/trailing dot)
+            if (label.isEmpty()) {
+                rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with empty DNS label");
+            }
+
+            // Rejects labels that are too long
+            if (label.length() > MAX_DNS_LABEL_LENGTH) {
+                rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with oversized DNS label");
+            }
+
+            // Rejects labels that start or end with a hyphen
+            if (label.charAt(0) == '-' || label.charAt(label.length() - 1) == '-') {
+                rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with DNS label starting or ending with hyphen");
+            }
+
+            // Rejects labels with characters other than letters, digits, or hyphens
+            for (int i = 0; i < label.length(); i++) {
+                char c = label.charAt(i);
+
+                if (c != '-'
+                        && !(c >= '0' && c <= '9')
+                        && !(c >= 'a' && c <= 'z')) {
+                    rejectInvalidHost(provider, providerName, hashedIp,
+                            "Blocked request with invalid DNS label character");
+                }
+            }
+        }
+        return asciiHost;
+    }
+
+    /**
+     * Rejects an invalid host and records the request against the invalid-request limiter.
+     *
+     * @param provider The provider to reject invalid requests with.
+     * @param providerName The provider name.
+     * @param hashedIp The hashed client IP.
+     * @param message The rejection log message.
+     */
+    private static void rejectInvalidHost(@NonNull Provider provider,
+                                          String providerName,
+                                          String hashedIp,
+                                          String message) {
+        RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, message);
+        throw new StatusCodeException(ErrorUtil.RESP_400);
+    }
+
+    /**
+     * Releases resolver resources owned by RequestUtil/ResolveUtil.
+     */
+    public static void closeResolverResources() {
+        ResolveUtil.closeDohClient();
     }
 
     /**
