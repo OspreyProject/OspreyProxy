@@ -207,49 +207,6 @@ public final class RequestUtil {
     }
 
     /**
-     * Validates the {@code API-Key} request header for CheckEndpoint requests.
-     * The key must be present and must exactly match the value of the
-     * {@code CHECK_ENDPOINT_API_KEY} environment variable.
-     *
-     * @param request      The incoming servlet request.
-     * @param provider     The provider to reject invalid requests with.
-     * @param providerName The name of the provider.
-     * @param hashedIp     The hashed IP address of the sender.
-     * @throws StatusCodeException If the header is missing or does not match.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    public static void validateApiKeyHeader(@NonNull HttpServletRequest request,
-                                            @NonNull Provider provider,
-                                            String providerName, String hashedIp) {
-        String providedKey = request.getHeader("API-Key");
-        String expectedKey = provider.getApiKey();
-
-        // Checks if either API keys are missing
-        if (providedKey == null || providedKey.isBlank()) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked CheckEndpoint request with missing API-Key header");
-            throw new StatusCodeException(ErrorUtil.RESP_401);
-        }
-
-        // Constant-time comparison: both sides are hashed to normalize length before
-        // comparison, eliminating length-based timing leaks.
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] providedKeyHash = digest.digest(providedKey.getBytes(StandardCharsets.UTF_8));
-            digest.reset();
-            byte[] expectedKeyHash = digest.digest(expectedKey.getBytes(StandardCharsets.UTF_8));
-
-            if (!MessageDigest.isEqual(providedKeyHash, expectedKeyHash)) {
-                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked CheckEndpoint request with invalid API-Key header");
-                throw new StatusCodeException(ErrorUtil.RESP_401);
-            }
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-    }
-
-    /**
      * Validates a request's body.
      *
      * @param bodyBytes    The raw request body bytes to validate.

@@ -24,7 +24,6 @@ import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.providers.Provider;
-import net.foulest.ospreyproxy.providers.other.CheckEndpoint;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
@@ -32,7 +31,6 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.RequestUtil;
-import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -55,10 +53,12 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -94,29 +94,8 @@ public class ProxyHandler {
     private static final ExecutorService VIRTUAL_THREAD_EXECUTOR =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("check-", 0).factory());
 
-    // Caps concurrent provider lookups spawned by /check across the whole JVM.
-    // This bounds backend work even when timed-out /check responses return before
-    // the underlying provider call finishes.
-    private static final int MAX_CONCURRENT_CHECK_SOURCE_LOOKUPS = 128;
-    private static final Semaphore CHECK_SOURCE_LOOKUP_LIMITER = new Semaphore(MAX_CONCURRENT_CHECK_SOURCE_LOOKUPS);
-
-    // Response deadline for aggregate /check lookups.
-    private static final long CHECK_DEADLINE_MILLIS = 700L;
-
     // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
     private final Map<String, Provider> providersByEndpointName;
-
-    // CheckEndpoint provider reference, kept for API-key validation
-    private final CheckEndpoint checkEndpoint;
-
-    // Cached references to DNS providers for the /check endpoint aggregate lookup
-    private final AbstractDNSProvider adGuard;
-    private final AbstractDNSProvider cleanBrowsing;
-    private final AbstractDNSProvider cloudflare;
-    private final AbstractDNSProvider controlD;
-    private final AbstractDNSProvider quad9;
-    private final AbstractDNSProvider switchCh;
-    private final Provider phishingDatabase;
 
     // Injected services
     private final MetricsService metrics;
@@ -126,29 +105,18 @@ public class ProxyHandler {
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
      *
      * @param providers All registered providers, injected by Spring.
-     * @param checkEndpoint The CheckEndpoint provider, injected by Spring.
      * @param metrics Micrometer-backed metrics service, injected by Spring.
      * @param circuitBreaker Resilience4j circuit breaker service, injected by Spring.
      */
-    public ProxyHandler(@NonNull List<Provider> providers, @NonNull CheckEndpoint checkEndpoint,
+    public ProxyHandler(@NonNull List<Provider> providers,
                         @NonNull MetricsService metrics,
                         @NonNull CircuitBreakerService circuitBreaker) {
-        this.checkEndpoint = checkEndpoint;
         this.metrics = metrics;
         this.circuitBreaker = circuitBreaker;
 
         // Build the provider map for O(1) lookup by endpoint name
         providersByEndpointName = providers.stream()
                 .collect(Collectors.toMap(Provider::getEndpointName, Function.identity()));
-
-        // Set up cached references to DNS providers for the /check endpoint aggregate lookup
-        adGuard = getDnsProvider("adguard-security");
-        cleanBrowsing = getDnsProvider("cleanbrowsing-security");
-        cloudflare = getDnsProvider("cloudflare-security");
-        controlD = getDnsProvider("controld-security");
-        quad9 = getDnsProvider("quad9");
-        switchCh = getDnsProvider("switch-ch");
-        phishingDatabase = providersByEndpointName.get(Descriptor.PHISHING_DATABASE.getEndpointName());
 
         // Pre-warm Jackson type metadata
         JacksonUtil.MAPPER.constructType(Map.class);
@@ -166,8 +134,7 @@ public class ProxyHandler {
         try {
             HTTP_CLIENT.close();
         } catch (IOException e) {
-            log.warn("Failed to close upstream API HTTP client: {} ({})",
-                    e.getMessage(), e.getClass().getName());
+            log.warn("Failed to close upstream API HTTP client: {} ({})", e.getMessage(), e.getClass().getName());
         }
 
         AbstractDNSProvider.closeSharedClients();
@@ -175,7 +142,7 @@ public class ProxyHandler {
     }
 
     /**
-     * Dynamic endpoint for all non-CheckEndpoint providers.
+     * Dynamic endpoint for all providers.
      * Routes to the provider whose {@link Provider#getEndpointName()} matches {@code providerName}.
      * Keep @RequestBody(required = false) for rate-limiting.
      *
@@ -192,26 +159,10 @@ public class ProxyHandler {
                                                  @NonNull HttpServletRequest request) {
         Provider provider = providersByEndpointName.get(providerName);
 
-        if (provider == null || provider instanceof CheckEndpoint) {
+        if (provider == null) {
             return ErrorUtil.RESP_404;
         }
         return proxyRequest(body, request, provider);
-    }
-
-    /**
-     * Dedicated /check endpoint for aggregate lookups to all non-premium providers.
-     * Keep @RequestBody(required = false) for rate-limiting.
-     *
-     * @param body The raw request body bytes, passed to the provider for validation and forwarding.
-     * @param request The incoming servlet request, used for IP extraction and header validation.
-     * @return A {@link ResponseEntity} containing the aggregate JSON result or an appropriate error status.
-     */
-    @PostMapping(value = "/check",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> handleCheckEndpoint(@RequestBody(required = false) byte[] body,
-                                                      @NonNull HttpServletRequest request) {
-        return proxyRequest(body, request, checkEndpoint);
     }
 
     /**
@@ -245,10 +196,6 @@ public class ProxyHandler {
 
             Map<String, String> incoming = RequestUtil.validateBody(bodyBytes, provider, providerName, hashedIp);
 
-            if (provider instanceof CheckEndpoint) {
-                RequestUtil.validateApiKeyHeader(request, provider, providerName, hashedIp);
-            }
-
             @SuppressWarnings("NestedMethodCall")
             String url = Objects.toString(incoming.get("url"), "").strip();
             URI parsedUri = RequestUtil.validateURI(url, provider, providerName, hashedIp);
@@ -257,34 +204,33 @@ public class ProxyHandler {
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
 
             // Short-circuits on cache hit before paying the DoH validation cost
-            if (!(provider instanceof CheckEndpoint)) {
-                String cacheKey = provider.isStripToHost() ? host : parsedUri.toString();
 
-                if (provider instanceof AbstractDNSProvider dnsProvider) {
-                    LookupResult cached = dnsProvider.getCachedResult(host);
+            String cacheKey = provider.isStripToHost() ? host : parsedUri.toString();
 
-                    if (cached != null) {
-                        metrics.recordRequest(providerName);
-                        metrics.recordCacheHit();
-                        return resultResponse(cached, providerName);
-                    }
-                } else if (LocalListUtil.findByEndpointName(endpointName) != null
-                        && provider instanceof AbstractProvider ap) {
-                    LookupResult cached = ap.getCachedResult(host);
+            if (provider instanceof AbstractDNSProvider dnsProvider) {
+                LookupResult cached = dnsProvider.getCachedResult(host);
 
-                    if (cached != null) {
-                        metrics.recordRequest(providerName);
-                        metrics.recordCacheHit();
-                        return resultResponse(cached, providerName);
-                    }
-                } else if (provider instanceof AbstractProvider ap) {
-                    LookupResult cached = ap.getCachedResult(cacheKey);
+                if (cached != null) {
+                    metrics.recordRequest(providerName);
+                    metrics.recordCacheHit();
+                    return resultResponse(cached, providerName);
+                }
+            } else if (LocalListUtil.findByEndpointName(endpointName) != null
+                    && provider instanceof AbstractProvider ap) {
+                LookupResult cached = ap.getCachedResult(host);
 
-                    if (cached != null) {
-                        metrics.recordRequest(providerName);
-                        metrics.recordCacheHit();
-                        return resultResponse(cached, providerName);
-                    }
+                if (cached != null) {
+                    metrics.recordRequest(providerName);
+                    metrics.recordCacheHit();
+                    return resultResponse(cached, providerName);
+                }
+            } else if (provider instanceof AbstractProvider ap) {
+                LookupResult cached = ap.getCachedResult(cacheKey);
+
+                if (cached != null) {
+                    metrics.recordRequest(providerName);
+                    metrics.recordCacheHit();
+                    return resultResponse(cached, providerName);
                 }
             }
 
@@ -292,12 +238,6 @@ public class ProxyHandler {
             RequestUtil.validateDNS(host, provider, providerName, hashedIp);
             metrics.recordRequest(providerName);
             String normalizedUrl = parsedUri.toString();
-
-            // The /check executes a custom aggregate lookup that fans out to multiple DNS providers
-            // and local lists in parallel, then assembles a custom JSON response.
-            if (provider instanceof CheckEndpoint) {
-                return executeAggregateCheck(host, providerName);
-            }
 
             // DNS providers submit only the hostname upstream.
             // doLookup() is self-contained; cachedLookup() handles the cache transparently.
@@ -490,171 +430,5 @@ public class ProxyHandler {
             log.error("[{}] Failed to serialize result: {} ({})", providerName, e.getMessage(), e.getClass().getName());
             return ErrorUtil.RESP_502;
         }
-    }
-
-    /**
-     * Executes the CheckEndpoint aggregate lookup synchronously.
-     *
-     * @param host The validated, normalized host to lookup.
-     * @param providerName The display name of the provider, for logging.
-     * @return A {@link ResponseEntity} containing the JSON result map, or a 502 on serialization failure.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
-                                                         @NonNull String providerName) {
-        // Futures for parallel execution of all checks. Each future has its own response deadline,
-        // and each actual provider lookup must obtain a global /check source-lookup permit.
-        CompletableFuture<LookupResult> adGuardFuture = lookupWithDeadline(() -> adGuard.cachedLookup(host), providerName, "adGuardSecurity");
-        CompletableFuture<LookupResult> cleanBrowsingFuture = lookupWithDeadline(() -> cleanBrowsing.cachedLookup(host), providerName, "cleanBrowsingSecurity");
-        CompletableFuture<LookupResult> cloudflareFuture = lookupWithDeadline(() -> cloudflare.cachedLookup(host), providerName, "cloudflareSecurity");
-        CompletableFuture<LookupResult> controlDFuture = lookupWithDeadline(() -> controlD.cachedLookup(host), providerName, "controlDSecurity");
-        CompletableFuture<LookupResult> quad9Future = lookupWithDeadline(() -> quad9.cachedLookup(host), providerName, "quad9");
-        CompletableFuture<LookupResult> switchChFuture = lookupWithDeadline(() -> switchCh.cachedLookup(host), providerName, "switchCH");
-
-        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null
-                ? lookupWithDeadline(() -> phishingDatabase.cachedLookup(host), providerName, "phishingDatabase")
-                : CompletableFuture.completedFuture(LookupResult.FAILED);
-
-        // Wait only up to the aggregate deadline. Do not call blocking get() after this point.
-        try {
-            CompletableFuture.allOf(
-                    adGuardFuture,
-                    cleanBrowsingFuture,
-                    cloudflareFuture,
-                    controlDFuture,
-                    phishingDatabaseFuture,
-                    quad9Future,
-                    switchChFuture
-            ).orTimeout(CHECK_DEADLINE_MILLIS, TimeUnit.MILLISECONDS).join();
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
-            // Timed-out or failed sources are read below as FAILED without blocking.
-        }
-
-        boolean adGuardResult = safeGetNow(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
-        boolean cleanBrowsingResult = safeGetNow(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
-        boolean cloudflareResult = safeGetNow(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
-        boolean controlDResult = safeGetNow(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
-        boolean phishingDatabaseResult = safeGetNow(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
-        boolean quad9Result = safeGetNow(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
-        boolean switchChResult = safeGetNow(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
-
-        List<Boolean> results = List.of(
-                adGuardResult,
-                cleanBrowsingResult,
-                cloudflareResult,
-                controlDResult,
-                phishingDatabaseResult,
-                quad9Result,
-                switchChResult
-        );
-
-        int blockedCount = Collections.frequency(results, true);
-
-        // Determines confidence
-        String confidence;
-        switch (blockedCount) {
-            case 0 -> confidence = "none";
-            case 1 -> confidence = "low";
-            case 2 -> confidence = "medium";
-            default -> confidence = "high";
-        }
-
-        // Build the JSON map
-        Map<String, Object> resultMap = new LinkedHashMap<>();
-        resultMap.put("host", host);
-        resultMap.put("detections", blockedCount);
-        resultMap.put("confidence", confidence);
-
-        // "providers" subkey
-        Map<String, Boolean> providersMap = new LinkedHashMap<>();
-        providersMap.put("adGuard", adGuardResult);
-        providersMap.put("cleanBrowsing", cleanBrowsingResult);
-        providersMap.put("cloudflare", cloudflareResult);
-        providersMap.put("controlD", controlDResult);
-        providersMap.put("phishingDatabase", phishingDatabaseResult);
-        providersMap.put("quad9", quad9Result);
-        providersMap.put("switchCH", switchChResult);
-
-        resultMap.put("providers", providersMap);
-
-        try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(resultMap);
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Failed to serialize result map: {} ({})",
-                    providerName, e.getMessage(), e.getClass().getName());
-            return ErrorUtil.RESP_502;
-        }
-    }
-
-    /**
-     * Starts one aggregate /check source lookup with a response deadline and a global concurrency cap.
-     *
-     * @param lookup The lookup operation.
-     * @param providerName The aggregate provider display name.
-     * @param sourceName The source name for logging.
-     * @return A future that resolves to the lookup result, or FAILED on timeout, exception, or saturation.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private static @NonNull CompletableFuture<LookupResult> lookupWithDeadline(@NonNull Supplier<LookupResult> lookup,
-                                                                               @NonNull String providerName,
-                                                                               @NonNull String sourceName) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (!CHECK_SOURCE_LOOKUP_LIMITER.tryAcquire()) {
-                log.warn("[{}] Source '{}' skipped because /check lookup concurrency is saturated", providerName, sourceName);
-                return LookupResult.FAILED;
-            }
-
-            try {
-                return lookup.get();
-            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                log.warn("[{}] Source '{}' failed: {} ({})", providerName, sourceName, e.getMessage(), e.getClass().getName());
-                return LookupResult.FAILED;
-            } finally {
-                CHECK_SOURCE_LOOKUP_LIMITER.release();
-            }
-        }, VIRTUAL_THREAD_EXECUTOR).completeOnTimeout(
-                LookupResult.FAILED,
-                CHECK_DEADLINE_MILLIS,
-                TimeUnit.MILLISECONDS
-        );
-    }
-
-    /**
-     * Retrieves an already-completed future result without blocking.
-     *
-     * @param future The future to harvest.
-     * @param providerName The provider name for logging context.
-     * @param sourceName The source name for logging context.
-     * @return The future's result, or {@link LookupResult#FAILED} if not completed or failed.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    private static LookupResult safeGetNow(@NonNull CompletableFuture<LookupResult> future,
-                                           @NonNull String providerName,
-                                           @NonNull String sourceName) {
-        try {
-            return future.getNow(LookupResult.FAILED);
-        } catch (RuntimeException e) {
-            log.warn("[{}] Source '{}' failed before result harvest: {} ({})",
-                    providerName, sourceName, e.getMessage(), e.getClass().getName());
-            return LookupResult.FAILED;
-        }
-    }
-
-    /**
-     * Looks up a DNS provider by endpoint name from the provider map.
-     * Uses O(1) map lookup rather than a linear scan of a separate list.
-     *
-     * @param endpointName The {@link Provider#getEndpointName()} value to look up.
-     * @return The matching {@link AbstractDNSProvider}.
-     * @throws IllegalStateException If no DNS provider with the given short name is registered.
-     */
-    private @NonNull AbstractDNSProvider getDnsProvider(@NonNull String endpointName) {
-        Provider provider = providersByEndpointName.get(endpointName);
-
-        if (!(provider instanceof AbstractDNSProvider dnsProvider)) {
-            throw new IllegalStateException("No DNS provider registered with endpoint name: " + endpointName);
-        }
-        return dnsProvider;
     }
 }

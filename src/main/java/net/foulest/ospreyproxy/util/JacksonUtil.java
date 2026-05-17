@@ -28,7 +28,6 @@ import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -64,14 +63,6 @@ public final class JacksonUtil {
      */
     public static final JavaType MAP_TYPE_OBJECT = MAPPER.constructType(
             new TypeReference<Map<String, Object>>() {
-            }
-    );
-
-    /**
-     * The pre-resolved JavaType for {@code List<String>} to avoid construction overhead.
-     */
-    public static final JavaType LIST_TYPE = MAPPER.constructType(
-            new TypeReference<List<String>>() {
             }
     );
 }

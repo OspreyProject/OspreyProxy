@@ -37,6 +37,7 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -86,13 +87,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * @param clientName Human-readable client name for logging.
      * @param client The client to close.
      */
-    private static void closeHttpClient(@NonNull String clientName,
-                                        @NonNull CloseableHttpClient client) {
+    private static void closeHttpClient(@NonNull String clientName, @NonNull Closeable client) {
         try {
             client.close();
         } catch (IOException e) {
-            log.warn("Failed to close {} client: {} ({})",
-                    clientName, e.getMessage(), e.getClass().getName());
+            log.warn("Failed to close {} client: {} ({})", clientName, e.getMessage(), e.getClass().getName());
         }
     }
 
