@@ -21,13 +21,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Set;
+
 /**
  * Represents the result of fetching content from a provider.
  *
- * @param rawContent The raw content fetched from the provider.
+ * @param domainSet The set of domains fetched from the provider, which may be empty.
  * @param etag The ETag associated with the fetched content, if available.
  */
 @Slf4j
-record FetchResult(@NonNull String rawContent, @Nullable String etag) {
+record FetchResult(@NonNull Set<String> domainSet, @Nullable String etag) {
 
 }
