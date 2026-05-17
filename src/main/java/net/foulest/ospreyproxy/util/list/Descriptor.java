@@ -50,6 +50,18 @@ public enum Descriptor {
             "phishing-database",
             LookupResult.PHISHING,
             120L
+    ),
+
+    /**
+     * URLhaus
+     */
+    URLHAUS(
+            "https://urlhaus.abuse.ch/downloads/text",
+            Format.TEXT,
+            "URLhaus",
+                    "urlhaus",
+            LookupResult.MALICIOUS,
+            120L
     );
 
     /**

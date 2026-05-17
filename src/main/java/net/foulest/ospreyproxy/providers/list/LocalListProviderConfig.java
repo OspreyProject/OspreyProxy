@@ -53,4 +53,14 @@ public class LocalListProviderConfig {
     public LocalListProvider phishingDatabaseProvider() {
         return new LocalListProvider(Descriptor.PHISHING_DATABASE, metricsService);
     }
+
+    /**
+     * Defines a bean for the URLhaus local list provider, which uses the URLHAUS descriptor.
+     *
+     * @return A LocalListProvider instance configured for the URLhaus list.
+     */
+    @Bean
+    public LocalListProvider urlhausProvider() {
+        return new LocalListProvider(Descriptor.URLHAUS, metricsService);
+    }
 }
