@@ -38,46 +38,51 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public abstract class AbstractProvider implements Provider {
 
+    private static final int RATE_LIMIT_CACHE_MAX_SIZE = 20_000;
+    private static final int VIOLATOR_ID_CACHE_MAX_SIZE = 5_000;
+    private static final int ALLOWED_RESULT_CACHE_MAX_SIZE = 25_000;
+    private static final int BLOCKED_RESULT_CACHE_MAX_SIZE = 5_000;
+
     // Caches for storing buckets per IP address
     private final Cache<String, Bucket> burstBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Bucket> sustainedBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Bucket> invalidRequestBucketCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
 
     // Caches for tracking temporarily blocked IPs
     private final Cache<String, Instant> burstBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(1))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Instant> sustainedBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(2))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Instant> invalidRequestBlockedCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(2))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
 
     // Caches for counting violations to implement exponential backoff blocking
     private final Cache<String, Integer> burstViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Integer> sustainedViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
     private final Cache<String, Integer> invalidRequestViolationCount = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
-            .maximumSize(100_000)
+            .maximumSize(RATE_LIMIT_CACHE_MAX_SIZE)
             .build();
 
     // Assigns a stable, session-scoped numeric ID to each violating IP for log correlation
@@ -85,7 +90,7 @@ public abstract class AbstractProvider implements Provider {
     private final AtomicInteger violatorCounter = new AtomicInteger(0);
     private final Cache<String, String> violatorIdCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(24))
-            .maximumSize(100_000)
+            .maximumSize(VIOLATOR_ID_CACHE_MAX_SIZE)
             .build();
 
     // Separate caches per TTL tier; Caffeine does not support per-entry TTLs.
@@ -108,12 +113,12 @@ public abstract class AbstractProvider implements Provider {
 
         allowedCache = Caffeine.newBuilder()
                 .expireAfterWrite(allowedCacheTTL)
-                .maximumSize(100_000)
+                .maximumSize(ALLOWED_RESULT_CACHE_MAX_SIZE)
                 .build();
 
         blockedCache = Caffeine.newBuilder()
                 .expireAfterWrite(blockedCacheTTL)
-                .maximumSize(10_000)
+                .maximumSize(BLOCKED_RESULT_CACHE_MAX_SIZE)
                 .build();
 
         int burstCapacity = rateLimitBurstCapacity();
