@@ -57,8 +57,11 @@ public final class LocalListUtil {
     private static final CloseableHttpClient FETCH_CLIENT =
             HttpClientFactory.createHttp2Client(30, 30, 30, 35);
 
-    // Pre-compiled regex for splitting lines in plain text lists
-    private static final Pattern NEW_LINE_PATTERN = Pattern.compile("\\R");
+    // Constants for parsing limits to prevent OOM or DoS from unexpectedly large lists
+    private static final int MAX_LIST_BYTES = 16 * 1024 * 1024;
+    private static final int MAX_DOMAINS = 1_000_000;
+    private static final int MAX_LINE_CHARS = 1024;
+    private static final int MAX_DOMAIN_CHARS = 253;
 
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -188,29 +191,39 @@ public final class LocalListUtil {
     @SuppressWarnings("NestedMethodCall")
     private static void fetchAndUpdate(@NonNull Descriptor descriptor) {
         try {
-            ListSnapshot current = stateMap.get(descriptor).get();
+            AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+
+            // Checks if the state slot is null, which should never happen
+            if (state == null) {
+                log.warn("[{}] No state slot exists for descriptor", descriptor.getShortName());
+                return;
+            }
+
+            ListSnapshot current = state.get();
             FetchResult result = fetchRaw(descriptor, current.etag());
 
+            // If result is null, the server returned 304 Not Modified, so we can skip
+            // the update and keep the current snapshot
             if (result != null) {
-                applyContent(descriptor, result.rawContent(), result.etag());
+                applyContent(descriptor, result.domainSet(), result.etag());
             }
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             log.warn("[{}] Failed to fetch list update: {} ({})",
                     descriptor.getShortName(), e.getMessage(), e.getClass().getName());
         }
     }
 
     /**
-     * Fetches the raw content string from the descriptor's URL.
+     * Fetches and parses content from the descriptor's URL.
      * <p>
      * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. A 304 Not Modified
      * response causes this method to return {@code null}, signaling that the caller should skip
-     * the update. A 200 response is read, size-limited to 50 MiB, and returned as a {@link FetchResult}
-     * alongside the response ETag (if present). Any other status code is treated as an error.
+     * the update. A 200 response is parsed directly from the response stream with hard byte and
+     * domain-count caps; the raw body is never materialized as one byte array or string.
      *
      * @param descriptor The list descriptor to fetch.
      * @param currentEtag The ETag from the last successful fetch, or {@code null} on first fetch.
-     * @return A {@link FetchResult} with the body and ETag, or {@code null} if the server returned 304 Not Modified.
+     * @return A {@link FetchResult} with the parsed domains and ETag, or {@code null} on 304.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
@@ -226,6 +239,7 @@ public final class LocalListUtil {
             int statusCode = response.getCode();
 
             if (statusCode == 304) {
+                EntityUtils.consumeQuietly(response.getEntity());
                 return null;
             }
 
@@ -236,7 +250,8 @@ public final class LocalListUtil {
 
             String contentType = Optional.ofNullable(response.getFirstHeader("Content-Type"))
                     .map(Header::getValue)
-                    .orElse("");
+                    .orElse("")
+                    .toLowerCase(Locale.ROOT);
 
             if (!contentType.contains("application/json") && !contentType.contains("text/")) {
                 EntityUtils.consumeQuietly(response.getEntity());
@@ -244,73 +259,94 @@ public final class LocalListUtil {
             }
 
             HttpEntity entity = response.getEntity();
-            byte[] body;
 
-            try {
-                body = EntityUtils.toByteArray(entity, 50 * 1024 * 1024);
-            } catch (IOException e) {
-                EntityUtils.consumeQuietly(entity);
-                throw new IllegalStateException("Failed to read response body: " + e.getMessage(), e);
+            // Checks if the entity is null, which should not happen with a 200 response
+            if (entity == null) {
+                throw new IllegalStateException("Response body was empty");
             }
 
-            if (body == null || body.length == 0) {
-                throw new IllegalStateException("Response body was empty");
+            Set<String> domains;
+
+            // Parses directly from the response stream with caps to prevent OOM or DoS from large lists
+            try (InputStream body = entity.getContent()) {
+                domains = descriptor.getFormat() == Format.TEXT
+                        ? parsePlainText(body)
+                        : parseJson(body);
+            } catch (IOException | RuntimeException e) {
+                EntityUtils.consumeQuietly(entity);
+                throw e;
+            }
+
+            // Checks if the parsed list is empty
+            if (domains.isEmpty()) {
+                throw new IllegalStateException("Parsed list was empty");
             }
 
             String etag = Optional.ofNullable(response.getFirstHeader("ETag"))
                     .map(Header::getValue)
                     .orElse(null);
-            return new FetchResult(new String(body, StandardCharsets.UTF_8), etag);
+            return new FetchResult(domains, etag);
         });
     }
 
     /**
-     * Parses the raw content and updates the live domain set for the given descriptor.
+     * Applies a parsed domain set to the live snapshot for the given descriptor.
      *
      * @param descriptor The list descriptor to update.
-     * @param rawContent The raw content string to parse and apply.
+     * @param domainSet The parsed domain set.
      * @param etag The ETag from the response, or {@code null} if the server did not send one.
      */
-    @SuppressWarnings("NestedMethodCall")
     private static void applyContent(@NonNull Descriptor descriptor,
-                                     @NonNull String rawContent,
+                                     @NonNull Set<String> domainSet,
                                      @Nullable String etag) {
-        Set<String> newSet;
-        try {
-            newSet = descriptor.getFormat() == Format.TEXT
-                    ? parsePlainText(rawContent)
-                    : parseJson(rawContent);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Failed to parse list; keeping current: {} ({})",
-                    descriptor.getShortName(), e.getMessage(), e.getClass().getName());
+        if (domainSet.isEmpty()) {
+            log.warn("[{}] Refusing to apply empty parsed list; keeping current snapshot",
+                    descriptor.getShortName());
             return;
         }
 
-        // Atomically swap in the new immutable snapshot
-        stateMap.get(descriptor).set(new ListSnapshot(newSet, etag));
+        AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+
+        if (state == null) {
+            log.warn("[{}] No state slot exists for descriptor", descriptor.getShortName());
+            return;
+        }
+
+        state.set(new ListSnapshot(Collections.unmodifiableSet(domainSet), etag));
     }
 
     /**
      * Parses JSON content into a set of hostnames.
      * Expects a JSON array of strings. Null entries and empty strings are ignored.
-     * Leading/trailing whitespace is trimmed, and all entries are normalized to lower-case.
      *
-     * @param rawJson The raw JSON content from the list endpoint.
+     * @param rawJson The raw JSON stream from the list endpoint.
      * @return A set of hostnames.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static @NonNull Set<String> parseJson(@NonNull String rawJson) {
-        List<String> parsed = JacksonUtil.MAPPER.readValue(rawJson, JacksonUtil.LIST_TYPE);
+    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson) {
+        Set<String> set = new HashSet<>();
 
-        if (parsed == null) {
-            throw new IllegalArgumentException("Expected a JSON array but got null");
-        }
+        try (JsonParser parser = JacksonUtil.MAPPER.createParser(cappedInputStream(rawJson))) {
+            JsonToken token = parser.nextToken();
 
-        Set<String> set = HashSet.newHashSet(parsed.size() << 1);
+            if (token != JsonToken.START_ARRAY) {
+                throw new IllegalArgumentException("Expected a JSON array");
+            }
 
-        for (String entry : parsed) {
-            if (entry != null && !entry.isEmpty()) {
-                set.add(entry.strip().toLowerCase(Locale.ROOT));
+            while ((token = parser.nextToken()) != JsonToken.END_ARRAY) {
+                if (token == null) {
+                    throw new IllegalArgumentException("Unexpected end of JSON array");
+                }
+
+                if (token == JsonToken.VALUE_NULL) {
+                    continue;
+                }
+
+                if (token != JsonToken.VALUE_STRING) {
+                    throw new IllegalArgumentException("Expected JSON string entry but got " + token);
+                }
+
+                addNormalizedEntry(parser.getString(), set);
             }
         }
         return set;
@@ -319,37 +355,204 @@ public final class LocalListUtil {
     /**
      * Parses plain text content into a set of hostnames.
      * Lines starting with '#' and blank lines are ignored as comments.
-     * For lines in hosts file format (e.g. "127.0.0.1"), only the part after the first tab is considered.
-     * Leading "www." is stripped and all entries are normalized to lower-case.
+     * Hosts-file format lines are supported.
      *
-     * @param rawText The raw text content from the list endpoint.
+     * @param rawText The raw text stream from the list endpoint.
      * @return A set of hostnames.
      */
-    private static @NonNull Set<String> parsePlainText(@NonNull CharSequence rawText) {
+    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText) throws IOException {
         Set<String> set = new HashSet<>();
 
-        for (String line : NEW_LINE_PATTERN.split(rawText, -1)) {
-            String stripped = line.strip();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(cappedInputStream(rawText), StandardCharsets.UTF_8))) {
+            String line;
 
-            // Skip blank lines and comment lines
-            if (stripped.isEmpty() || stripped.charAt(0) == '#') {
-                continue;
-            }
+            while ((line = reader.readLine()) != null) {
+                if (line.length() > MAX_LINE_CHARS) {
+                    throw new IllegalArgumentException("List line exceeds " + MAX_LINE_CHARS + " characters");
+                }
 
-            // Handle hosts file format (e.g. "127.0.0.1\thostname.com")
-            int tabIndex = stripped.indexOf('\t');
-            String entry = tabIndex == -1 ? stripped : stripped.substring(tabIndex + 1).strip();
-
-            // Strip leading www. and normalize to lower-case
-            String normalized = entry.toLowerCase(Locale.ROOT);
-            if (normalized.startsWith("www.")) {
-                normalized = normalized.substring(4);
-            }
-
-            if (!normalized.contains(" ") && normalized.contains(".")) {
-                set.add(normalized);
+                addNormalizedEntry(line, set);
             }
         }
         return set;
+    }
+
+    /**
+     * Normalizes and adds one list entry to the destination set.
+     *
+     * @param rawEntry The raw list entry or line.
+     * @param destination The destination set.
+     */
+    private static void addNormalizedEntry(@Nullable String rawEntry,
+                                           @NonNull Collection<? super String> destination) {
+        if (rawEntry == null) {
+            return;
+        }
+
+        String normalized = normalizeListEntry(rawEntry);
+
+        if (normalized == null) {
+            return;
+        }
+
+        if (!destination.contains(normalized) && destination.size() >= MAX_DOMAINS) {
+            throw new IllegalStateException("List exceeds " + MAX_DOMAINS + " unique domains");
+        }
+
+        destination.add(normalized);
+    }
+
+    /**
+     * Normalizes one plain list entry or hosts-file line.
+     *
+     * @param rawEntry The raw entry.
+     * @return The normalized domain, or {@code null} if the entry should be ignored.
+     */
+    private static @Nullable String normalizeListEntry(@NonNull String rawEntry) {
+        String entry = rawEntry.strip();
+
+        if (entry.isEmpty() || entry.charAt(0) == '#') {
+            return null;
+        }
+
+        int commentIndex = entry.indexOf('#');
+
+        if (commentIndex >= 0) {
+            entry = entry.substring(0, commentIndex).strip();
+        }
+
+        if (entry.isEmpty()) {
+            return null;
+        }
+
+        int whitespaceIndex = firstWhitespaceIndex(entry);
+
+        if (whitespaceIndex >= 0) {
+            String first = entry.substring(0, whitespaceIndex);
+            String remainder = entry.substring(whitespaceIndex).strip();
+
+            if (looksLikeHostsFileAddress(first) && !remainder.isEmpty()) {
+                int nextWhitespace = firstWhitespaceIndex(remainder);
+                entry = nextWhitespace >= 0 ? remainder.substring(0, nextWhitespace) : remainder;
+            } else {
+                entry = first;
+            }
+        }
+
+        String normalized = entry.strip().toLowerCase(Locale.ROOT);
+
+        while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
+            normalized = normalized.substring(1);
+        }
+
+        while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '.') {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        if (normalized.startsWith("www.")) {
+            normalized = normalized.substring(4);
+        }
+
+        if (!normalized.contains(".")
+                || normalized.length() > MAX_DOMAIN_CHARS
+                || normalized.contains(" ")
+                || normalized.contains("/")
+                || normalized.contains("\\")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    /**
+     * Finds the first whitespace character in a string.
+     *
+     * @param value The value to inspect.
+     * @return The first whitespace index, or -1 if none exists.
+     */
+    private static int firstWhitespaceIndex(@NonNull CharSequence value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isWhitespace(value.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Checks whether a token looks like the address column in a hosts-file line.
+     *
+     * @param value The token to inspect.
+     * @return {@code true} if the token looks like an IP address placeholder.
+     */
+    private static boolean looksLikeHostsFileAddress(@NonNull String value) {
+        if ("localhost".equalsIgnoreCase(value) || value.indexOf(':') >= 0) {
+            return true;
+        }
+
+        String[] parts = value.split("\\.", -1);
+
+        if (parts.length != 4) {
+            return false;
+        }
+
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
+
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+
+                if (c < '0' || c > '9') {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Wraps an input stream and fails once more than MAX_LIST_BYTES are read.
+     *
+     * @param delegate The stream to wrap.
+     * @return A capped stream.
+     */
+    @Contract(value = "_ -> new", pure = true)
+    private static @NonNull InputStream cappedInputStream(@NonNull InputStream delegate) {
+        return new FilterInputStream(delegate) {
+
+            private long bytesRead;
+
+            @Override
+            public int read() throws IOException {
+                int value = super.read();
+
+                if (value != -1) {
+                    countBytes(1);
+                }
+                return value;
+            }
+
+            @Override
+            public int read(byte @NonNull [] b, int off, int len) throws IOException {
+                int count = super.read(b, off, len);
+                countBytes(count);
+                return count;
+            }
+
+            @Contract(mutates = "this")
+            private void countBytes(int count) throws IOException {
+                if (count <= 0) {
+                    return;
+                }
+
+                bytesRead += count;
+
+                if (bytesRead > MAX_LIST_BYTES) {
+                    throw new IOException("List exceeds " + MAX_LIST_BYTES + " bytes");
+                }
+            }
+        };
     }
 }
