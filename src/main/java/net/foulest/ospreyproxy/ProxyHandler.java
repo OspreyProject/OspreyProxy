@@ -94,6 +94,15 @@ public class ProxyHandler {
     private static final ExecutorService VIRTUAL_THREAD_EXECUTOR =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("check-", 0).factory());
 
+    // Caps concurrent provider lookups spawned by /check across the whole JVM.
+    // This bounds backend work even when timed-out /check responses return before
+    // the underlying provider call finishes.
+    private static final int MAX_CONCURRENT_CHECK_SOURCE_LOOKUPS = 128;
+    private static final Semaphore CHECK_SOURCE_LOOKUP_LIMITER = new Semaphore(MAX_CONCURRENT_CHECK_SOURCE_LOOKUPS);
+
+    // Response deadline for aggregate /check lookups.
+    private static final long CHECK_DEADLINE_MILLIS = 700L;
+
     // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
     private final Map<String, Provider> providersByEndpointName;
 
@@ -493,16 +502,20 @@ public class ProxyHandler {
     @SuppressWarnings("NestedMethodCall")
     private ResponseEntity<String> executeAggregateCheck(@NonNull String host,
                                                          @NonNull String providerName) {
-        // Futures for parallel execution of all checks
-        CompletableFuture<LookupResult> adGuardFuture = CompletableFuture.supplyAsync(() -> adGuard.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> cleanBrowsingFuture = CompletableFuture.supplyAsync(() -> cleanBrowsing.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> cloudflareFuture = CompletableFuture.supplyAsync(() -> cloudflare.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> controlDFuture = CompletableFuture.supplyAsync(() -> controlD.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> quad9Future = CompletableFuture.supplyAsync(() -> quad9.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> switchChFuture = CompletableFuture.supplyAsync(() -> switchCh.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR);
-        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null ? CompletableFuture.supplyAsync(() -> phishingDatabase.cachedLookup(host), VIRTUAL_THREAD_EXECUTOR) : CompletableFuture.completedFuture(LookupResult.FAILED);
+        // Futures for parallel execution of all checks. Each future has its own response deadline,
+        // and each actual provider lookup must obtain a global /check source-lookup permit.
+        CompletableFuture<LookupResult> adGuardFuture = lookupWithDeadline(() -> adGuard.cachedLookup(host), providerName, "adGuardSecurity");
+        CompletableFuture<LookupResult> cleanBrowsingFuture = lookupWithDeadline(() -> cleanBrowsing.cachedLookup(host), providerName, "cleanBrowsingSecurity");
+        CompletableFuture<LookupResult> cloudflareFuture = lookupWithDeadline(() -> cloudflare.cachedLookup(host), providerName, "cloudflareSecurity");
+        CompletableFuture<LookupResult> controlDFuture = lookupWithDeadline(() -> controlD.cachedLookup(host), providerName, "controlDSecurity");
+        CompletableFuture<LookupResult> quad9Future = lookupWithDeadline(() -> quad9.cachedLookup(host), providerName, "quad9");
+        CompletableFuture<LookupResult> switchChFuture = lookupWithDeadline(() -> switchCh.cachedLookup(host), providerName, "switchCH");
 
-        // Wait for all futures to complete
+        CompletableFuture<LookupResult> phishingDatabaseFuture = phishingDatabase != null
+                ? lookupWithDeadline(() -> phishingDatabase.cachedLookup(host), providerName, "phishingDatabase")
+                : CompletableFuture.completedFuture(LookupResult.FAILED);
+
+        // Wait only up to the aggregate deadline. Do not call blocking get() after this point.
         try {
             CompletableFuture.allOf(
                     adGuardFuture,
@@ -512,17 +525,18 @@ public class ProxyHandler {
                     phishingDatabaseFuture,
                     quad9Future,
                     switchChFuture
-            ).orTimeout(700, TimeUnit.MILLISECONDS).join();
+            ).orTimeout(CHECK_DEADLINE_MILLIS, TimeUnit.MILLISECONDS).join();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            // Timed-out or failed sources are read below as FAILED without blocking.
         }
 
-        boolean adGuardResult = safeGet(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
-        boolean cleanBrowsingResult = safeGet(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
-        boolean cloudflareResult = safeGet(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
-        boolean controlDResult = safeGet(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
-        boolean phishingDatabaseResult = safeGet(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
-        boolean quad9Result = safeGet(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
-        boolean switchChResult = safeGet(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
+        boolean adGuardResult = safeGetNow(adGuardFuture, providerName, "adGuardSecurity") == LookupResult.MALICIOUS;
+        boolean cleanBrowsingResult = safeGetNow(cleanBrowsingFuture, providerName, "cleanBrowsingSecurity") == LookupResult.MALICIOUS;
+        boolean cloudflareResult = safeGetNow(cloudflareFuture, providerName, "cloudflareSecurity") == LookupResult.MALICIOUS;
+        boolean controlDResult = safeGetNow(controlDFuture, providerName, "controlDSecurity") == LookupResult.MALICIOUS;
+        boolean phishingDatabaseResult = safeGetNow(phishingDatabaseFuture, providerName, "phishingDatabase") == LookupResult.PHISHING;
+        boolean quad9Result = safeGetNow(quad9Future, providerName, "quad9") == LookupResult.MALICIOUS;
+        boolean switchChResult = safeGetNow(switchChFuture, providerName, "switchCH") == LookupResult.MALICIOUS;
 
         List<Boolean> results = List.of(
                 adGuardResult,
@@ -574,22 +588,54 @@ public class ProxyHandler {
     }
 
     /**
-     * Retrieves the result of a {@link CompletableFuture}, returning {@link LookupResult#FAILED}
-     * if the future completed exceptionally or was canceled.
+     * Starts one aggregate /check source lookup with a response deadline and a global concurrency cap.
      *
-     * @param future       The future to harvest.
-     * @param providerName The provider name for logging context.
-     * @param sourceName   The source name for logging context.
-     * @return The future's result, or {@link LookupResult#FAILED} on failure.
+     * @param lookup The lookup operation.
+     * @param providerName The aggregate provider display name.
+     * @param sourceName The source name for logging.
+     * @return A future that resolves to the lookup result, or FAILED on timeout, exception, or saturation.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static LookupResult safeGet(@NonNull CompletableFuture<LookupResult> future,
-                                        @NonNull String providerName,
-                                        @NonNull String sourceName) {
+    private static @NonNull CompletableFuture<LookupResult> lookupWithDeadline(@NonNull Supplier<LookupResult> lookup,
+                                                                               @NonNull String providerName,
+                                                                               @NonNull String sourceName) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!CHECK_SOURCE_LOOKUP_LIMITER.tryAcquire()) {
+                log.warn("[{}] Source '{}' skipped because /check lookup concurrency is saturated", providerName, sourceName);
+                return LookupResult.FAILED;
+            }
+
+            try {
+                return lookup.get();
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                log.warn("[{}] Source '{}' failed: {} ({})", providerName, sourceName, e.getMessage(), e.getClass().getName());
+                return LookupResult.FAILED;
+            } finally {
+                CHECK_SOURCE_LOOKUP_LIMITER.release();
+            }
+        }, VIRTUAL_THREAD_EXECUTOR).completeOnTimeout(
+                LookupResult.FAILED,
+                CHECK_DEADLINE_MILLIS,
+                TimeUnit.MILLISECONDS
+        );
+    }
+
+    /**
+     * Retrieves an already-completed future result without blocking.
+     *
+     * @param future The future to harvest.
+     * @param providerName The provider name for logging context.
+     * @param sourceName The source name for logging context.
+     * @return The future's result, or {@link LookupResult#FAILED} if not completed or failed.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    private static LookupResult safeGetNow(@NonNull CompletableFuture<LookupResult> future,
+                                           @NonNull String providerName,
+                                           @NonNull String sourceName) {
         try {
-            return future.get();
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] Source '{}' did not complete in time or failed: {} ({})",
+            return future.getNow(LookupResult.FAILED);
+        } catch (RuntimeException e) {
+            log.warn("[{}] Source '{}' failed before result harvest: {} ({})",
                     providerName, sourceName, e.getMessage(), e.getClass().getName());
             return LookupResult.FAILED;
         }
