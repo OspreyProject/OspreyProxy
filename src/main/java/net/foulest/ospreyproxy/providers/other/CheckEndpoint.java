@@ -72,7 +72,6 @@ public class CheckEndpoint extends AbstractProvider {
 
     @Override
     public boolean isRateLimitingEnabled() {
-        // TODO: Rate-limiting should be done per API key instead of per IP
-        return false;
+        return true;
     }
 }
