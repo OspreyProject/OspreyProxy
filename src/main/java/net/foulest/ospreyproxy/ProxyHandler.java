@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
@@ -55,11 +56,9 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -92,7 +91,7 @@ public class ProxyHandler {
             .build();
 
     // Virtual thread executor for parallel /check endpoint lookups
-    private static final Executor VIRTUAL_THREAD_EXECUTOR =
+    private static final ExecutorService VIRTUAL_THREAD_EXECUTOR =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("check-", 0).factory());
 
     // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
@@ -146,6 +145,24 @@ public class ProxyHandler {
         JacksonUtil.MAPPER.constructType(Map.class);
         JacksonUtil.MAPPER.constructType(String.class);
         JacksonUtil.MAPPER.constructType(Object.class);
+    }
+
+    /**
+     * Releases shared resources owned or coordinated by ProxyHandler.
+     */
+    @PreDestroy
+    public void destroy() {
+        VIRTUAL_THREAD_EXECUTOR.shutdownNow();
+
+        try {
+            HTTP_CLIENT.close();
+        } catch (IOException e) {
+            log.warn("Failed to close upstream API HTTP client: {} ({})",
+                    e.getMessage(), e.getClass().getName());
+        }
+
+        AbstractDNSProvider.closeSharedClients();
+        RequestUtil.closeResolverResources();
     }
 
     /**

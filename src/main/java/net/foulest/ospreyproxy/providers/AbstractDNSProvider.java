@@ -40,6 +40,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -57,12 +58,42 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
     private static final CloseableHttpClient LEGACY_FILTERING_CLIENT =
             HttpClientFactory.createHttp1Client(5, 5, 10);
 
+    private static final AtomicBoolean SHARED_CLIENTS_CLOSED = new AtomicBoolean(false);
+
     // Injected by Spring into each concrete @Component subclass
     private final MetricsService metricsService;
     private final CircuitBreakerService circuitBreakerService;
 
     private @NonNull CloseableHttpClient getDnsHttpClient() {
         return isUsingOldHTTP() ? LEGACY_FILTERING_CLIENT : FILTERING_CLIENT;
+    }
+
+    /**
+     * Closes shared DNS HTTP clients. Safe to call more than once.
+     */
+    public static void closeSharedClients() {
+        if (!SHARED_CLIENTS_CLOSED.compareAndSet(false, true)) {
+            return;
+        }
+
+        closeHttpClient("DNS HTTP/2", FILTERING_CLIENT);
+        closeHttpClient("legacy DNS HTTP/1.1", LEGACY_FILTERING_CLIENT);
+    }
+
+    /**
+     * Closes a shared DNS HTTP client.
+     *
+     * @param clientName Human-readable client name for logging.
+     * @param client The client to close.
+     */
+    private static void closeHttpClient(@NonNull String clientName,
+                                        @NonNull CloseableHttpClient client) {
+        try {
+            client.close();
+        } catch (IOException e) {
+            log.warn("Failed to close {} client: {} ({})",
+                    clientName, e.getMessage(), e.getClass().getName());
+        }
     }
 
     /**

@@ -36,6 +36,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Utility class for resolving hostnames using Cloudflare's DNS-over-HTTPS (DoH) API.
@@ -52,6 +53,9 @@ final class ResolveUtil {
     // Cloudflare's DoH JSON endpoint
     private static final String DOH_URL = "https://cloudflare-dns.com/dns-query";
 
+    // Flag to prevent multiple close attempts on the shared DoH client
+    private static final AtomicBoolean DOH_CLIENT_CLOSED = new AtomicBoolean(false);
+
     // Separate caches per result so each can have its own TTL.
     // Positive results (host.doesHostResolve) cached for 5 minutes; negative for 1 minute.
     private static final Cache<String, Boolean> POSITIVE_CACHE = Caffeine.newBuilder()
@@ -62,6 +66,21 @@ final class ResolveUtil {
             .expireAfterWrite(Duration.ofMinutes(1))
             .maximumSize(50_000)
             .build();
+
+    /**
+     * Closes the shared DoH client.
+     */
+    static void closeDohClient() {
+        if (!DOH_CLIENT_CLOSED.compareAndSet(false, true)) {
+            return;
+        }
+
+        try {
+            DOH_CLIENT.close();
+        } catch (IOException e) {
+            log.warn("Failed to close DoH client: {} ({})", e.getMessage(), e.getClass().getName());
+        }
+    }
 
     /**
      * Checks if the hostname is resolvable via Cloudflare's DoH.

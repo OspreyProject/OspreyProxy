@@ -29,18 +29,20 @@ import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 
 /**
  * Utility class for managing local lists of domains fetched from external providers.
@@ -105,6 +107,12 @@ public final class LocalListUtil {
     @PreDestroy
     public void destroy() {
         scheduler.shutdownNow();
+
+        try {
+            FETCH_CLIENT.close();
+        } catch (IOException e) {
+            log.warn("Failed to close local-list HTTP client: {} ({})", e.getMessage(), e.getClass().getName());
+        }
     }
 
     /**
