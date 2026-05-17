@@ -90,10 +90,6 @@ public class ProxyHandler {
             .disableAutomaticRetries()
             .build();
 
-    // Virtual thread executor for parallel /check endpoint lookups
-    private static final ExecutorService VIRTUAL_THREAD_EXECUTOR =
-            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("check-", 0).factory());
-
     // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
     private final Map<String, Provider> providersByEndpointName;
 
@@ -129,8 +125,6 @@ public class ProxyHandler {
      */
     @PreDestroy
     public void destroy() {
-        VIRTUAL_THREAD_EXECUTOR.shutdownNow();
-
         try {
             HTTP_CLIENT.close();
         } catch (IOException e) {

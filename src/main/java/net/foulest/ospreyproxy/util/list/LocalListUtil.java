@@ -322,7 +322,7 @@ public final class LocalListUtil {
      * @param rawJson The raw JSON stream from the list endpoint.
      * @return A set of hostnames.
      */
-    @SuppressWarnings("NestedMethodCall")
+    @SuppressWarnings({"NestedMethodCall", "NestedAssignment"})
     private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson) {
         Set<String> set = new HashSet<>();
 
@@ -360,6 +360,7 @@ public final class LocalListUtil {
      * @param rawText The raw text stream from the list endpoint.
      * @return A set of hostnames.
      */
+    @SuppressWarnings("NestedAssignment")
     private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText) throws IOException {
         Set<String> set = new HashSet<>();
 
@@ -521,7 +522,6 @@ public final class LocalListUtil {
     @Contract(value = "_ -> new", pure = true)
     private static @NonNull InputStream cappedInputStream(@NonNull InputStream delegate) {
         return new FilterInputStream(delegate) {
-
             private long bytesRead;
 
             @Override
