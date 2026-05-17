@@ -43,7 +43,10 @@ final class RateLimitUtil {
     static boolean isBurstBlocked(@NonNull Provider provider,
                                   @NonNull String hashedIp,
                                   @NonNull String providerName) {
-        String violatorId = provider.getViolatorId(hashedIp);
+        // Checks if rate limiting is enabled for the provider
+        if (!provider.isRateLimitingEnabled()) {
+            return false;
+        }
 
         // Checks if the IP is already blocked
         if (provider.isBurstBlocked(hashedIp)) {
@@ -52,6 +55,7 @@ final class RateLimitUtil {
 
         // Consumes a token to lookup if the IP has hit the rate limit
         if (!provider.getBurstBucket(hashedIp).tryConsume(1)) {
+            String violatorId = provider.getViolatorId(hashedIp);
             log.warn("[{}] 'Burst' rate limit hit for {}", providerName, violatorId);
             provider.blockBurst(hashedIp);
             return true;
@@ -71,7 +75,10 @@ final class RateLimitUtil {
     static boolean isSustainedBlocked(@NonNull Provider provider,
                                       @NonNull String hashedIp,
                                       @NonNull String providerName) {
-        String violatorId = provider.getViolatorId(hashedIp);
+        // Checks if rate limiting is enabled for the provider
+        if (!provider.isRateLimitingEnabled()) {
+            return false;
+        }
 
         // Checks if the IP is already blocked
         if (provider.isSustainedBlocked(hashedIp)) {
@@ -80,6 +87,7 @@ final class RateLimitUtil {
 
         // Consumes a token to lookup if the IP has hit the rate limit
         if (!provider.getSustainedBucket(hashedIp).tryConsume(1)) {
+            String violatorId = provider.getViolatorId(hashedIp);
             log.warn("[{}] 'Sustained' rate limit hit for {}", providerName, violatorId);
             provider.blockSustained(hashedIp);
             return true;
@@ -100,10 +108,20 @@ final class RateLimitUtil {
                                      @NonNull String hashedIp,
                                      @NonNull String providerName,
                                      @NonNull String logMessage) {
-        String violatorId = provider.getViolatorId(hashedIp);
+        // Checks if abuse limiting is enabled for the provider
+        if (!provider.isAbuseLimitingEnabled()) {
+            log.warn("[{}] {}", providerName, logMessage);
+            return;
+        }
 
-        // Consumes a token to lookup if the IP has hit the rate limit
+        // Checks if the IP is already blocked for invalid requests
+        if (provider.isInvalidRequestBlocked(hashedIp)) {
+            throw new StatusCodeException(ErrorUtil.RESP_429);
+        }
+
+        // Consumes a token to lookup if the IP has hit the invalid request limit
         if (!provider.getInvalidRequestBucket(hashedIp).tryConsume(1)) {
+            String violatorId = provider.getViolatorId(hashedIp);
             log.warn("[{}] 'Invalid request' rate limit hit for {}", providerName, violatorId);
             provider.blockInvalidRequest(hashedIp);
             throw new StatusCodeException(ErrorUtil.RESP_429);
