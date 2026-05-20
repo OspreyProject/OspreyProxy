@@ -56,8 +56,6 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -211,7 +209,9 @@ public class ProxyHandler {
                 }
             } else if (LocalListUtil.findByEndpointName(endpointName) != null
                     && provider instanceof AbstractProvider ap) {
-                LookupResult cached = ap.getCachedResult(host);
+                // Local list providers use either host or full URL based on isStripToHost()
+                String lookupKey = provider.isStripToHost() ? host : cacheKey;
+                LookupResult cached = ap.getCachedResult(lookupKey);
 
                 if (cached != null) {
                     metrics.recordRequest(providerName);
@@ -247,7 +247,9 @@ public class ProxyHandler {
             // Local list providers check against an in-memory domain set.
             // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             if (LocalListUtil.findByEndpointName(endpointName) != null) {
-                LookupResult result = provider.cachedLookup(host);
+                // Local list providers use either host or full URL based on isStripToHost()
+                String lookupKey = provider.isStripToHost() ? host : normalizedUrl;
+                LookupResult result = provider.cachedLookup(lookupKey);
 
                 if (result == LookupResult.RATE_LIMITED) {
                     return ErrorUtil.RESP_429;

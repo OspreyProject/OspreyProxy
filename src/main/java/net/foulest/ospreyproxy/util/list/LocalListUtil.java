@@ -154,6 +154,31 @@ public final class LocalListUtil {
     }
 
     /**
+     * Looks up the given URL (full path) in the live set for the specified descriptor, returning the appropriate {@link LookupResult}.
+     * Used for URL-based lists like URLhaus that need to check the full URL path, not just the hostname.
+     *
+     * @param descriptor The list descriptor to lookup against.
+     * @param url The full URL to lookup for listing (e.g., "raw.githubusercontent.com/path/to/file").
+     * @return The {@link LookupResult} for this URL: either the descriptor's configured result type if listed,
+     *         or {@link LookupResult#ALLOWED} if not listed or if the list has not yet been loaded (fail-open).
+     */
+    public static @NonNull LookupResult lookupUrl(@NonNull Descriptor descriptor, @NonNull String url) {
+        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
+
+        if (ref == null) {
+            return LookupResult.FAILED;
+        }
+
+        Set<String> urlSet = ref.get().domainSet();
+
+        if (urlSet == null) {
+            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.getShortName());
+            return LookupResult.FAILED;
+        }
+        return isUrlInSet(urlSet, url) ? descriptor.getResultType() : LookupResult.ALLOWED;
+    }
+
+    /**
      * Checks whether the given hostname or any of its ancestor domains (up to but not including
      * the TLD) appears in the given domain set.
      *
@@ -178,6 +203,42 @@ public final class LocalListUtil {
             if (domainSet.contains(ancestor)) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * Checks whether the given URL (or any parent path of it) appears in the given URL set.
+     * This is used for URL-based lists that contain full paths.
+     * Performs exact matching and also checks progressively shorter paths.
+     * For example, when checking "raw.githubusercontent.com/owner/repo/file.exe", it will also check
+     * "raw.githubusercontent.com/owner/repo" and "raw.githubusercontent.com/owner".
+     *
+     * @param urlSet The set of normalized URLs/paths to check against.
+     * @param url The raw URL to check (e.g., "raw.githubusercontent.com/path/to/file").
+     * @return {@code true} if the URL or any parent path is in the set.
+     */
+    private static boolean isUrlInSet(@NonNull Collection<String> urlSet, @NonNull String url) {
+        String normalized = normalizeUrlForLookup(url);
+
+        if (normalized == null) {
+            return false;
+        }
+
+        if (urlSet.contains(normalized)) {
+            return true;
+        }
+
+        // Check progressively shorter paths by removing trailing path segments
+        int lastSlash = normalized.lastIndexOf('/');
+        while (lastSlash > 0) {
+            String parentPath = normalized.substring(0, lastSlash);
+
+            if (urlSet.contains(parentPath)) {
+                return true;
+            }
+
+            lastSlash = parentPath.lastIndexOf('/');
         }
         return false;
     }
@@ -271,8 +332,8 @@ public final class LocalListUtil {
             // Parses directly from the response stream with caps to prevent OOM or DoS from large lists
             try (InputStream body = entity.getContent()) {
                 domains = descriptor.getFormat() == Format.TEXT
-                        ? parsePlainText(body)
-                        : parseJson(body);
+                        ? parsePlainText(body, descriptor.isUrlBased())
+                        : parseJson(body, descriptor.isUrlBased());
             } catch (IOException | RuntimeException e) {
                 EntityUtils.consumeQuietly(entity);
                 throw e;
@@ -317,14 +378,15 @@ public final class LocalListUtil {
     }
 
     /**
-     * Parses JSON content into a set of hostnames.
+     * Parses JSON content into a set of hostnames or URLs.
      * Expects a JSON array of strings. Null entries and empty strings are ignored.
      *
      * @param rawJson The raw JSON stream from the list endpoint.
-     * @return A set of hostnames.
+     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
+     * @return A set of hostnames or URLs.
      */
     @SuppressWarnings({"NestedMethodCall", "NestedAssignment"})
-    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson) {
+    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson, boolean isUrlBased) {
         Set<String> set = new HashSet<>();
 
         try (JsonParser parser = JacksonUtil.MAPPER.createParser(cappedInputStream(rawJson))) {
@@ -347,22 +409,23 @@ public final class LocalListUtil {
                     throw new IllegalArgumentException("Expected JSON string entry but got " + token);
                 }
 
-                addNormalizedEntry(parser.getString(), set);
+                addNormalizedEntry(parser.getString(), set, isUrlBased);
             }
         }
         return set;
     }
 
     /**
-     * Parses plain text content into a set of hostnames.
+     * Parses plain text content into a set of hostnames or URLs.
      * Lines starting with '#' and blank lines are ignored as comments.
      * Hosts-file format lines are supported.
      *
      * @param rawText The raw text stream from the list endpoint.
-     * @return A set of hostnames.
+     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
+     * @return A set of hostnames or URLs.
      */
     @SuppressWarnings("NestedAssignment")
-    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText) throws IOException {
+    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText, boolean isUrlBased) throws IOException {
         Set<String> set = new HashSet<>();
 
         try (BufferedReader reader = new BufferedReader(
@@ -374,7 +437,7 @@ public final class LocalListUtil {
                     throw new IllegalArgumentException("List line exceeds " + MAX_LINE_CHARS + " characters");
                 }
 
-                addNormalizedEntry(line, set);
+                addNormalizedEntry(line, set, isUrlBased);
             }
         }
         return set;
@@ -385,14 +448,16 @@ public final class LocalListUtil {
      *
      * @param rawEntry The raw list entry or line.
      * @param destination The destination set.
+     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
      */
     private static void addNormalizedEntry(@Nullable String rawEntry,
-                                           @NonNull Collection<? super String> destination) {
+                                           @NonNull Collection<? super String> destination,
+                                           boolean isUrlBased) {
         if (rawEntry == null) {
             return;
         }
 
-        String normalized = normalizeListEntry(rawEntry);
+        String normalized = normalizeListEntry(rawEntry, isUrlBased);
 
         if (normalized == null) {
             return;
@@ -406,12 +471,53 @@ public final class LocalListUtil {
     }
 
     /**
+     * Normalizes a URL for lookup purposes, stripping protocol, www prefix, and trailing slashes,
+     * but keeping the path portion.
+     * Examples:
+     * - "https://www.example.com/path/file" -> "example.com/path/file"
+     * - "http://example.com/path/" -> "example.com/path"
+     *
+     * @param url The raw URL string.
+     * @return The normalized URL/path, or {@code null} if the URL is invalid.
+     */
+    private static @Nullable String normalizeUrlForLookup(@NonNull String url) {
+        String normalized = url.strip().toLowerCase(Locale.ROOT);
+
+        if (normalized.isEmpty()) {
+            return null;
+        }
+
+        // Strip protocol
+        if (normalized.startsWith("https://")) {
+            normalized = normalized.substring(8);
+        } else if (normalized.startsWith("http://")) {
+            normalized = normalized.substring(7);
+        }
+
+        // Strip www. prefix
+        if (normalized.startsWith("www.")) {
+            normalized = normalized.substring(4);
+        }
+
+        // Strip trailing slashes
+        while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '/') {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        if (normalized.isEmpty() || normalized.contains(" ") || normalized.contains("\\")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    /**
      * Normalizes one plain list entry, URL, or hosts-file line.
      *
      * @param rawEntry The raw entry.
-     * @return The normalized domain, or {@code null} if the entry should be ignored.
+     * @param isUrlBased Whether this list is URL-based (keeps path) or hostname-based (extracts hostname only).
+     * @return The normalized domain or URL, or {@code null} if the entry should be ignored.
      */
-    private static @Nullable String normalizeListEntry(@NonNull String rawEntry) {
+    private static @Nullable String normalizeListEntry(@NonNull String rawEntry, boolean isUrlBased) {
         String entry = rawEntry.strip();
 
         if (entry.isEmpty() || entry.charAt(0) == '#') {
@@ -442,34 +548,39 @@ public final class LocalListUtil {
             }
         }
 
-        entry = extractHostnameIfUrl(entry);
+        // For URL-based lists, normalize the full URL; for hostname-based lists, extract just the hostname
+        if (isUrlBased) {
+            return normalizeUrlForLookup(entry);
+        } else {
+            entry = extractHostnameIfUrl(entry);
 
-        if (entry == null) {
-            return null;
+            if (entry == null) {
+                return null;
+            }
+
+            String normalized = entry.strip().toLowerCase(Locale.ROOT);
+
+            while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
+                normalized = normalized.substring(1);
+            }
+
+            while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '.') {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+
+            if (normalized.startsWith("www.")) {
+                normalized = normalized.substring(4);
+            }
+
+            if (!normalized.contains(".")
+                    || normalized.length() > MAX_DOMAIN_CHARS
+                    || normalized.contains(" ")
+                    || normalized.contains("/")
+                    || normalized.contains("\\")) {
+                return null;
+            }
+            return normalized;
         }
-
-        String normalized = entry.strip().toLowerCase(Locale.ROOT);
-
-        while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
-            normalized = normalized.substring(1);
-        }
-
-        while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '.') {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-
-        if (normalized.startsWith("www.")) {
-            normalized = normalized.substring(4);
-        }
-
-        if (!normalized.contains(".")
-                || normalized.length() > MAX_DOMAIN_CHARS
-                || normalized.contains(" ")
-                || normalized.contains("/")
-                || normalized.contains("\\")) {
-            return null;
-        }
-        return normalized;
     }
 
     /**

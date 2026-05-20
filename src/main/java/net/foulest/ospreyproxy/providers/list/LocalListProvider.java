@@ -58,6 +58,12 @@ public class LocalListProvider extends AbstractProvider {
     }
 
     @Override
+    public boolean isStripToHost() {
+        // URL-based lists (like URLhaus) need the full URL to check paths
+        return !descriptor.isUrlBased();
+    }
+
+    @Override
     public final @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
         LookupResult cached = getCachedResult(lookupStr);
 
@@ -67,7 +73,9 @@ public class LocalListProvider extends AbstractProvider {
         }
 
         metricsService.recordCacheMiss();
-        LookupResult result = LocalListUtil.lookupHost(descriptor, lookupStr);
+        LookupResult result = descriptor.isUrlBased()
+                ? LocalListUtil.lookupUrl(descriptor, lookupStr)
+                : LocalListUtil.lookupHost(descriptor, lookupStr);
         putCachedResult(lookupStr, result);
         return result;
     }

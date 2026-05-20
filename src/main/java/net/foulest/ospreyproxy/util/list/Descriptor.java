@@ -37,7 +37,8 @@ public enum Descriptor {
             "PhishDestroy",
             "phishdestroy",
             LookupResult.PHISHING,
-            120L
+            120L,
+            false
     ),
 
     /**
@@ -49,7 +50,8 @@ public enum Descriptor {
             "Phishing.Database",
             "phishing-database",
             LookupResult.PHISHING,
-            120L
+            120L,
+            false
     ),
 
     /**
@@ -61,7 +63,8 @@ public enum Descriptor {
             "URLhaus",
                     "urlhaus",
             LookupResult.MALICIOUS,
-            120L
+            120L,
+            true
     );
 
     /**
@@ -93,4 +96,11 @@ public enum Descriptor {
      * The interval in seconds at which this list should be refreshed.
      */
     private final long refreshIntervalSeconds;
+
+    /**
+     * Whether to check the full URL (with path) instead of just the hostname.
+     * When {@code true}, the list is checked against normalized full URLs;
+     * when {@code false}, the list is checked against just the hostname.
+     */
+    private final boolean isUrlBased;
 }
