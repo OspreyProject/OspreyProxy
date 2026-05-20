@@ -37,6 +37,7 @@ import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
 import java.io.*;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Executors;
@@ -405,7 +406,7 @@ public final class LocalListUtil {
     }
 
     /**
-     * Normalizes one plain list entry or hosts-file line.
+     * Normalizes one plain list entry, URL, or hosts-file line.
      *
      * @param rawEntry The raw entry.
      * @return The normalized domain, or {@code null} if the entry should be ignored.
@@ -441,6 +442,12 @@ public final class LocalListUtil {
             }
         }
 
+        entry = extractHostnameIfUrl(entry);
+
+        if (entry == null) {
+            return null;
+        }
+
         String normalized = entry.strip().toLowerCase(Locale.ROOT);
 
         while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
@@ -463,6 +470,25 @@ public final class LocalListUtil {
             return null;
         }
         return normalized;
+    }
+
+    /**
+     * Extracts the host component from a URL, or returns the input unchanged if it is not a URL.
+     *
+     * @param entry The candidate entry.
+     * @return The host component for URLs, the original entry for non-URLs, or {@code null} if the URL is invalid.
+     */
+    private static @Nullable String extractHostnameIfUrl(@NonNull String entry) {
+        if (!entry.contains("://")) {
+            return entry;
+        }
+
+        try {
+            String host = URI.create(entry).getHost();
+            return host == null || host.isBlank() ? null : host;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /**
