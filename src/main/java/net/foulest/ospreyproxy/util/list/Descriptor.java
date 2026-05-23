@@ -61,7 +61,7 @@ public enum Descriptor {
             "https://urlhaus.abuse.ch/downloads/text",
             Format.TEXT,
             "URLhaus",
-                    "urlhaus",
+            "urlhaus",
             LookupResult.MALICIOUS,
             120L,
             true
