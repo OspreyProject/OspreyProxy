@@ -95,6 +95,14 @@ public final class LocalListUtil {
         for (Descriptor descriptor : Descriptor.values()) {
             stateMap.put(descriptor, new AtomicReference<>(ListSnapshot.EMPTY));
 
+            // If this descriptor requires an API key that isn't configured, skip scheduling
+            // and leave the state slot at EMPTY (fail-open for lookups).
+            if (descriptor.getResolvedUrl() == null) {
+                log.warn("[{}] Skipping list feed: {} environment variable is not set",
+                        descriptor.getShortName(), descriptor.getApiKeyEnvVar());
+                continue;
+            }
+
             // Immediate fetch on startup, then repeat at this descriptor's configured interval
             scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
@@ -290,7 +298,7 @@ public final class LocalListUtil {
     @SuppressWarnings("NestedMethodCall")
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
                                                   @Nullable String currentEtag) throws IOException {
-        ClassicHttpRequest request = new HttpGet(descriptor.getUrl());
+        ClassicHttpRequest request = new HttpGet(descriptor.getResolvedUrl());
         request.addHeader("Accept", "application/json, text/plain, */*");
 
         if (currentEtag != null) {
@@ -619,6 +627,9 @@ public final class LocalListUtil {
 
     /**
      * Checks whether a token looks like the address column in a hosts-file line.
+     * Accepts "localhost", IPv6 addresses (containing ':'), and dotted-decimal IPv4
+     * addresses whose four octets are each a valid decimal integer in [0, 255] with
+     * no leading zeros (except the bare value "0").
      *
      * @param value The token to inspect.
      * @return {@code true} if the token looks like an IP address placeholder.
@@ -639,12 +650,20 @@ public final class LocalListUtil {
                 return false;
             }
 
+            if (part.length() > 1 && part.charAt(0) == '0') {
+                return false;
+            }
+
             for (int i = 0; i < part.length(); i++) {
                 char c = part.charAt(i);
 
                 if (c < '0' || c > '9') {
                     return false;
                 }
+            }
+
+            if (Integer.parseInt(part) > 255) {
+                return false;
             }
         }
         return true;

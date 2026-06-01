@@ -20,6 +20,7 @@ package net.foulest.ospreyproxy.util.list;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import net.foulest.ospreyproxy.result.LookupResult;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents a descriptor for a list provider, containing all necessary information to fetch and interpret the list.
@@ -38,7 +39,8 @@ public enum Descriptor {
             "phishdestroy",
             LookupResult.PHISHING,
             120L,
-            false
+            false,
+            null
     ),
 
     /**
@@ -51,7 +53,8 @@ public enum Descriptor {
             "phishing-database",
             LookupResult.PHISHING,
             120L,
-            false
+            false,
+            null
     ),
 
     /**
@@ -64,11 +67,28 @@ public enum Descriptor {
             "urlhaus",
             LookupResult.MALICIOUS,
             120L,
-            true
+            true,
+            null
+    ),
+
+    /**
+     * THREATfox
+     */
+    THREATFOX(
+            "https://threatfox-api.abuse.ch/v2/files/exports/%api_key%/hostfile.txt",
+            Format.TEXT,
+            "THREATfox",
+            "threatfox",
+            LookupResult.MALICIOUS,
+            120L,
+            false,
+            "THREATFOX_API_KEY"
     );
 
     /**
-     * The URL from which to fetch the list data.
+     * The URL template from which to fetch the list data.
+     * May contain {@code %api_key%} as a placeholder, which is substituted at runtime
+     * with the value of the environment variable named by {@link #apiKeyEnvVar}.
      */
     private final String url;
 
@@ -103,4 +123,30 @@ public enum Descriptor {
      * when {@code false}, the list is checked against just the hostname.
      */
     private final boolean isUrlBased;
+
+    /**
+     * The name of the environment variable that holds the API key for this feed,
+     * or {@code null} if no key is required.
+     * When non-null, {@link #getResolvedUrl()} substitutes {@code %api_key%} in
+     * {@link #url} with the value of this environment variable.
+     */
+    private final @Nullable String apiKeyEnvVar;
+
+    /**
+     * Returns the fetch URL with the {@code %api_key%} placeholder substituted.
+     *
+     * @return The resolved URL, or {@code null} if a required API key is not configured.
+     */
+    @Nullable String getResolvedUrl() {
+        if (apiKeyEnvVar == null) {
+            return url;
+        }
+
+        String key = System.getenv(apiKeyEnvVar);
+
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return url.replace("%api_key%", key);
+    }
 }
