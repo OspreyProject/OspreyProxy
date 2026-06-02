@@ -63,4 +63,14 @@ public class LocalListProviderConfig {
     public LocalListProvider urlhausProvider() {
         return new LocalListProvider(Descriptor.URLHAUS, metricsService);
     }
+
+    /**
+     * Defines a bean for the THREATfox local list provider, which uses the THREATFOX descriptor.
+     *
+     * @return A LocalListProvider instance configured for the THREATfox list.
+     */
+    @Bean
+    public LocalListProvider threatfoxProvider() {
+        return new LocalListProvider(Descriptor.THREATFOX, metricsService);
+    }
 }
