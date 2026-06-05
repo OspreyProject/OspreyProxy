@@ -22,5 +22,6 @@ package net.foulest.ospreyproxy.util.list;
  */
 enum Format {
     JSON,
+    CSV,
     TEXT
 }

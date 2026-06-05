@@ -355,6 +355,7 @@ public final class LocalListUtil {
             try (InputStream body = entity.getContent()) {
                 domains = switch (descriptor.getFormat()) {
                     case TEXT -> parsePlainText(body);
+                    case CSV -> parseCsv(body);
                     case JSON -> parseJson(body);
                 };
             } catch (IOException | RuntimeException e) {
@@ -437,6 +438,42 @@ public final class LocalListUtil {
         return set;
     }
 
+    /**
+     * Parses a comma-separated threat-feed into a set of hostnames and URL paths.
+     * Expects lines with at least four fields: timestamp, source, type, indicator.
+     * Lines starting with {@code #} and blank lines are ignored.
+     *
+     * @param rawCsv The raw CSV stream from the list endpoint.
+     * @return A set of normalized hostnames and URL paths.
+     */
+    @SuppressWarnings("NestedAssignment")
+    private static @NonNull Set<String> parseCsv(@NonNull InputStream rawCsv) throws IOException {
+        Set<String> set = new HashSet<>();
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(cappedInputStream(rawCsv), StandardCharsets.UTF_8))) {
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.length() > MAX_LINE_CHARS) {
+                    throw new IllegalArgumentException("List line exceeds " + MAX_LINE_CHARS + " characters");
+                }
+
+                String stripped = line.strip();
+
+                if (stripped.isEmpty() || stripped.charAt(0) == '#') {
+                    continue;
+                }
+
+                // Split on every comma so that optional trailing fields (tags, reference)
+                // do not affect the position of the indicator at index 3
+                String[] fields = stripped.split(",", -1);
+
+                if (fields.length < MIN_CSV_FIELDS) {
+                    continue;
+                }
+
+                addNormalizedEntry(fields[3].strip(), set);
             }
         }
         return set;
