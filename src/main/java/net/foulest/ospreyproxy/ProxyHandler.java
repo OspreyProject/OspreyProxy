@@ -209,9 +209,7 @@ public class ProxyHandler {
                 }
             } else if (LocalListUtil.findByEndpointName(endpointName) != null
                     && provider instanceof AbstractProvider ap) {
-                // Local list providers use either host or full URL based on isStripToHost()
-                String lookupKey = provider.isStripToHost() ? host : cacheKey;
-                LookupResult cached = ap.getCachedResult(lookupKey);
+                LookupResult cached = ap.getCachedResult(cacheKey);
 
                 if (cached != null) {
                     metrics.recordRequest(providerName);
@@ -247,9 +245,7 @@ public class ProxyHandler {
             // Local list providers check against an in-memory domain set.
             // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             if (LocalListUtil.findByEndpointName(endpointName) != null) {
-                // Local list providers use either host or full URL based on isStripToHost()
-                String lookupKey = provider.isStripToHost() ? host : normalizedUrl;
-                LookupResult result = provider.cachedLookup(lookupKey);
+                LookupResult result = provider.cachedLookup(normalizedUrl);
 
                 if (result == LookupResult.RATE_LIMITED) {
                     return ErrorUtil.RESP_429;

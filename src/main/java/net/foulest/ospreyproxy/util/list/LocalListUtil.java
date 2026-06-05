@@ -58,6 +58,9 @@ public final class LocalListUtil {
     private static final CloseableHttpClient FETCH_CLIENT =
             HttpClientFactory.createHttp2Client(30, 30, 30, 35);
 
+    // Minimum number of comma-separated fields required in a CSV threat-feed line
+    private static final int MIN_CSV_FIELDS = 4;
+
     // Constants for parsing limits to prevent OOM or DoS from unexpectedly large lists
     private static final int MAX_LIST_BYTES = 16 * 1024 * 1024;
     private static final int MAX_DOMAINS = 1_000_000;
@@ -138,14 +141,14 @@ public final class LocalListUtil {
     }
 
     /**
-     * Looks up the given host in the live set for the specified descriptor, returning the appropriate {@link LookupResult}.
+     * Looks up the given request URI against the live set for the specified descriptor.
      *
-     * @param descriptor The list descriptor to lookup against.
-     * @param host The hostname to lookup for listing.
-     * @return The {@link LookupResult} for this host: either the descriptor's configured result type if listed,
-     *         or {@link LookupResult#ALLOWED} if not listed or if the list has not yet been loaded (fail-open).
+     * @param descriptor The list descriptor to look up against.
+     * @param fullUri The full request URI including scheme (e.g. {@code https://example.com/path}).
+     * @return The {@link LookupResult} for this URI: the descriptor's result type if listed,
+     *         {@link LookupResult#ALLOWED} if not listed or the list has not yet been loaded.
      */
-    public static @NonNull LookupResult lookupHost(@NonNull Descriptor descriptor, @NonNull String host) {
+    public static @NonNull LookupResult lookup(@NonNull Descriptor descriptor, @NonNull String fullUri) {
         AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
 
         if (ref == null) {
@@ -158,32 +161,46 @@ public final class LocalListUtil {
             log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.getShortName());
             return LookupResult.FAILED;
         }
-        return isHostInSet(domainSet, host) ? descriptor.getResultType() : LookupResult.ALLOWED;
-    }
 
-    /**
-     * Looks up the given URL (full path) in the live set for the specified descriptor, returning the appropriate {@link LookupResult}.
-     * Used for URL-based lists like URLhaus that need to check the full URL path, not just the hostname.
-     *
-     * @param descriptor The list descriptor to lookup against.
-     * @param url The full URL to lookup for listing (e.g., "raw.githubusercontent.com/path/to/file").
-     * @return The {@link LookupResult} for this URL: either the descriptor's configured result type if listed,
-     *         or {@link LookupResult#ALLOWED} if not listed or if the list has not yet been loaded (fail-open).
-     */
-    public static @NonNull LookupResult lookupUrl(@NonNull Descriptor descriptor, @NonNull String url) {
-        AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
+        URI uri;
 
-        if (ref == null) {
-            return LookupResult.FAILED;
+        try {
+            uri = URI.create(fullUri);
+        } catch (IllegalArgumentException e) {
+            return LookupResult.ALLOWED;
         }
 
-        Set<String> urlSet = ref.get().domainSet();
+        String host = uri.getHost();
 
-        if (urlSet == null) {
-            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.getShortName());
-            return LookupResult.FAILED;
+        if (host == null || host.isBlank()) {
+            return LookupResult.ALLOWED;
         }
-        return isUrlInSet(urlSet, url) ? descriptor.getResultType() : LookupResult.ALLOWED;
+
+        host = host.toLowerCase(Locale.ROOT);
+
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
+
+        if (isHostInSet(domainSet, host)) {
+            return descriptor.getResultType();
+        }
+
+        String rawPath = uri.getRawPath();
+        boolean hasPath = rawPath != null && !rawPath.isEmpty() && !"/".equals(rawPath);
+
+        if (hasPath) {
+            String path = rawPath.toLowerCase(Locale.ROOT);
+
+            while (!path.isEmpty() && path.charAt(path.length() - 1) == '/') {
+                path = path.substring(0, path.length() - 1);
+            }
+
+            if (isUrlInSet(domainSet, host + path)) {
+                return descriptor.getResultType();
+            }
+        }
+        return LookupResult.ALLOWED;
     }
 
     /**
@@ -216,18 +233,14 @@ public final class LocalListUtil {
     }
 
     /**
-     * Checks whether the given URL (or any parent path of it) appears in the given URL set.
-     * This is used for URL-based lists that contain full paths.
-     * Performs exact matching and also checks progressively shorter paths.
-     * For example, when checking "raw.githubusercontent.com/owner/repo/file.exe", it will also check
-     * "raw.githubusercontent.com/owner/repo" and "raw.githubusercontent.com/owner".
+     * Checks whether the given URL path (or any parent path of it) appears in the given URL set.
      *
-     * @param urlSet The set of normalized URLs/paths to check against.
-     * @param url The raw URL to check (e.g., "raw.githubusercontent.com/path/to/file").
-     * @return {@code true} if the URL or any parent path is in the set.
+     * @param urlSet The set of normalized URL paths to check against.
+     * @param urlPath The scheme-stripped, normalized URL path to check (e.g. {@code "host/path"}).
+     * @return {@code true} if the URL path or any parent path is in the set.
      */
-    private static boolean isUrlInSet(@NonNull Collection<String> urlSet, @NonNull String url) {
-        String normalized = normalizeUrlForLookup(url);
+    private static boolean isUrlInSet(@NonNull Collection<String> urlSet, @NonNull String urlPath) {
+        String normalized = normalizeUrlForLookup(urlPath);
 
         if (normalized == null) {
             return false;
@@ -239,6 +252,7 @@ public final class LocalListUtil {
 
         // Check progressively shorter paths by removing trailing path segments
         int lastSlash = normalized.lastIndexOf('/');
+
         while (lastSlash > 0) {
             String parentPath = normalized.substring(0, lastSlash);
 
@@ -339,9 +353,10 @@ public final class LocalListUtil {
 
             // Parses directly from the response stream with caps to prevent OOM or DoS from large lists
             try (InputStream body = entity.getContent()) {
-                domains = descriptor.getFormat() == Format.TEXT
-                        ? parsePlainText(body, descriptor.isUrlBased())
-                        : parseJson(body, descriptor.isUrlBased());
+                domains = switch (descriptor.getFormat()) {
+                    case TEXT -> parsePlainText(body);
+                    case JSON -> parseJson(body);
+                };
             } catch (IOException | RuntimeException e) {
                 EntityUtils.consumeQuietly(entity);
                 throw e;
@@ -386,15 +401,14 @@ public final class LocalListUtil {
     }
 
     /**
-     * Parses JSON content into a set of hostnames or URLs.
+     * Parses JSON content into a set of hostnames and URL paths.
      * Expects a JSON array of strings. Null entries and empty strings are ignored.
      *
      * @param rawJson The raw JSON stream from the list endpoint.
-     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
-     * @return A set of hostnames or URLs.
+     * @return A set of normalized hostnames and URL paths.
      */
     @SuppressWarnings({"NestedMethodCall", "NestedAssignment"})
-    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson, boolean isUrlBased) {
+    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson) {
         Set<String> set = new HashSet<>();
 
         try (JsonParser parser = JacksonUtil.MAPPER.createParser(cappedInputStream(rawJson))) {
@@ -417,23 +431,27 @@ public final class LocalListUtil {
                     throw new IllegalArgumentException("Expected JSON string entry but got " + token);
                 }
 
-                addNormalizedEntry(parser.getString(), set, isUrlBased);
+                addNormalizedEntry(parser.getString(), set);
+            }
+        }
+        return set;
+    }
+
             }
         }
         return set;
     }
 
     /**
-     * Parses plain text content into a set of hostnames or URLs.
-     * Lines starting with '#' and blank lines are ignored as comments.
+     * Parses plain text content into a set of hostnames and URL paths.
+     * Lines starting with {@code #} and blank lines are ignored.
      * Hosts-file format lines are supported.
      *
      * @param rawText The raw text stream from the list endpoint.
-     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
-     * @return A set of hostnames or URLs.
+     * @return A set of normalized hostnames and URL paths.
      */
     @SuppressWarnings("NestedAssignment")
-    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText, boolean isUrlBased) throws IOException {
+    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText) throws IOException {
         Set<String> set = new HashSet<>();
 
         try (BufferedReader reader = new BufferedReader(
@@ -445,7 +463,7 @@ public final class LocalListUtil {
                     throw new IllegalArgumentException("List line exceeds " + MAX_LINE_CHARS + " characters");
                 }
 
-                addNormalizedEntry(line, set, isUrlBased);
+                addNormalizedEntry(line, set);
             }
         }
         return set;
@@ -456,16 +474,14 @@ public final class LocalListUtil {
      *
      * @param rawEntry The raw list entry or line.
      * @param destination The destination set.
-     * @param isUrlBased Whether to parse as full URLs (true) or just hostnames (false).
      */
     private static void addNormalizedEntry(@Nullable String rawEntry,
-                                           @NonNull Collection<? super String> destination,
-                                           boolean isUrlBased) {
+                                           @NonNull Collection<? super String> destination) {
         if (rawEntry == null) {
             return;
         }
 
-        String normalized = normalizeListEntry(rawEntry, isUrlBased);
+        String normalized = normalizeListEntry(rawEntry);
 
         if (normalized == null) {
             return;
@@ -481,9 +497,6 @@ public final class LocalListUtil {
     /**
      * Normalizes a URL for lookup purposes, stripping protocol, www prefix, and trailing slashes,
      * but keeping the path portion.
-     * Examples:
-     * - "https://www.example.com/path/file" -> "example.com/path/file"
-     * - "http://example.com/path/" -> "example.com/path"
      *
      * @param url The raw URL string.
      * @return The normalized URL/path, or {@code null} if the URL is invalid.
@@ -522,10 +535,9 @@ public final class LocalListUtil {
      * Normalizes one plain list entry, URL, or hosts-file line.
      *
      * @param rawEntry The raw entry.
-     * @param isUrlBased Whether this list is URL-based (keeps path) or hostname-based (extracts hostname only).
-     * @return The normalized domain or URL, or {@code null} if the entry should be ignored.
+     * @return The normalized hostname or URL path, or {@code null} if the entry should be ignored.
      */
-    private static @Nullable String normalizeListEntry(@NonNull String rawEntry, boolean isUrlBased) {
+    private static @Nullable String normalizeListEntry(@NonNull String rawEntry) {
         String entry = rawEntry.strip();
 
         if (entry.isEmpty() || entry.charAt(0) == '#') {
@@ -555,59 +567,84 @@ public final class LocalListUtil {
                 entry = first;
             }
         }
-
-        // For URL-based lists, normalize the full URL; for hostname-based lists, extract just the hostname
-        if (isUrlBased) {
-            return normalizeUrlForLookup(entry);
-        } else {
-            entry = extractHostnameIfUrl(entry);
-
-            if (entry == null) {
-                return null;
-            }
-
-            String normalized = entry.strip().toLowerCase(Locale.ROOT);
-
-            while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
-                normalized = normalized.substring(1);
-            }
-
-            while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '.') {
-                normalized = normalized.substring(0, normalized.length() - 1);
-            }
-
-            if (normalized.startsWith("www.")) {
-                normalized = normalized.substring(4);
-            }
-
-            if (!normalized.contains(".")
-                    || normalized.length() > MAX_DOMAIN_CHARS
-                    || normalized.contains(" ")
-                    || normalized.contains("/")
-                    || normalized.contains("\\")) {
-                return null;
-            }
-            return normalized;
-        }
+        return entry.contains("://") ? normalizeUrlEntry(entry) : normalizeHostnameEntry(entry);
     }
 
     /**
-     * Extracts the host component from a URL, or returns the input unchanged if it is not a URL.
+     * Normalizes a URL entry, storing it either as a bare hostname or as {@code host/path}
+     * depending on whether the URL carries a meaningful path.
      *
-     * @param entry The candidate entry.
-     * @return The host component for URLs, the original entry for non-URLs, or {@code null} if the URL is invalid.
+     * @param entry The URL entry string (must contain {@code ://}).
+     * @return The normalized hostname or URL path, or {@code null} if the entry is invalid.
      */
-    private static @Nullable String extractHostnameIfUrl(@NonNull String entry) {
-        if (!entry.contains("://")) {
-            return entry;
-        }
+    private static @Nullable String normalizeUrlEntry(@NonNull String entry) {
+        URI uri;
 
         try {
-            String host = URI.create(entry).getHost();
-            return host == null || host.isBlank() ? null : host;
+            uri = URI.create(entry);
         } catch (IllegalArgumentException e) {
             return null;
         }
+
+        String host = uri.getHost();
+
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+
+        host = host.toLowerCase(Locale.ROOT);
+
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
+
+        String rawPath = uri.getRawPath();
+        boolean hasPath = rawPath != null && !rawPath.isEmpty() && !"/".equals(rawPath);
+
+        if (!hasPath) {
+            return normalizeHostnameEntry(host);
+        }
+
+        String path = rawPath.toLowerCase(Locale.ROOT);
+
+        while (!path.isEmpty() && path.charAt(path.length() - 1) == '/') {
+            path = path.substring(0, path.length() - 1);
+        }
+
+        String result = host + path;
+        return result.contains(" ") || result.contains("\\") ? null : result;
+    }
+
+    /**
+     * Normalizes a bare hostname entry, lowercasing it, stripping leading/trailing dots
+     * and the {@code www.} prefix, and validating that the result is a usable hostname.
+     *
+     * @param entry The raw hostname string (must not contain {@code ://}).
+     * @return The normalized hostname, or {@code null} if the entry is invalid.
+     */
+    private static @Nullable String normalizeHostnameEntry(@NonNull String entry) {
+        String normalized = entry.strip().toLowerCase(Locale.ROOT);
+
+        while (!normalized.isEmpty() && normalized.charAt(0) == '.') {
+            normalized = normalized.substring(1);
+        }
+
+        while (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) == '.') {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        if (normalized.startsWith("www.")) {
+            normalized = normalized.substring(4);
+        }
+
+        if (!normalized.contains(".")
+                || normalized.length() > MAX_DOMAIN_CHARS
+                || normalized.contains(" ")
+                || normalized.contains("/")
+                || normalized.contains("\\")) {
+            return null;
+        }
+        return normalized;
     }
 
     /**
