@@ -39,13 +39,6 @@ import java.util.concurrent.atomic.AtomicLong;
 @RequiredArgsConstructor
 public class MetricsService {
 
-    // The provider's greedy window capacity to simulate, in req/min
-    private static final long SIMULATED_PROVIDER_WINDOW_PER_MIN = 1_980;
-
-    // Seeded with the highest values observed in production so alerts only fire on new records
-    private final AtomicLong globalHighestReqPerMin = new AtomicLong(594);
-    private final AtomicLong globalHighestPeakReqPerSec = new AtomicLong(29);
-
     // Per-provider sliding-window state; lazily created on first recordRequest() call
     private final ConcurrentHashMap<String, ProviderStats> providerStats = new ConcurrentHashMap<>();
 
@@ -85,7 +78,6 @@ public class MetricsService {
         long nowNanos = System.nanoTime();
 
         for (var entry : providerStats.entrySet()) {
-            String name = entry.getKey();
             ProviderStats stats = entry.getValue();
 
             // Calculate elapsed time since last tick, with clamping to prevent extreme values from skewing rates
@@ -98,65 +90,6 @@ public class MetricsService {
             // Calculate req/sec for this tick and update peak if needed
             long reqPerSec = (long) Math.ceil(rawCount / elapsedSecs);
             stats.peakReqPerSec.accumulateAndGet(reqPerSec, Math::max);
-
-            // Simulate a greedy token bucket with the configured capacity and log if we see a deficit
-            //noinspection ConstantMathCall
-            long refillScaled = Math.round((SIMULATED_PROVIDER_WINDOW_PER_MIN / 60.0) * 100);
-            long consumeScaled = reqPerSec * 100L;
-            long capScaled = SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L;
-
-            stats.simulatedTokenPoolScaled.updateAndGet(p ->
-                    Math.max(Math.min(p + refillScaled, capScaled) - consumeScaled, 0)
-            );
-
-            double netDriftPerSec = (refillScaled - consumeScaled) / 100.0;
-
-            if (netDriftPerSec < 0) {
-                long minWindowNeeded = (long) Math.ceil(reqPerSec * 60.0);
-                long prevHighest = stats.highestMinWindowNeeded.get();
-
-                if (minWindowNeeded > prevHighest
-                        && stats.highestMinWindowNeeded.compareAndSet(prevHighest, minWindowNeeded)) {
-                    log.warn("[{}] Greedy window deficit - Consume vs refill: {}/sec | Min window needed: {}/min",
-                            name, String.format("%.2f", netDriftPerSec), minWindowNeeded);
-                }
-            }
-        }
-    }
-
-    @Scheduled(fixedDelay = 60_000)
-    void tickPerMinute() {
-        long highestReqThisMin = 0;
-        long highestPeakThisMin = 0;
-        String highestReqMinProvider = null;
-        String highestPeakSecProvider = null;
-
-        for (var entry : providerStats.entrySet()) {
-            String name = entry.getKey();
-            ProviderStats stats = entry.getValue();
-
-            long reqThisMin = stats.minuteBucket.getAndSet(0);
-            long peakThisMin = stats.peakReqPerSec.getAndSet(0);
-
-            if (reqThisMin > highestReqThisMin) {
-                highestReqThisMin = reqThisMin;
-                highestReqMinProvider = name;
-            }
-
-            if (peakThisMin > highestPeakThisMin) {
-                highestPeakThisMin = peakThisMin;
-                highestPeakSecProvider = name;
-            }
-        }
-
-        if (highestReqMinProvider != null && highestReqThisMin > globalHighestReqPerMin.get()) {
-            globalHighestReqPerMin.set(highestReqThisMin);
-            log.warn("[{}] New highest req/min across providers: {}", highestReqMinProvider, highestReqThisMin);
-        }
-
-        if (highestPeakSecProvider != null && highestPeakThisMin > globalHighestPeakReqPerSec.get()) {
-            globalHighestPeakReqPerSec.set(highestPeakThisMin);
-            log.warn("[{}] New highest req/sec across providers: {}", highestPeakSecProvider, highestPeakThisMin);
         }
     }
 
@@ -176,9 +109,5 @@ public class MetricsService {
 
         // Initialised to startup time; the first tick will use the real elapsed duration
         final AtomicLong lastTickNanos = new AtomicLong(System.nanoTime());
-
-        // Simulated token bucket scaled by 100 to allow fractional tokens without using floating-point arithmetic
-        final AtomicLong simulatedTokenPoolScaled = new AtomicLong(SIMULATED_PROVIDER_WINDOW_PER_MIN * 100L);
-        final AtomicLong highestMinWindowNeeded = new AtomicLong(0);
     }
 }
