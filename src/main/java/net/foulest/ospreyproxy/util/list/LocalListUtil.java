@@ -64,7 +64,7 @@ public final class LocalListUtil {
     // Constants for parsing limits to prevent OOM or DoS from unexpectedly large lists
     private static final int MAX_LIST_BYTES = 16 * 1024 * 1024;
     private static final int MAX_DOMAINS = 1_000_000;
-    private static final int MAX_LINE_CHARS = 1024;
+    private static final int MAX_LINE_CHARS = 10_248;
     private static final int MAX_DOMAIN_CHARS = 253;
 
     // Scheduler for periodic list refreshes

@@ -39,7 +39,6 @@ public enum Descriptor {
             "phishdestroy",
             LookupResult.PHISHING,
             120L,
-            false,
             null
     ),
 
@@ -53,7 +52,19 @@ public enum Descriptor {
             "phishing-database",
             LookupResult.PHISHING,
             120L,
-            false,
+            null
+    ),
+
+    /**
+     * Phishunt.io
+     */
+    PHISHUNT_IO(
+            "https://phishunt.io/feed.txt",
+            Format.TEXT,
+            "Phishunt.io",
+            "phishunt-io",
+            LookupResult.PHISHING,
+            120L,
             null
     ),
 
@@ -67,7 +78,6 @@ public enum Descriptor {
             "urlhaus",
             LookupResult.MALICIOUS,
             120L,
-            true,
             null
     ),
 
@@ -81,7 +91,6 @@ public enum Descriptor {
             "threatfox",
             LookupResult.MALICIOUS,
             120L,
-            false,
             "THREATFOX_API_KEY"
     );
 
@@ -116,13 +125,6 @@ public enum Descriptor {
      * The interval in seconds at which this list should be refreshed.
      */
     private final long refreshIntervalSeconds;
-
-    /**
-     * Whether to check the full URL (with path) instead of just the hostname.
-     * When {@code true}, the list is checked against normalized full URLs;
-     * when {@code false}, the list is checked against just the hostname.
-     */
-    private final boolean isUrlBased;
 
     /**
      * The name of the environment variable that holds the API key for this feed,

@@ -45,9 +45,19 @@ public class LocalListProviderConfig {
     }
 
     /**
-     * Defines a bean for the Phishing Database local list provider, which uses the PHISHING_DATABASE descriptor.
+     * Defines a bean for the Phishunt.io local list provider, which uses the PHISHUNT_IO descriptor.
      *
-     * @return A LocalListProvider instance configured for the Phishing Database list.
+     * @return A LocalListProvider instance configured for the Phishunt.io list.
+     */
+    @Bean
+    public LocalListProvider phishuntProvider() {
+        return new LocalListProvider(Descriptor.PHISHUNT_IO, metricsService);
+    }
+
+    /**
+     * Defines a bean for the Phishing.Database local list provider, which uses the PHISHING_DATABASE descriptor.
+     *
+     * @return A LocalListProvider instance configured for the Phishing.Database list.
      */
     @Bean
     public LocalListProvider phishingDatabaseProvider() {
