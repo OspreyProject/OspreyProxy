@@ -35,6 +35,16 @@ public class LocalListProviderConfig {
     private final MetricsService metricsService;
 
     /**
+     * Defines a bean for the OpenPhish local list provider, which uses the OPEN_PHISH descriptor.
+     *
+     * @return A LocalListProvider instance configured for the OpenPhish list.
+     */
+    @Bean
+    public LocalListProvider openPhishProvider() {
+        return new LocalListProvider(Descriptor.OPEN_PHISH, metricsService);
+    }
+
+    /**
      * Defines a bean for the PhishDestroy local list provider, which uses the PHISH_DESTROY descriptor.
      *
      * @return A LocalListProvider instance configured for the PhishDestroy list.

@@ -30,6 +30,19 @@ import org.jspecify.annotations.Nullable;
 public enum Descriptor {
 
     /**
+     * OpenPhish
+     */
+    OPEN_PHISH(
+            "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
+            Format.TEXT,
+            "OpenPhish",
+            "openphish",
+            LookupResult.PHISHING,
+            120L,
+            null
+    ),
+
+    /**
      * PhishDestroy
      */
     PHISH_DESTROY(
