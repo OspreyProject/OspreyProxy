@@ -77,7 +77,7 @@ public class CERTEE extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
+        boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP.equals(ip);

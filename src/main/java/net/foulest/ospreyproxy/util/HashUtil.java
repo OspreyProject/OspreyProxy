@@ -47,16 +47,19 @@ public final class HashUtil {
     // hash spaces cannot be correlated with each other
     private static final byte[] URL_SALT = generateSalt();
 
+    // Algorithm name for HMAC
+    private static final String HMAC_SHA_256 = "HmacSHA256";
+
     // ThreadLocal Mac to avoid getInstance() overhead on every call
     // Mac is not thread-safe, so ThreadLocal is required
     @SuppressWarnings("java:S5164")
     private static final ThreadLocal<Mac> IP_HMAC = ThreadLocal.withInitial(() -> {
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(IP_SALT, "HmacSHA256"));
+            Mac mac = Mac.getInstance(HMAC_SHA_256);
+            mac.init(new SecretKeySpec(IP_SALT, HMAC_SHA_256));
             return mac;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            throw new IllegalStateException("HmacSHA256 not available", e);
+            throw new IllegalStateException(HMAC_SHA_256 + " not available", e);
         }
     });
 
@@ -64,11 +67,11 @@ public final class HashUtil {
     @SuppressWarnings("java:S5164")
     private static final ThreadLocal<Mac> URL_HMAC = ThreadLocal.withInitial(() -> {
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(URL_SALT, "HmacSHA256"));
+            Mac mac = Mac.getInstance(HMAC_SHA_256);
+            mac.init(new SecretKeySpec(URL_SALT, HMAC_SHA_256));
             return mac;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            throw new IllegalStateException("HmacSHA256 not available", e);
+            throw new IllegalStateException(HMAC_SHA_256 + " not available", e);
         }
     });
 
@@ -99,7 +102,7 @@ public final class HashUtil {
      * @return A hexadecimal string representation of the hashed IP address.
      */
     static String hashIp(@NonNull String ip) {
-        return IP_CACHE.get(ip, ipString -> {
+        return IP_CACHE.get(ip, (String ipString) -> {
             Mac mac = IP_HMAC.get();
             mac.reset();
 
@@ -119,6 +122,7 @@ public final class HashUtil {
     public static @NonNull String hashUrl(@NonNull String url) {
         Mac mac = URL_HMAC.get();
         mac.reset();
+
         byte[] digest = mac.doFinal(url.getBytes(StandardCharsets.UTF_8));
         return HexFormat.of().formatHex(digest);
     }

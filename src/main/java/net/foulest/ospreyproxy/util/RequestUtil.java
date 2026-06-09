@@ -30,9 +30,6 @@ import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
 import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Map;
 
@@ -158,8 +155,7 @@ public final class RequestUtil {
         // candidate is a valid IP literal and not a hostname
         try {
             InetAddress address = InetAddress.getByName(ip);
-            return address instanceof Inet6Address
-                    || address instanceof Inet4Address && ip.indexOf(':') >= 0;
+            return address instanceof Inet6Address || (address instanceof Inet4Address && ip.indexOf(':') >= 0);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
             return false;
         }
@@ -564,7 +560,7 @@ public final class RequestUtil {
             String rawQuery = parsedUri.getRawQuery();
             String schemeSpecific = "//" + authority
                     + (rawPath != null ? rawPath : "")
-                    + (rawQuery != null ? "?" + rawQuery : "");
+                    + (rawQuery != null ? ("?" + rawQuery) : "");
             return new URI(scheme, schemeSpecific, null);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected URI reconstruction failure: {} ({})",

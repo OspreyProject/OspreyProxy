@@ -78,7 +78,7 @@ public class SwitchCH extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
+        boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.CNAME) {
                 String cname = DNSUtil.parseName(rdata);
                 return BLOCK_CNAME.equalsIgnoreCase(NetworkUtil.normalize(cname));

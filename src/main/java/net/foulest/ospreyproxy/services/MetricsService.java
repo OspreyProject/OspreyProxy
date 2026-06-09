@@ -103,11 +103,11 @@ public class MetricsService {
 
     private static final class ProviderStats {
 
-        final AtomicLong secondBucket = new AtomicLong(0);
-        final AtomicLong minuteBucket = new AtomicLong(0);
-        final AtomicLong peakReqPerSec = new AtomicLong(0);
+        private final AtomicLong secondBucket = new AtomicLong(0);
+        private final AtomicLong minuteBucket = new AtomicLong(0);
+        private final AtomicLong peakReqPerSec = new AtomicLong(0);
 
         // Initialised to startup time; the first tick will use the real elapsed duration
-        final AtomicLong lastTickNanos = new AtomicLong(System.nanoTime());
+        private final AtomicLong lastTickNanos = new AtomicLong(System.nanoTime());
     }
 }

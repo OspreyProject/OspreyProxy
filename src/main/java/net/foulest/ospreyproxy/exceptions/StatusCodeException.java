@@ -18,14 +18,8 @@
 package net.foulest.ospreyproxy.exceptions;
 
 import lombok.Getter;
-import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
-
-import java.io.NotSerializableException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serial;
 
 /**
  * Custom exception class that encapsulates an HTTP status code and message to be returned in the response.
@@ -35,8 +29,6 @@ import java.io.Serial;
 @Getter
 public class StatusCodeException extends RuntimeException {
 
-    @Serial
-    private static final long serialVersionUID = 1L;
     private final transient ResponseEntity<String> status;
 
     /**
@@ -48,17 +40,5 @@ public class StatusCodeException extends RuntimeException {
     public StatusCodeException(@NonNull ResponseEntity<String> status) {
         super(String.valueOf(status.getStatusCode().value()));
         this.status = status;
-    }
-
-    @Serial
-    @Contract(value = "_ -> fail", pure = true)
-    private void readObject(@NonNull ObjectInputStream in) throws NotSerializableException {
-        throw new NotSerializableException("StatusCodeException is not serializable");
-    }
-
-    @Serial
-    @Contract(value = "_ -> fail", pure = true)
-    private void writeObject(@NonNull ObjectOutputStream out) throws NotSerializableException {
-        throw new NotSerializableException("StatusCodeException is not serializable");
     }
 }

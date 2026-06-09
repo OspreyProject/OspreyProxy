@@ -81,7 +81,7 @@ public class OpenDNSSecurity extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
+        boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 return ttl == 0;
             }

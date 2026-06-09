@@ -26,6 +26,7 @@ import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -77,7 +78,7 @@ public class AdGuardSecurity extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (type, rrClass, ttl, rdata) -> {
+        boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP.equals(ip);

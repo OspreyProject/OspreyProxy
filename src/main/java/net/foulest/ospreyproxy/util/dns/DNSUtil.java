@@ -38,6 +38,7 @@ import java.util.regex.Pattern;
 public final class DNSUtil {
 
     // Pattern for validating domain names
+    // TODO: Replace these character ranges with Unicode-aware character classes.
     private static final Pattern VALID_DOMAIN = Pattern.compile("^[a-zA-Z0-9._-]+$");
 
     /**
@@ -64,7 +65,7 @@ public final class DNSUtil {
 
         // QTYPE (2 bytes big-endian) + QCLASS IN (0x00 0x01)
         byte[] qtypeAndClass = {
-                (byte) (Record.A >>> 8 & 0xFF),
+                (byte) ((Record.A >>> 8) & 0xFF),
                 (byte) (Record.A & 0xFF),
                 0x00, 0x01  // IN
         };

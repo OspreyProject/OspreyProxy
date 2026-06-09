@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
@@ -131,7 +132,7 @@ final class ResolveUtil {
             ClassicHttpRequest request = new HttpGet(url);
             request.addHeader("Accept", "application/dns-json");
 
-            return DOH_CLIENT.execute(request, response -> {
+            return DOH_CLIENT.execute(request, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
 
                 if (statusCode != 200) {

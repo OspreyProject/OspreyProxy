@@ -26,6 +26,7 @@ import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
@@ -67,18 +68,18 @@ public final class LocalListUtil {
     private static final int MAX_LINE_CHARS = 10_248;
     private static final int MAX_DOMAIN_CHARS = 253;
 
-    // Scheduler for periodic list refreshes
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread thread = new Thread(r, "local-list-refresh");
-        thread.setDaemon(true);
-        return thread;
-    });
-
     // Runtime state per descriptor, keyed by descriptor identity
     private static final Map<Descriptor, AtomicReference<ListSnapshot>> stateMap = new EnumMap<>(Descriptor.class);
 
     // Descriptors keyed by endpoint name for O(1) routing in ProxyHandler
     private static final Map<String, Descriptor> descriptorsByEndpointName;
+
+    // Scheduler for periodic list refreshes
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor((Runnable r) -> {
+        Thread thread = new Thread(r, "local-list-refresh");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     static {
         Map<String, Descriptor> map = new HashMap<>();
@@ -166,7 +167,7 @@ public final class LocalListUtil {
 
         try {
             uri = URI.create(fullUri);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException ignored) {
             return LookupResult.ALLOWED;
         }
 
@@ -319,7 +320,7 @@ public final class LocalListUtil {
             request.addHeader("If-None-Match", currentEtag);
         }
 
-        return FETCH_CLIENT.execute(request, response -> {
+        return FETCH_CLIENT.execute(request, (ClassicHttpResponse response) -> {
             int statusCode = response.getCode();
 
             if (statusCode == 304) {
@@ -360,7 +361,7 @@ public final class LocalListUtil {
                 };
             } catch (IOException | RuntimeException e) {
                 EntityUtils.consumeQuietly(entity);
-                throw e;
+                throw new IOException("Failed to parse list content: " + e.getMessage(), e);
             }
 
             // Checks if the parsed list is empty

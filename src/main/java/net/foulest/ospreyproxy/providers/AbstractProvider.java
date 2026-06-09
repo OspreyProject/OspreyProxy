@@ -108,6 +108,7 @@ public abstract class AbstractProvider implements Provider {
     private final Duration invalidRequestBlockDuration;
 
     protected AbstractProvider() {
+        // TODO: Remove this call from a constructor to the overridable "allowedCacheTTL" method.
         Duration allowedCacheTTL = allowedCacheTTL();
         Duration blockedCacheTTL = blockedCacheTTL();
 
