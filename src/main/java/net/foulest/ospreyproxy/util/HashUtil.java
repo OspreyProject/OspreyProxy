@@ -48,36 +48,32 @@ public final class HashUtil {
     // Algorithm name for HMAC
     private static final String HMAC_SHA_256 = "HmacSHA256";
 
-    // ThreadLocal Mac to avoid getInstance() overhead on every call
-    // Mac is not thread-safe, so ThreadLocal is required
-    @SuppressWarnings("java:S5164")
-    private static final ThreadLocal<Mac> IP_HMAC = ThreadLocal.withInitial(() -> {
-        try {
-            Mac mac = Mac.getInstance(HMAC_SHA_256);
-            mac.init(new SecretKeySpec(IP_SALT, HMAC_SHA_256));
-            return mac;
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            throw new IllegalStateException(HMAC_SHA_256 + " not available", e);
-        }
-    });
-
-    // Separate ThreadLocal Mac for URL hashing, keyed with URL_SALT
-    @SuppressWarnings("java:S5164")
-    private static final ThreadLocal<Mac> URL_HMAC = ThreadLocal.withInitial(() -> {
-        try {
-            Mac mac = Mac.getInstance(HMAC_SHA_256);
-            mac.init(new SecretKeySpec(URL_SALT, HMAC_SHA_256));
-            return mac;
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            throw new IllegalStateException(HMAC_SHA_256 + " not available", e);
-        }
-    });
-
     // Cache for hashed IP addresses to improve performance and reduce CPU load on repeated hashes
     private static final Cache<String, String> IP_CACHE = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(100_000)
             .build();
+
+    // Prototype Mac instances pre-initialized with the respective salts,
+    // to be cloned for each hash operation
+    private static final Mac IP_MAC_PROTOTYPE = createMac(IP_SALT);
+    private static final Mac URL_MAC_PROTOTYPE = createMac(URL_SALT);
+
+    /**
+     * Creates a Mac instance initialized with the given salt for HMAC operations.
+     *
+     * @param salt The salt to use for initializing the Mac instance.
+     * @return A Mac instance ready for hashing with the specified salt.
+     */
+    private static @NonNull Mac createMac(byte @NonNull [] salt) {
+        try {
+            Mac mac = Mac.getInstance(HMAC_SHA_256);
+            mac.init(new SecretKeySpec(salt, HMAC_SHA_256));
+            return mac;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            throw new IllegalStateException(HMAC_SHA_256 + " not available", e);
+        }
+    }
 
     /**
      * Generates a random salt for hashing IP addresses to prevent rainbow table attacks.
@@ -94,6 +90,22 @@ public final class HashUtil {
     }
 
     /**
+     * Clones the prototype Mac (cheap: copies pre-keyed state, no key schedule).
+     * Falls back to a fresh instance if the provider doesn't support cloning.
+     *
+     * @param prototype The prototype Mac instance to clone.
+     * @param salt The salt to use if cloning is not supported.
+     * @return A Mac instance initialized with the same salt as the prototype.
+     */
+    private static @NonNull Mac newMac(@NonNull Mac prototype, byte @NonNull [] salt) {
+        try {
+            return (Mac) prototype.clone();
+        } catch (CloneNotSupportedException ignored) {
+            return createMac(salt);
+        }
+    }
+
+    /**
      * Hashes the IP address using HMAC-SHA-256 with a random salt to produce a stable, non-reversible identifier.
      *
      * @param ip The IP address to hash.
@@ -101,11 +113,8 @@ public final class HashUtil {
      */
     static String hashIp(@NonNull String ip) {
         return IP_CACHE.get(ip, (String ipString) -> {
-            Mac mac = IP_HMAC.get();
-            mac.reset();
-
-            byte[] bytes = ipString.getBytes(StandardCharsets.UTF_8);
-            byte[] hash = mac.doFinal(bytes);
+            Mac mac = newMac(IP_MAC_PROTOTYPE, IP_SALT);
+            byte[] hash = mac.doFinal(ipString.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         });
     }
@@ -118,9 +127,7 @@ public final class HashUtil {
      */
     @SuppressWarnings("NestedMethodCall")
     public static @NonNull String hashUrl(@NonNull String url) {
-        Mac mac = URL_HMAC.get();
-        mac.reset();
-
+        Mac mac = newMac(URL_MAC_PROTOTYPE, URL_SALT);
         byte[] digest = mac.doFinal(url.getBytes(StandardCharsets.UTF_8));
         return HexFormat.of().formatHex(digest);
     }
