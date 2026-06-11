@@ -108,10 +108,15 @@ public abstract class AbstractProvider implements Provider {
     private final Duration invalidRequestBlockDuration;
 
     protected AbstractProvider() {
-        // TODO: Remove this call from a constructor to the overridable "allowedCacheTTL" method.
-        Duration allowedCacheTTL = allowedCacheTTL();
-        Duration blockedCacheTTL = blockedCacheTTL();
+        this(Duration.ofHours(1), Duration.ofMinutes(15));
+    }
 
+    /**
+     * @param allowedCacheTTL TTL for cached ALLOWED results.
+     * @param blockedCacheTTL TTL for cached blocked results (MALICIOUS, PHISHING, etc.).
+     *                        Shorter default since threat status can change quickly.
+     */
+    protected AbstractProvider(@NonNull Duration allowedCacheTTL, @NonNull Duration blockedCacheTTL) {
         allowedCache = Caffeine.newBuilder()
                 .expireAfterWrite(allowedCacheTTL)
                 .maximumSize(ALLOWED_RESULT_CACHE_MAX_SIZE)
@@ -152,22 +157,6 @@ public abstract class AbstractProvider implements Provider {
     }
 
     /**
-     * Returns a cached result for the given lookup string if one exists, otherwise
-     * performs the lookup and caches the result.
-     *
-     * @param lookupStr The validated string to look up (host or URL).
-     * @throws UnsupportedOperationException if the provider does not support self-contained lookup.
-     */
-    @SuppressWarnings("NestedMethodCall")
-    @Override
-    public @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
-        throw new UnsupportedOperationException(
-                getClass().getSimpleName() + " does not support cachedLookup(); "
-                        + "use getCachedResult/putCachedResult via ProxyHandler instead."
-        );
-    }
-
-    /**
      * Gets a cached result for the given lookup string if one exists, or {@code null} if not.
      *
      * @param lookupStr The validated string to look up (host or URL).
@@ -197,23 +186,6 @@ public abstract class AbstractProvider implements Provider {
         } else {
             blockedCache.put(key, result);
         }
-    }
-
-    /**
-     * TTL for cached ALLOWED results. Override per provider to tune freshness.
-     */
-    @NonNull
-    protected Duration allowedCacheTTL() {
-        return Duration.ofHours(1);
-    }
-
-    /**
-     * TTL for cached blocked results (MALICIOUS, PHISHING, etc.).
-     * Shorter default since threat status can change quickly.
-     */
-    @NonNull
-    protected Duration blockedCacheTTL() {
-        return Duration.ofMinutes(15);
     }
 
     /**

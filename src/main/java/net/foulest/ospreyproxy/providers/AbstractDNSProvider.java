@@ -94,31 +94,21 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
     }
 
     /**
-     * Performs a cached lookup for the given host, using the provider's DNS filter.
+     * Performs a live DNS-filter lookup for the given host and caches the result.
+     * The caller (ProxyHandler) has already probed the cache and recorded hit/miss
+     * metrics; this method only handles the circuit breaker, the lookup itself,
+     * and the cache write.
      *
-     * @param lookupStr The validated string to look up (host or URL).
-     * @return The {@link LookupResult} for this host, from cache if available or freshly looked up if not.
+     * @param host The hostname to lookup, e.g. "example.com".
+     * @return The {@link LookupResult} for this host, or {@link LookupResult#RATE_LIMITED} if the circuit breaker is open.
      */
-    @Override
-    public final @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
-        String displayName = getDisplayName();
-
-        // Short-circuit if the circuit breaker is open (too many recent failures)
-        if (circuitBreakerService.isOpen(displayName)) {
+    public final @NonNull LookupResult lookupAndCache(@NonNull String host) {
+        if (circuitBreakerService.isOpen(getDisplayName())) {
             return LookupResult.RATE_LIMITED;
         }
 
-        LookupResult cached = getCachedResult(lookupStr);
-
-        if (cached != null) {
-            metricsService.recordCacheHit();
-            return cached;
-        }
-
-        metricsService.recordCacheMiss();
-        LookupResult result = lookup(lookupStr);
-
-        putCachedResult(lookupStr, result);
+        LookupResult result = lookup(host);
+        putCachedResult(host, result);
         return result;
     }
 

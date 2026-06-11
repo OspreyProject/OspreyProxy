@@ -159,14 +159,6 @@ public interface Provider {
     }
 
     /**
-     * Performs a cached lookup for the given string (IP or URL), returning a non-null result.
-     *
-     * @param lookupStr The string to lookup in the cache (e.g., an IP address or URL).
-     * @return The {@link LookupResult} for this string, either from cache or from a live lookup.
-     */
-    @NonNull LookupResult cachedLookup(@NonNull String lookupStr);
-
-    /**
      * Whether rate limiting is enabled for this provider.
      * Returns {@code true} by default. Override to return {@code false} to disable all
      * rate limiting checks ({@link #isBurstBlocked}, {@link #isSustainedBlocked})

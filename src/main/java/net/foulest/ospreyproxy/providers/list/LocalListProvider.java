@@ -20,9 +20,7 @@ package net.foulest.ospreyproxy.providers.list;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
-import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.list.Descriptor;
-import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -53,21 +51,5 @@ public class LocalListProvider extends AbstractProvider {
     @Override
     public boolean isEnabled() {
         return true;
-    }
-
-    @Override
-    public final @NonNull LookupResult cachedLookup(@NonNull String lookupStr) {
-        LookupResult cached = getCachedResult(lookupStr);
-
-        if (cached != null) {
-            metricsService.recordCacheHit();
-            return cached;
-        }
-
-        metricsService.recordCacheMiss();
-
-        LookupResult result = LocalListUtil.lookup(descriptor, lookupStr);
-        putCachedResult(lookupStr, result);
-        return result;
     }
 }

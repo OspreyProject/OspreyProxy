@@ -31,6 +31,7 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.RequestUtil;
+import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -187,54 +188,33 @@ public class ProxyHandler {
             }
 
             Map<String, String> incoming = RequestUtil.validateBody(bodyBytes, provider, providerName, hashedIp);
-
-            @SuppressWarnings("NestedMethodCall")
             String url = Objects.toString(incoming.get("url"), "").strip();
             URI parsedUri = RequestUtil.validateURI(url, provider, providerName, hashedIp);
             String scheme = RequestUtil.validateScheme(parsedUri, provider, providerName, hashedIp);
             String host = RequestUtil.validateHost(parsedUri, provider, providerName, hashedIp);
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
 
-            // Short-circuits on cache hit before paying the DoH validation cost
+            Descriptor descriptor = LocalListUtil.findByEndpointName(endpointName);
+            boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost();
+            String lookupKey = hostKeyed ? host : parsedUri.toString();
 
-            String cacheKey = provider.isStripToHost() ? host : parsedUri.toString();
-
-            if (provider instanceof AbstractDNSProvider dnsProvider) {
-                LookupResult cached = dnsProvider.getCachedResult(host);
-
-                if (cached != null) {
-                    metrics.recordRequest(providerName);
-                    metrics.recordCacheHit();
-                    return resultResponse(cached, providerName);
-                }
-            } else if (LocalListUtil.findByEndpointName(endpointName) != null
-                    && provider instanceof AbstractProvider ap) {
-                LookupResult cached = ap.getCachedResult(cacheKey);
+            if (descriptor == null && provider instanceof AbstractProvider ap) {
+                LookupResult cached = ap.getCachedResult(lookupKey);
 
                 if (cached != null) {
                     metrics.recordRequest(providerName);
                     metrics.recordCacheHit();
                     return resultResponse(cached, providerName);
                 }
-            } else if (provider instanceof AbstractProvider ap) {
-                LookupResult cached = ap.getCachedResult(cacheKey);
 
-                if (cached != null) {
-                    metrics.recordRequest(providerName);
-                    metrics.recordCacheHit();
-                    return resultResponse(cached, providerName);
-                }
+                metrics.recordCacheMiss();
             }
 
-            // All validations passed; record the request and proceed to upstream execution
             RequestUtil.validateDNS(host, provider, providerName, hashedIp);
             metrics.recordRequest(providerName);
-            String normalizedUrl = parsedUri.toString();
 
-            // DNS providers submit only the hostname upstream.
-            // doLookup() is self-contained; cachedLookup() handles the cache transparently.
             if (provider instanceof AbstractDNSProvider dnsProvider) {
-                LookupResult result = dnsProvider.cachedLookup(host);
+                LookupResult result = dnsProvider.lookupAndCache(lookupKey);
 
                 if (result == LookupResult.RATE_LIMITED) {
                     return ErrorUtil.RESP_429;
@@ -242,22 +222,10 @@ public class ProxyHandler {
                 return resultResponse(result, providerName);
             }
 
-            // Local list providers check against an in-memory domain set.
-            // doLookup() is self-contained; cachedLookup() handles the cache transparently.
-            if (LocalListUtil.findByEndpointName(endpointName) != null) {
-                LookupResult result = provider.cachedLookup(normalizedUrl);
-
-                if (result == LookupResult.RATE_LIMITED) {
-                    return ErrorUtil.RESP_429;
-                }
-                return resultResponse(result, providerName);
+            if (descriptor != null) {
+                return resultResponse(LocalListUtil.lookup(descriptor, lookupKey), providerName);
             }
-
-            // API providers require HTTP_CLIENT which lives here, so execution stays in
-            // executeUpstream. The cache read/write is done there via getCachedResult /
-            // putCachedResult rather than through cachedLookup.
-            String forwardUrl = provider.isStripToHost() ? host : normalizedUrl;
-            return executeUpstream(provider, providerName, forwardUrl);
+            return executeUpstream(provider, providerName, lookupKey);
         } catch (StatusCodeException e) {
             return e.getStatus();
         }
@@ -265,6 +233,10 @@ public class ProxyHandler {
 
     /**
      * Executes an upstream API provider request and returns the interpreted result as JSON.
+     * <p>
+     * The result cache has already been probed (and missed) in {@code proxyRequest},
+     * so this method only handles the circuit breaker, the upstream HTTP call,
+     * response interpretation, and the cache write.
      *
      * @param provider The provider configuration.
      * @param providerName The provider display name for logging.
@@ -281,42 +253,25 @@ public class ProxyHandler {
             return ErrorUtil.RESP_429;
         }
 
-        // Returns the cached result if present
-        if (provider instanceof AbstractProvider ap) {
-            LookupResult cached = ap.getCachedResult(forwardUrl);
-
-            if (cached != null) {
-                metrics.recordCacheHit();
-                return resultResponse(cached, providerName);
-            }
-
-            metrics.recordCacheMiss();
-        }
-
-        Method method = provider.getMethod();
-        ClassicRequestBuilder requestBuilder;
         String requestUrl = provider.buildRequestUrl(forwardUrl);
+        ClassicRequestBuilder requestBuilder = ClassicRequestBuilder
+                .create(provider.getMethod().name())
+                .setUri(requestUrl);
 
-        // Builds the request based on the provider's specified method (GET or POST)
-        if (method == Method.GET) {
-            requestBuilder = ClassicRequestBuilder.get(requestUrl);
-        } else {
-            Map<String, Object> requestBody = provider.buildBody(forwardUrl);
-            String jsonBody = "";
+        Map<String, Object> requestBody = provider.buildBody(forwardUrl);
 
-            // buildBody() returns null for GET providers;
-            // POST providers (e.g. AlphaMountain) return a populated map.
-            if (requestBody != null) {
-                try {
-                    jsonBody = JacksonUtil.MAPPER.writeValueAsString(requestBody);
-                } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-                    log.error("[{}] Failed to serialize request body: {} ({})",
-                            providerName, e.getMessage(), e.getClass().getName());
-                    return ErrorUtil.RESP_502;
-                }
+        if (requestBody != null) {
+            String jsonBody;
+
+            try {
+                jsonBody = JacksonUtil.MAPPER.writeValueAsString(requestBody);
+            } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+                log.error("[{}] Failed to serialize request body: {} ({})",
+                        providerName, e.getMessage(), e.getClass().getName());
+                return ErrorUtil.RESP_502;
             }
 
-            requestBuilder = ClassicRequestBuilder.post(requestUrl).setEntity(jsonBody, ContentType.APPLICATION_JSON);
+            requestBuilder.setEntity(jsonBody, ContentType.APPLICATION_JSON);
         }
 
         // Applies provider-specific headers (e.g., API key headers)
@@ -343,13 +298,9 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                // Rejects non-200 responses with provider-specific logging and error mapping
+                // Rejects non-200 responses with provider-specific error mapping
                 if (statusCode != 200) {
-                    if (statusCode == 400) {
-                        log.warn("[{}] Upstream request failed with status code: 400", providerName);
-                    } else {
-                        log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
-                    }
+                    log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
 
                     return switch (statusCode) {
                         case 400 -> ErrorUtil.RESP_400;

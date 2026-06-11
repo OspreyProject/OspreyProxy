@@ -41,6 +41,13 @@ public class AlphaMountain extends AbstractProvider {
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
 
     /**
+     * Constructor for the provider, setting the cache durations for allowed and blocked results.
+     */
+    public AlphaMountain() {
+        super(Duration.ofHours(24), Duration.ofHours(24));
+    }
+
+    /**
      * Validates the provider configuration after construction.
      * Ensures that if the provider is enabled, the API key is set and not blank.
      */
@@ -90,16 +97,6 @@ public class AlphaMountain extends AbstractProvider {
                 "version", 1,
                 "type", "partner.info"
         );
-    }
-
-    @Override
-    protected @NonNull Duration allowedCacheTTL() {
-        return Duration.ofHours(24);
-    }
-
-    @Override
-    protected @NonNull Duration blockedCacheTTL() {
-        return Duration.ofHours(24);
     }
 
     @Override
