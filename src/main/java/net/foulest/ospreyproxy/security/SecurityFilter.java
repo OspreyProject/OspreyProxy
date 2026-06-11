@@ -125,11 +125,6 @@ public class SecurityFilter implements Filter {
             return false;
         }
 
-        // Checks if the content type is exactly "application/json" (case-insensitive)
-        if (!MediaType.APPLICATION_JSON_VALUE.equalsIgnoreCase(rawContentType)) {
-            return false;
-        }
-
         // Checks if the content type starts with "application/json" (case-insensitive) and is followed by a ';' for parameters
         if (!rawContentType.regionMatches(true, 0, MediaType.APPLICATION_JSON_VALUE, 0, length)) {
             return false;
