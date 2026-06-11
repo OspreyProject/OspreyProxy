@@ -147,7 +147,8 @@ public final class LocalListUtil {
      * @param descriptor The list descriptor to look up against.
      * @param fullUri The full request URI including scheme (e.g. {@code https://example.com/path}).
      * @return The {@link LookupResult} for this URI: the descriptor's result type if listed,
-     *         {@link LookupResult#ALLOWED} if not listed or the list has not yet been loaded.
+     *         {@link LookupResult#ALLOWED} if not listed, or {@link LookupResult#FAILED}
+     *         if the list has not yet been loaded.
      */
     public static @NonNull LookupResult lookup(@NonNull Descriptor descriptor, @NonNull String fullUri) {
         AtomicReference<ListSnapshot> ref = stateMap.get(descriptor);
@@ -293,8 +294,7 @@ public final class LocalListUtil {
                 applyContent(descriptor, result.domainSet(), result.etag());
             }
         } catch (IOException | RuntimeException e) {
-            log.warn("[{}] Failed to fetch list update: {} ({})",
-                    descriptor.getShortName(), e.getMessage(), e.getClass().getName());
+            log.warn("[{}] Failed to fetch list update: {}", descriptor.getShortName(), e.getClass().getName());
         }
     }
 
