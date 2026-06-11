@@ -204,8 +204,61 @@ public final class NetworkUtil {
                     return true;
                 }
             }
+
+            // Block IPv4-compatible IPv6 addresses (::a.b.c.d, deprecated RFC 4291) which
+            // embed an IPv4 address in the last 4 bytes with bytes 0-11 all zero.
+            // (::1 and :: are already caught by the loopback/anyLocal checks above.)
+            boolean isV4Compatible = true;
+
+            for (int i = 0; i < 12; i++) {
+                if (bytes[i] != 0) {
+                    isV4Compatible = false;
+                    break;
+                }
+            }
+
+            if (isV4Compatible) {
+                return isEmbeddedV4Private(Arrays.copyOfRange(bytes, 12, 16));
+            }
+
+            // Block the NAT64 well-known prefix (64:ff9b::/96, RFC 6052) which embeds an
+            // IPv4 address in the last 4 bytes; on NAT64 networks, 64:ff9b::7f00:1 routes
+            // to 127.0.0.1. Also block the local-use NAT64 prefix (64:ff9b:1::/48, RFC 8215)
+            // outright, since its IPv4 embedding position varies by deployment.
+            if (bytes[0] == 0x00 && (bytes[1] & 0xFF) == 0x64
+                    && (bytes[2] & 0xFF) == 0xFF && (bytes[3] & 0xFF) == 0x9B) {
+                if (bytes[4] == 0x01) {
+                    return true; // 64:ff9b:1::/48 local-use prefix
+                }
+
+                boolean isWellKnown = true;
+
+                for (int i = 4; i < 12; i++) {
+                    if (bytes[i] != 0) {
+                        isWellKnown = false;
+                        break;
+                    }
+                }
+
+                if (isWellKnown) {
+                    return isEmbeddedV4Private(Arrays.copyOfRange(bytes, 12, 16));
+                }
+            }
         }
         return false;
+    }
+
+    /**
+     * Checks an embedded IPv4 address (extracted from a mapped/compatible/NAT64/6to4
+     * IPv6 address) against the private-address rules. Treats malformed bytes as private.
+     */
+    private static boolean isEmbeddedV4Private(byte @NonNull [] v4Bytes) {
+        try {
+            return isPrivateAddress(InetAddress.getByAddress(v4Bytes));
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.warn("Invalid embedded IPv4 address ({})", e.getClass().getName(), e);
+            return true;
+        }
     }
 
     /**
@@ -251,42 +304,48 @@ public final class NetworkUtil {
      * Checks if the given {@code host} string is an IP address literal (IPv4 or IPv6)
      * without performing any DNS resolution.
      * <p>
-     * This is a fast format-detection heuristic, not a full IP validator.
-     * Malformed inputs (e.g., "..." or "1.2.3.4.5.6") are intentionally accepted
-     * here because the caller ({@link #isPrivateHost}) passes the result to
-     * {@link InetAddress#getByName}, which performs strict validation and throws
-     * {@link UnknownHostException} on invalid literals (caught and treated as blocked).
-     *
-     * @param host The hostname from {@link URI#getHost}, which never contains a port
-     *             component (e.g., "example.com:8080" -> "example.com", "[::1]:8080" -> "::1").
-     * @return {@code true} if the host looks like an IP literal, {@code false} if it's a domain name.
+     * IPv6 literals from URI.getHost() come without brackets (e.g., "::1"), and a
+     * colon can't appear in a hostname, so any colon means IPv6. IPv4 must be strict
+     * dotted-decimal: exactly four octets, each 0-255, digits only. Hex notation
+     * ("0x7f.0.0.1") and decimal-integer forms are intentionally NOT treated as
+     * literals; they fall through to hostname validation, fail DoH resolution, and
+     * are independently rejected by the connection-time DNS resolver.
      */
-    @SuppressWarnings("CharacterComparison")
     static boolean isIpLiteral(@NonNull String host) {
-        // IPv6 literals from URI.getHost() come without brackets (e.g., "::1").
-        // Port-separated colons (e.g., "host:8080") cannot appear here because
-        // URI.getHost() returns only the host component with the port stripped.
-        if (host.contains(":")) {
-            return true;
+        return host.indexOf(':') >= 0 || isDottedDecimalIpv4(host);
+    }
+
+    /**
+     * Validates strict dotted-decimal IPv4 (four octets, 0-255, no signs, no hex,
+     * parts of at most 3 digits).
+     */
+    static boolean isDottedDecimalIpv4(@NonNull String host) {
+        String[] parts = host.split("\\.", -1);
+
+        if (parts.length != 4) {
+            return false;
         }
 
-        // IPv4 heuristic: contains a dot and all chars are hex-digits, dots, or hex prefix markers
-        // (0-9, a-f, A-F, x, X). This catches both standard decimal dotted-quad notation
-        // (e.g., "192.168.1.1") and hex-octet notation (e.g., "0x7f.0.0.1").
-        // Intentionally loose: malformed inputs (e.g., "...", "1.2.3.4.5.6") are caught
-        // by InetAddress.getByName() in the caller and treated as blocked.
-        if (host.contains(".")) {
-            for (int i = 0; i < host.length(); i++) {
-                char c = host.charAt(i);
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
 
-                if (c != '.' && c != 'x' && c != 'X'
-                        && !(c >= '0' && c <= '9')
-                        && !(c >= 'a' && c <= 'f')
-                        && !(c >= 'A' && c <= 'F')) {
+            int value = 0;
+
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+
+                if (c < '0' || c > '9') {
                     return false;
                 }
+
+                value = value * 10 + (c - '0');
             }
-            return true;
+
+            if (value > 255) {
+                return false;
+            }
         }
         return false;
     }

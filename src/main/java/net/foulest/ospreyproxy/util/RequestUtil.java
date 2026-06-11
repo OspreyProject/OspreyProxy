@@ -127,7 +127,7 @@ public final class RequestUtil {
      */
     private static boolean isValidIpLiteral(@NonNull String ip) {
         // Quick check for valid IPv4 literals before the more expensive InetAddress parsing
-        if (isValidIpv4Literal(ip)) {
+        if (NetworkUtil.isDottedDecimalIpv4(ip)) {
             return true;
         }
 
@@ -159,47 +159,6 @@ public final class RequestUtil {
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
             return false;
         }
-    }
-
-    /**
-     * Validates dotted-decimal IPv4 literals.
-     *
-     * @param ip The candidate IPv4 literal.
-     * @return {@code true} if the candidate is valid dotted-decimal IPv4.
-     */
-    private static boolean isValidIpv4Literal(@NonNull String ip) {
-        String[] parts = ip.split("\\.", -1);
-
-        // Rejects candidates that don't have exactly 4 dot-separated parts
-        if (parts.length != 4) {
-            return false;
-        }
-
-        for (String part : parts) {
-            // Rejects empty parts or parts longer than 3 characters (e.g., "01" or "256")
-            if (part.isEmpty() || part.length() > 3) {
-                return false;
-            }
-
-            int value = 0;
-
-            for (int i = 0; i < part.length(); i++) {
-                char c = part.charAt(i);
-
-                // Rejects non-digit characters
-                if (c < '0' || c > '9') {
-                    return false;
-                }
-
-                value = value * 10 + (c - '0');
-            }
-
-            // Rejects parts with values outside the valid range (0-255)
-            if (value > 255) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
