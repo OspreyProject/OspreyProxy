@@ -102,7 +102,8 @@ final class ResolveUtil {
             return false;
         }
 
-        boolean result = doesQueryHaveAnswers(host);
+        // IPv6-only domains have no A records; check AAAA before declaring unresolvable
+        boolean result = doesQueryHaveAnswers(host, "A") || doesQueryHaveAnswers(host, "AAAA");
 
         if (result) {
             POSITIVE_CACHE.put(cacheKey, Boolean.TRUE);
@@ -124,10 +125,10 @@ final class ResolveUtil {
      *         Fail-open on I/O errors.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static boolean doesQueryHaveAnswers(@NonNull String host) {
+    private static boolean doesQueryHaveAnswers(@NonNull String host, @NonNull String recordType) {
         try {
             String encodedHost = URLEncoder.encode(host, StandardCharsets.UTF_8);
-            String url = DOH_URL + "?name=" + encodedHost;
+            String url = DOH_URL + "?name=" + encodedHost + "&type=" + recordType;
 
             ClassicHttpRequest request = new HttpGet(url);
             request.addHeader("Accept", "application/dns-json");
