@@ -525,10 +525,22 @@ public final class RequestUtil {
             String authority = port == -1 ? host : (host + ":" + port);
             String rawPath = parsedUri.getRawPath();
             String rawQuery = parsedUri.getRawQuery();
-            String schemeSpecific = "//" + authority
-                    + (rawPath != null ? rawPath : "")
-                    + (rawQuery != null ? ("?" + rawQuery) : "");
-            return new URI(scheme, schemeSpecific, null);
+
+            // Build from already-encoded (raw) components and parse with the single-arg
+            // URI constructor, which preserves percent-escapes verbatim
+            StringBuilder rebuilt = new StringBuilder(scheme.length() + authority.length() + 16)
+                    .append(scheme).append("://").append(authority);
+
+            if (rawPath != null) {
+                rebuilt.append(rawPath);
+            }
+
+            if (rawQuery != null) {
+                rebuilt.append('?').append(rawQuery);
+            }
+            return new URI(rebuilt.toString());
+        } catch (StatusCodeException e) {
+            throw e;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected URI reconstruction failure: {} ({})",
                     providerName, e.getMessage(), e.getClass().getName());
