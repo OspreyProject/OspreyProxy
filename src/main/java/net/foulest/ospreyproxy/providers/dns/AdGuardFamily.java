@@ -72,25 +72,28 @@ public class AdGuardFamily extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean malicious = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
-            if (type == Record.A) {
-                String ip = DNSUtil.parseIPv4(rdata);
-                return "94.140.14.33".equals(ip);
-            }
-            return false;
-        });
+        boolean[] adultContent = {false};
 
-        boolean adultContent = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
-            if (type == Record.A) {
-                String ip = DNSUtil.parseIPv4(rdata);
-                return "94.140.14.35".equals(ip);
+        boolean malicious = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
+            if (type != Record.A) {
+                return false;
+            }
+
+            String ip = DNSUtil.parseIPv4(rdata);
+
+            if ("94.140.14.33".equals(ip)) {
+                return true;
+            }
+
+            if ("94.140.14.35".equals(ip)) {
+                adultContent[0] = true;
             }
             return false;
         });
 
         if (malicious) {
             return LookupResult.MALICIOUS;
-        } else if (adultContent) {
+        } else if (adultContent[0]) {
             return LookupResult.ADULT_CONTENT;
         }
         return LookupResult.ALLOWED;
