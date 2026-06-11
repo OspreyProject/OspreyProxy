@@ -24,7 +24,10 @@ import org.apache.hc.client5.http.DnsResolver;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 
-import java.net.*;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -347,7 +350,7 @@ public final class NetworkUtil {
                 return false;
             }
         }
-        return false;
+        return true;
     }
 
     /**
