@@ -226,8 +226,8 @@ public final class LocalListUtil {
         try {
             InternetDomainName idn = InternetDomainName.from(normalized);
 
-            if (idn.hasPublicSuffix() && idn.publicSuffix() != null) {
-                minLabels = idn.publicSuffix().parts().size() + 1;
+            if (idn.hasRegistrySuffix() && idn.registrySuffix() != null) {
+                minLabels = idn.registrySuffix().parts().size() + 1;
             }
         } catch (IllegalArgumentException ignored) {
             // ignored
