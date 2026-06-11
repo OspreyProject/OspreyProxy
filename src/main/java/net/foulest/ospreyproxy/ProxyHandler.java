@@ -303,7 +303,12 @@ public class ProxyHandler {
 
                     return switch (statusCode) {
                         case 400 -> ErrorUtil.RESP_400;
-                        case 401, 498 -> ErrorUtil.RESP_401;
+
+                        case 401, 498 -> {
+                            log.error("[{}] Upstream rejected API key (HTTP {})", providerName, statusCode);
+                            yield ErrorUtil.RESP_502;
+                        }
+
                         case 404 -> ErrorUtil.RESP_404;
                         case 415 -> ErrorUtil.RESP_415;
 

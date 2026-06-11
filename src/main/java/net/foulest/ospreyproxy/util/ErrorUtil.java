@@ -34,7 +34,6 @@ public final class ErrorUtil {
 
     // Pre-computed response body strings
     public static final String BODY_400 = body(HttpStatus.BAD_REQUEST.getReasonPhrase());
-    private static final String BODY_401 = body(HttpStatus.UNAUTHORIZED.getReasonPhrase());
     private static final String BODY_404 = body(HttpStatus.NOT_FOUND.getReasonPhrase());
     public static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
     public static final String BODY_415 = body(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
@@ -46,7 +45,6 @@ public final class ErrorUtil {
 
     // Pre-built ResponseEntity instances for the most frequently returned errors
     public static final ResponseEntity<String> RESP_400 = build(HttpStatus.BAD_REQUEST, BODY_400);
-    public static final ResponseEntity<String> RESP_401 = build(HttpStatus.UNAUTHORIZED, BODY_401);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
     public static final ResponseEntity<String> RESP_405 = build(HttpStatus.METHOD_NOT_ALLOWED, BODY_405);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
