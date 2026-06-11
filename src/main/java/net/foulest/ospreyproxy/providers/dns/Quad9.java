@@ -35,7 +35,6 @@ import java.util.Map;
 public class Quad9 extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.quad9.net/dns-query?dns=";
-    private static final int NXDOMAIN_RCODE = 3; // RCODE 3 (NXDOMAIN) in the flags byte
 
     /**
      * Constructor for the provider.
@@ -73,7 +72,7 @@ public class Quad9 extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == NXDOMAIN_RCODE;
+        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == 3;
         return blocked ? LookupResult.MALICIOUS : LookupResult.ALLOWED;
     }
 }

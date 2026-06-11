@@ -37,7 +37,6 @@ import java.util.Map;
 public class DNS4EUSecurity extends AbstractDNSProvider {
 
     private static final String API_URL = "https://protective.joindns4.eu/dns-query?dns=";
-    private static final String BLOCK_IP = "51.15.69.11";
 
     /**
      * Constructor for the provider.
@@ -78,7 +77,7 @@ public class DNS4EUSecurity extends AbstractDNSProvider {
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP.equals(ip);
+                return "51.15.69.11".equals(ip);
             }
             return false;
         });

@@ -37,7 +37,6 @@ import java.util.Map;
 public class AdGuardSecurity extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.adguard-dns.com/dns-query?dns=";
-    private static final String BLOCK_IP = "94.140.14.33";
 
     /**
      * Constructor for the provider.
@@ -78,7 +77,7 @@ public class AdGuardSecurity extends AbstractDNSProvider {
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP.equals(ip);
+                return "94.140.14.33".equals(ip);
             }
             return false;
         });

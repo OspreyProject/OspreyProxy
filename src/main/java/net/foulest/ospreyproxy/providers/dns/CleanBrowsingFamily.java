@@ -35,7 +35,6 @@ import java.util.Map;
 public class CleanBrowsingFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://doh.cleanbrowsing.org/doh/family-filter/?dns=";
-    private static final int REFUSED_FLAGS = 131; // RCODE 5 (REFUSED) in the flags byte
 
     /**
      * Constructor for the provider.
@@ -73,7 +72,7 @@ public class CleanBrowsingFamily extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == REFUSED_FLAGS;
+        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == 131;
         return blocked ? LookupResult.ADULT_CONTENT : LookupResult.ALLOWED;
     }
 }

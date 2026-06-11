@@ -38,7 +38,6 @@ import java.util.Map;
 public class ControlDFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://freedns.controld.com/no-drugs-porn-gambling-malware-typo?name=";
-    private static final String BLOCK_IP = "0.0.0.0";
 
     /**
      * Constructor for the provider.
@@ -84,7 +83,7 @@ public class ControlDFamily extends AbstractDNSProvider {
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP.equals(ip);
+                return "0.0.0.0".equals(ip);
             }
             return false;
         });

@@ -38,7 +38,6 @@ import java.util.Map;
 public class SwitchCH extends AbstractDNSProvider {
 
     private static final String API_URL = "https://dns.switch.ch/dns-query?dns=";
-    private static final String BLOCK_CNAME = "landingpage.ph.rpz.switch.ch";
 
     /**
      * Constructor for the provider.
@@ -79,7 +78,7 @@ public class SwitchCH extends AbstractDNSProvider {
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.CNAME) {
                 String cname = DNSUtil.parseName(rdata);
-                return BLOCK_CNAME.equalsIgnoreCase(NetworkUtil.normalize(cname));
+                return "landingpage.ph.rpz.switch.ch".equalsIgnoreCase(NetworkUtil.normalize(cname));
             }
             return false;
         });

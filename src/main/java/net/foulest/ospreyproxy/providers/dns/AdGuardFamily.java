@@ -37,8 +37,6 @@ import java.util.Map;
 public class AdGuardFamily extends AbstractDNSProvider {
 
     private static final String API_URL = "https://family.adguard-dns.com/dns-query?dns=";
-    private static final String BLOCK_IP_MALICIOUS = "94.140.14.33";
-    private static final String BLOCK_IP_ADULT = "94.140.14.35";
 
     /**
      * Constructor for the provider.
@@ -79,7 +77,7 @@ public class AdGuardFamily extends AbstractDNSProvider {
         boolean malicious = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP_MALICIOUS.equals(ip);
+                return "94.140.14.33".equals(ip);
             }
             return false;
         });
@@ -87,7 +85,7 @@ public class AdGuardFamily extends AbstractDNSProvider {
         boolean adultContent = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP_ADULT.equals(ip);
+                return "94.140.14.35".equals(ip);
             }
             return false;
         });
