@@ -21,7 +21,6 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.dns.Accept;
@@ -62,7 +61,6 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
     private static final AtomicBoolean SHARED_CLIENTS_CLOSED = new AtomicBoolean(false);
 
     // Injected by Spring into each concrete @Component subclass
-    private final MetricsService metricsService;
     private final CircuitBreakerService circuitBreakerService;
 
     private @NonNull CloseableHttpClient getDnsHttpClient() {

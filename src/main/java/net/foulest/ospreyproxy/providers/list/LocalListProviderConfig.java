@@ -19,7 +19,6 @@ package net.foulest.ospreyproxy.providers.list;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,8 +31,6 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class LocalListProviderConfig {
 
-    private final MetricsService metricsService;
-
     /**
      * Defines a bean for the OpenPhish local list provider, which uses the OPEN_PHISH descriptor.
      *
@@ -41,7 +38,7 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider openPhishProvider() {
-        return new LocalListProvider(Descriptor.OPEN_PHISH, metricsService);
+        return new LocalListProvider(Descriptor.OPEN_PHISH);
     }
 
     /**
@@ -51,7 +48,7 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider phishDestroyProvider() {
-        return new LocalListProvider(Descriptor.PHISH_DESTROY, metricsService);
+        return new LocalListProvider(Descriptor.PHISH_DESTROY);
     }
 
     /**
@@ -61,7 +58,7 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider phishuntProvider() {
-        return new LocalListProvider(Descriptor.PHISHUNT_IO, metricsService);
+        return new LocalListProvider(Descriptor.PHISHUNT_IO);
     }
 
     /**
@@ -71,7 +68,7 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider phishingDatabaseProvider() {
-        return new LocalListProvider(Descriptor.PHISHING_DATABASE, metricsService);
+        return new LocalListProvider(Descriptor.PHISHING_DATABASE);
     }
 
     /**
@@ -81,7 +78,7 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider urlhausProvider() {
-        return new LocalListProvider(Descriptor.URLHAUS, metricsService);
+        return new LocalListProvider(Descriptor.URLHAUS);
     }
 
     /**
@@ -91,6 +88,6 @@ public class LocalListProviderConfig {
      */
     @Bean
     public LocalListProvider threatfoxProvider() {
-        return new LocalListProvider(Descriptor.THREATFOX, metricsService);
+        return new LocalListProvider(Descriptor.THREATFOX);
     }
 }

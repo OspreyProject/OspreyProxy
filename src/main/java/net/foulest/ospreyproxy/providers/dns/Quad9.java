@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.services.MetricsService;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -41,11 +40,10 @@ public class Quad9 extends AbstractDNSProvider {
     /**
      * Constructor for the provider.
      *
-     * @param metricsService The metrics service to use for recording metrics.
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public Quad9(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
-        super(metricsService, circuitBreakerService);
+    public Quad9(CircuitBreakerService circuitBreakerService) {
+        super(circuitBreakerService);
     }
 
     @Override

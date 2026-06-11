@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -44,11 +43,10 @@ public class AdGuardFamily extends AbstractDNSProvider {
     /**
      * Constructor for the provider.
      *
-     * @param metricsService The metrics service to use for recording metrics.
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public AdGuardFamily(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
-        super(metricsService, circuitBreakerService);
+    public AdGuardFamily(CircuitBreakerService circuitBreakerService) {
+        super(circuitBreakerService);
     }
 
     @Override

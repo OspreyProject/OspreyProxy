@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -43,11 +42,10 @@ public class DNS4EUSecurity extends AbstractDNSProvider {
     /**
      * Constructor for the provider.
      *
-     * @param metricsService The metrics service to use for recording metrics.
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public DNS4EUSecurity(MetricsService metricsService, CircuitBreakerService circuitBreakerService) {
-        super(metricsService, circuitBreakerService);
+    public DNS4EUSecurity(CircuitBreakerService circuitBreakerService) {
+        super(circuitBreakerService);
     }
 
     @Override
