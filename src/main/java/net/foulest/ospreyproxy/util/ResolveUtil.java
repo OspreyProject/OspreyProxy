@@ -37,6 +37,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -50,6 +51,9 @@ final class ResolveUtil {
     // 2s connect, 2s connection-request, 5s response, 10s operation timeout.
     private static final CloseableHttpClient DOH_CLIENT =
             HttpClientFactory.createHttp2Client(2, 2, 5, 10);
+
+    // Virtual thread executor for DoH queries
+    private static final ExecutorService DOH_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     // Cloudflare's DoH JSON endpoint
     private static final String DOH_URL = "https://cloudflare-dns.com/dns-query";
@@ -75,6 +79,8 @@ final class ResolveUtil {
         if (!DOH_CLIENT_CLOSED.compareAndSet(false, true)) {
             return;
         }
+
+        DOH_EXECUTOR.shutdownNow();
 
         try {
             DOH_CLIENT.close();
@@ -102,8 +108,7 @@ final class ResolveUtil {
             return false;
         }
 
-        // IPv6-only domains have no A records; check AAAA before declaring unresolvable
-        boolean result = doesQueryHaveAnswers(host, "A") || doesQueryHaveAnswers(host, "AAAA");
+        boolean result = resolvesViaAnyRecord(host);
 
         if (result) {
             POSITIVE_CACHE.put(cacheKey, Boolean.TRUE);
@@ -111,6 +116,30 @@ final class ResolveUtil {
             NEGATIVE_CACHE.put(cacheKey, Boolean.TRUE);
         }
         return result;
+    }
+
+    /**
+     * Queries A and AAAA concurrently and returns as soon as either has answers.
+     * Worst case (unresolvable host) is one round trip instead of two.
+     */
+    private static boolean resolvesViaAnyRecord(@NonNull String host) {
+        CompletionService<Boolean> completion = new ExecutorCompletionService<>(DOH_EXECUTOR);
+        completion.submit(() -> doesQueryHaveAnswers(host, "A"));
+        completion.submit(() -> doesQueryHaveAnswers(host, "AAAA"));
+
+        try {
+            for (int i = 0; i < 2; i++) {
+                if (Boolean.TRUE.equals(completion.take().get())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return true; // fail-open, consistent with existing behavior
+        } catch (ExecutionException e) {
+            return true; // can't happen in practice (doesQueryHaveAnswers never throws), fail-open anyway
+        }
     }
 
     /**
