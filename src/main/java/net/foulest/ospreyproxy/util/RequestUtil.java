@@ -25,6 +25,7 @@ import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
@@ -162,72 +163,79 @@ public final class RequestUtil {
     }
 
     /**
-     * Validates a request's body.
+     * Validates a request's JSON body and extracts the "url" field if present.
      *
-     * @param bodyBytes    The raw request body bytes to validate.
-     * @param provider     The provider to reject invalid requests with.
+     * @param bodyBytes The raw request body bytes to validate and parse.
+     * @param provider The provider to reject invalid requests with.
      * @param providerName The name of the provider.
-     * @param hashedIp     The hashed IP address of the sender.
-     * @return A map containing the parsed body fields if valid.
-     * @throws StatusCodeException If the body is found to be invalid.
+     * @param hashedIp The hashed IP address of the sender for rate limiting purposes.
+     * @return A map containing the extracted "url" field if present, or an empty map if not.
      */
-    @SuppressWarnings({"NestedMethodCall", "NestedAssignment"})
-    public static @NonNull Map<String, String> validateBody(byte[] bodyBytes, Provider provider,
-                                                            String providerName, String hashedIp) {
+    public static @NonNull @Unmodifiable Map<String, String> validateBody(byte[] bodyBytes, Provider provider,
+                                                                          String providerName, String hashedIp) {
         byte[] bytes = (bodyBytes != null) ? bodyBytes : new byte[0];
 
-        // Rejects empty bodies
         if (bytes.length == 0) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with empty body");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
+            throw reject(provider, hashedIp, providerName, "Blocked request with empty body");
         }
 
-        Map<String, String> incoming;
+        String url = null;
 
-        // Parses the request body as JSON
-        try {
-            incoming = JacksonUtil.MAPPER.readValue(bytes, JacksonUtil.MAP_TYPE_STRING);
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
-        }
+        try (JsonParser parser = JacksonUtil.MAPPER.createParser(bytes)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw reject(provider, hashedIp, providerName, "Blocked request with non-object JSON body");
+            }
 
-        // Rejects a null parse result (e.g., body was the JSON literal "null")
-        if (incoming == null) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with null JSON body");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
-        }
-
-        // Rejects unexpected fields
-        if (incoming.size() > 1) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with unexpected fields");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
-        }
-
-        // Rejects non-string url values
-        try (JsonParser validator = JacksonUtil.MAPPER.createParser(bytes)) {
+            int fieldCount = 0;
             JsonToken token;
-            boolean inUrlValue = false;
 
-            while ((token = validator.nextToken()) != null) {
-                if (token == JsonToken.PROPERTY_NAME && "url".equals(validator.getString())) {
-                    inUrlValue = true;
-                } else if (inUrlValue) {
-                    if (token != JsonToken.VALUE_STRING && token != JsonToken.VALUE_NULL) {
-                        RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                                "Blocked request with non-string url value: " + token + " (" + token.asString() + ")");
-                        throw new StatusCodeException(ErrorUtil.RESP_400);
-                    }
-                    break;
+            while ((token = parser.nextToken()) != JsonToken.END_OBJECT) {
+                if (token != JsonToken.PROPERTY_NAME || ++fieldCount > 1) {
+                    throw reject(provider, hashedIp, providerName, "Blocked request with unexpected fields");
+                }
+
+                String fieldName = parser.currentName();
+                JsonToken valueToken = parser.nextToken();
+
+                if (!"url".equals(fieldName)) {
+                    throw reject(provider, hashedIp, providerName, "Blocked request with unexpected fields");
+                }
+
+                if (valueToken == JsonToken.VALUE_STRING) {
+                    url = parser.getString();
+                } else if (valueToken != JsonToken.VALUE_NULL) {
+                    throw reject(provider, hashedIp, providerName,
+                            "Blocked request with non-string url value: " + valueToken);
                 }
             }
+
+            // Reject trailing garbage after the closing brace (e.g. "{...}{...}")
+            if (parser.nextToken() != null) {
+                throw reject(provider, hashedIp, providerName, "Blocked request with trailing JSON content");
+            }
+        } catch (StatusCodeException e) {
+            throw e; // includes the 429 that rejectInvalidRequest may raise
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected malformed JSON body on request: {} ({})",
-                    providerName, e.getMessage(), e.getClass().getName());
-            throw new StatusCodeException(ErrorUtil.RESP_400);
+            throw reject(provider, hashedIp, providerName,
+                    "Blocked request with malformed JSON body (" + e.getClass().getName() + ")");
         }
-        return incoming;
+        return url != null ? Map.of("url", url) : Map.of();
+    }
+
+    /**
+     * Records the invalid request against the abuse limiter and returns a 400 to throw.
+     * Note: rejectInvalidRequest may itself throw a 429 if the IP is over the limit.
+     *
+     * @param provider The provider to reject invalid requests with.
+     * @param hashedIp The hashed client IP.
+     * @param providerName The provider name.
+     * @param message The rejection log message.
+     * @return A StatusCodeException with a 400 response code to throw.
+     */
+    private static @NonNull StatusCodeException reject(Provider provider, String hashedIp,
+                                                       String providerName, String message) {
+        RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, message);
+        return new StatusCodeException(ErrorUtil.RESP_400);
     }
 
     /**
