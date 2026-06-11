@@ -181,12 +181,11 @@ public class ProxyHandler {
         String endpointName = provider.getEndpointName();
 
         try {
-            String hashedIp = RequestUtil.validateIP(request, provider, providerName);
-
             if (!provider.isEnabled()) {
                 return ErrorUtil.RESP_503;
             }
 
+            String hashedIp = RequestUtil.validateIP(request, provider, providerName);
             Map<String, String> incoming = RequestUtil.validateBody(bodyBytes, provider, providerName, hashedIp);
             String url = Objects.toString(incoming.get("url"), "").strip();
             URI parsedUri = RequestUtil.validateURI(url, provider, providerName, hashedIp);
