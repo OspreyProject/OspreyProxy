@@ -19,7 +19,6 @@ package net.foulest.ospreyproxy.util.dns;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -33,7 +32,6 @@ import java.util.regex.Pattern;
 /**
  * Utility class for building DNS queries in wire format and encoding them for DoH (DNS over HTTPS) requests.
  */
-@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class DNSUtil {
 

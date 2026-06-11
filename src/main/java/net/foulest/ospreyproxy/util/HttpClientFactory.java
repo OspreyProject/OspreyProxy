@@ -19,7 +19,6 @@ package net.foulest.ospreyproxy.util;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.HttpRequestRetryStrategy;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -42,7 +41,6 @@ import java.io.IOException;
 /**
  * Factory class for creating configured HTTP clients.
  */
-@Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class HttpClientFactory {
 

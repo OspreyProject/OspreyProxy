@@ -21,17 +21,13 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.stereotype.Service;
 
 /**
  * Service for recording and analyzing request metrics.
  */
-@Slf4j
 @Service
-@EnableScheduling
 @RequiredArgsConstructor
 public class MetricsService {
 

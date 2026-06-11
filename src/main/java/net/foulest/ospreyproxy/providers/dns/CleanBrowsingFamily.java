@@ -17,7 +17,6 @@
  */
 package net.foulest.ospreyproxy.providers.dns;
 
-import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
@@ -30,7 +29,6 @@ import java.util.Map;
 /**
  * Provider implementation for CleanBrowsing Family DNS.
  */
-@Slf4j
 @Component
 public class CleanBrowsingFamily extends AbstractDNSProvider {
 

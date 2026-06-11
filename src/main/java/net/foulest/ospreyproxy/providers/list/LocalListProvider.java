@@ -18,7 +18,6 @@
 package net.foulest.ospreyproxy.providers.list;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import org.jspecify.annotations.NonNull;
@@ -32,7 +31,6 @@ import org.jspecify.annotations.NonNull;
  * <p>
  * One bean is registered per {@link Descriptor} constant via {@link LocalListProviderConfig}.
  */
-@Slf4j
 @RequiredArgsConstructor
 public class LocalListProvider extends AbstractProvider {
 

@@ -17,7 +17,6 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -29,7 +28,6 @@ import java.util.Set;
  * @param domainSet The set of domains fetched from the provider, which may be empty.
  * @param etag The ETag associated with the fetched content, if available.
  */
-@Slf4j
 record FetchResult(@NonNull Set<String> domainSet, @Nullable String etag) {
 
 }

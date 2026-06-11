@@ -21,7 +21,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HashUtil;
 import org.jetbrains.annotations.Contract;
@@ -35,7 +34,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Abstract base class for all Provider implementations, providing common caching and rate limiting logic.
  */
-@Slf4j
 public abstract class AbstractProvider implements Provider {
 
     private static final int RATE_LIMIT_CACHE_MAX_SIZE = 20_000;
