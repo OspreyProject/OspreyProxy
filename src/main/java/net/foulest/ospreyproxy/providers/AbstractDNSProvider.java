@@ -28,10 +28,7 @@ import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.core5.http.ClassicHttpRequest;
-import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpEntity;
-import org.apache.hc.core5.http.MessageHeaders;
+import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -261,7 +258,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
             ClassicHttpRequest request = new HttpGet(url);
             request.addHeader("Accept", accept);
 
-            return client.execute(request, response -> {
+            return client.execute(request, (ClassicHttpResponse response) -> {
                 int statusCode = response.getCode();
                 String contentType = getContentType(response);
 
