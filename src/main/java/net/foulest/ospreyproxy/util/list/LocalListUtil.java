@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
+import com.google.common.net.InternetDomainName;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -220,11 +221,21 @@ public final class LocalListUtil {
             return true;
         }
 
+        // Walk ancestors, but never below the registrable domain
+        int minLabels = 2;
+        try {
+            InternetDomainName idn = InternetDomainName.from(normalized);
+
+            if (idn.hasPublicSuffix() && idn.publicSuffix() != null) {
+                minLabels = idn.publicSuffix().parts().size() + 1;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // ignored
+        }
+
         String[] labels = normalized.split("\\.", -1);
 
-        // Walk up the domain tree, checking each parent suffix.
-        // Stops before the TLD (must have at least two labels to be meaningful).
-        for (int i = 1; i < labels.length - 1; i++) {
+        for (int i = 1; i <= labels.length - minLabels; i++) {
             String ancestor = String.join(".", Arrays.copyOfRange(labels, i, labels.length));
 
             if (domainSet.contains(ancestor)) {
@@ -681,6 +692,17 @@ public final class LocalListUtil {
                 || normalized.contains("/")
                 || normalized.contains("\\")) {
             return null;
+        }
+
+        // Refuse entries that are public suffixes, since they would cause every possible
+        // subdomain to match and are unlikely to be intentional list entries
+        try {
+            if (InternetDomainName.from(normalized).isPublicSuffix()) {
+                log.warn("Refusing list entry that is a public suffix: {}", normalized);
+                return null;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // ignored
         }
         return normalized;
     }

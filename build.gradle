@@ -24,6 +24,7 @@ dependencies {
     implementation 'com.bucket4j:bucket4j_jdk17-core:8.16.1'
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.5'
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'com.google.guava:guava:33.4.0-jre'
 
     // Actuator + Micrometer - for metrics and health endpoints
     // https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
