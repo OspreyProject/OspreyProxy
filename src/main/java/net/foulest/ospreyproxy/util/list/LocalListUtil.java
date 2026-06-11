@@ -694,11 +694,11 @@ public final class LocalListUtil {
             return null;
         }
 
-        // Refuse entries that are public suffixes, since they would cause every possible
+        // Refuse entries that are registry suffixes, since they would cause every possible
         // subdomain to match and are unlikely to be intentional list entries
         try {
-            if (InternetDomainName.from(normalized).isPublicSuffix()) {
-                log.warn("Refusing list entry that is a public suffix: {}", normalized);
+            if (InternetDomainName.from(normalized).isRegistrySuffix()) {
+                log.warn("Refusing list entry that is a registry suffix: {}", normalized);
                 return null;
             }
         } catch (IllegalArgumentException ignored) {
