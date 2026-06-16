@@ -305,7 +305,7 @@ public final class LocalListUtil {
                 applyContent(descriptor, result.domainSet(), result.etag());
             }
         } catch (IOException | RuntimeException e) {
-            log.warn("[{}] Failed to fetch list update: {}", descriptor.getShortName(), e.getClass().getName());
+            log.warn("[{}] Failed to fetch list update: {}", descriptor.getShortName(), e.getClass().getName(), e);
         }
     }
 

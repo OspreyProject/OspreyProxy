@@ -110,7 +110,9 @@ final class RateLimitUtil {
                                      @NonNull String logMessage) {
         // Checks if abuse limiting is enabled for the provider
         if (!provider.isAbuseLimitingEnabled()) {
-            log.warn("[{}] {}", providerName, logMessage);
+            if (!logMessage.isEmpty()) {
+                log.warn("[{}] {}", providerName, logMessage);
+            }
             return;
         }
 
@@ -128,6 +130,8 @@ final class RateLimitUtil {
         }
 
         // If the IP is not yet blocked, log the reason
-        log.warn("[{}] {}", providerName, logMessage);
+        if (!logMessage.isEmpty()) {
+            log.warn("[{}] {}", providerName, logMessage);
+        }
     }
 }

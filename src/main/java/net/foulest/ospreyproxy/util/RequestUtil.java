@@ -379,8 +379,7 @@ public final class RequestUtil {
 
         // Rejects hosts without a . symbol
         if (!host.contains(".")) {
-            rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with host missing dot");
+            rejectInvalidHost(provider, providerName, hashedIp, "");
         }
 
         // Returns IP literals as-is without IDN processing
@@ -484,8 +483,7 @@ public final class RequestUtil {
         // Blocks private/internal hosts (string-based; IP-level blocking happens inside
         // NetworkUtil's DNS resolver at connection time to prevent DNS rebinding)
         if (NetworkUtil.isPrivateHost(host)) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request to private/internal host");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
