@@ -29,39 +29,34 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for OpenDNS Security DNS.
+ * Provider implementation for AdGuard DNS.
  */
 @Component
-public class OpenDNSFamily extends AbstractDNSProvider {
+public class AdGuard extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://doh.familyshield.opendns.com/dns-query?dns=";
+    private static final String API_URL = "https://dns.adguard-dns.com/dns-query?dns=";
 
     /**
      * Constructor for the provider.
      *
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public OpenDNSFamily(CircuitBreakerService circuitBreakerService) {
+    public AdGuard(CircuitBreakerService circuitBreakerService) {
         super(circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "OpenDNS Family";
+        return "AdGuard";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "opendns-family";
+        return "adguard";
     }
 
     @Override
     public boolean isEnabled() {
-        return true;
-    }
-
-    @Override
-    public boolean isUsingOldHTTP() {
         return true;
     }
 
@@ -79,10 +74,11 @@ public class OpenDNSFamily extends AbstractDNSProvider {
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
-                return ttl == 0;
+                String ip = DNSUtil.parseIPv4(rdata);
+                return "94.140.14.33".equals(ip);
             }
             return false;
         });
-        return blocked ? LookupResult.ADULT_CONTENT : LookupResult.ALLOWED;
+        return blocked ? LookupResult.MALICIOUS : LookupResult.ALLOWED;
     }
 }

@@ -29,34 +29,39 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for AdGuard Security DNS.
+ * Provider implementation for OpenDNS DNS.
  */
 @Component
-public class AdGuardSecurity extends AbstractDNSProvider {
+public class OpenDNS extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://dns.adguard-dns.com/dns-query?dns=";
+    private static final String API_URL = "https://doh.opendns.com/dns-query?dns=";
 
     /**
      * Constructor for the provider.
      *
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public AdGuardSecurity(CircuitBreakerService circuitBreakerService) {
+    public OpenDNS(CircuitBreakerService circuitBreakerService) {
         super(circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "AdGuard Security";
+        return "OpenDNS";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "adguard-security";
+        return "opendns";
     }
 
     @Override
     public boolean isEnabled() {
+        return true;
+    }
+
+    @Override
+    public boolean isUsingOldHTTP() {
         return true;
     }
 
@@ -74,8 +79,7 @@ public class AdGuardSecurity extends AbstractDNSProvider {
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
-                String ip = DNSUtil.parseIPv4(rdata);
-                return "94.140.14.33".equals(ip);
+                return ttl == 0;
             }
             return false;
         });

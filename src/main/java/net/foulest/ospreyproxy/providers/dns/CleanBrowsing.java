@@ -20,8 +20,6 @@ package net.foulest.ospreyproxy.providers.dns;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.util.dns.DNSUtil;
-import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -29,31 +27,30 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for DNS4EU Security DNS.
+ * Provider implementation for CleanBrowsing DNS.
  */
 @Component
-public class DNS4EUFamily extends AbstractDNSProvider {
+public class CleanBrowsing extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://child.joindns4.eu/dns-query?dns=";
-    private static final String BLOCK_IP = "51.15.69.11";
+    private static final String API_URL = "https://doh.cleanbrowsing.org/doh/security-filter/?dns=";
 
     /**
      * Constructor for the provider.
      *
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public DNS4EUFamily(CircuitBreakerService circuitBreakerService) {
+    public CleanBrowsing(CircuitBreakerService circuitBreakerService) {
         super(circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "DNS4EU Family";
+        return "CleanBrowsing";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "dns4eu-family";
+        return "cleanbrowsing";
     }
 
     @Override
@@ -73,13 +70,7 @@ public class DNS4EUFamily extends AbstractDNSProvider {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
-            if (type == Record.A) {
-                String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP.equals(ip);
-            }
-            return false;
-        });
+        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == 131;
         return blocked ? LookupResult.MALICIOUS : LookupResult.ALLOWED;
     }
 }

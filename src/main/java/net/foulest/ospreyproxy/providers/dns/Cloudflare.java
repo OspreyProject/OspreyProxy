@@ -20,6 +20,7 @@ package net.foulest.ospreyproxy.providers.dns;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
+import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -27,30 +28,30 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for CleanBrowsing Family DNS.
+ * Provider implementation for Cloudflare DNS.
  */
 @Component
-public class CleanBrowsingFamily extends AbstractDNSProvider {
+public class Cloudflare extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://doh.cleanbrowsing.org/doh/family-filter/?dns=";
+    private static final String API_URL = "https://security.cloudflare-dns.com/dns-query?name=";
 
     /**
      * Constructor for the provider.
      *
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public CleanBrowsingFamily(CircuitBreakerService circuitBreakerService) {
+    public Cloudflare(CircuitBreakerService circuitBreakerService) {
         super(circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "CleanBrowsing Family";
+        return "Cloudflare";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "cleanbrowsing-family";
+        return "cloudflare";
     }
 
     @Override
@@ -64,13 +65,19 @@ public class CleanBrowsingFamily extends AbstractDNSProvider {
     }
 
     @Override
+    protected DNSFormat getDnsFormat() {
+        return DNSFormat.NAME_JSON;
+    }
+
+    @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
                                      @Nullable Map<String, Object> jsonResponse) {
-        if (rawBytes == null || rawBytes.length == 0) {
+        if (jsonResponse == null || jsonResponse.isEmpty()) {
             return LookupResult.FAILED;
         }
 
-        boolean blocked = rawBytes.length >= 4 && (rawBytes[3] & 0xFF) == 131;
-        return blocked ? LookupResult.ADULT_CONTENT : LookupResult.ALLOWED;
+        String commentStr = extractComment(jsonResponse);
+        boolean malicious = commentStr.contains("EDE(16): Censored");
+        return malicious ? LookupResult.MALICIOUS : LookupResult.ALLOWED;
     }
 }

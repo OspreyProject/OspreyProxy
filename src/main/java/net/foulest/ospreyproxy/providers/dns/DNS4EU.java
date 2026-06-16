@@ -20,7 +20,6 @@ package net.foulest.ospreyproxy.providers.dns;
 import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
-import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
 import net.foulest.ospreyproxy.util.dns.Record;
 import org.jspecify.annotations.NonNull;
@@ -30,31 +29,30 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Control D Security DNS.
+ * Provider implementation for DNS4EU DNS.
  */
 @Component
-public class ControlDSecurity extends AbstractDNSProvider {
+public class DNS4EU extends AbstractDNSProvider {
 
-    private static final String API_URL = "https://freedns.controld.com/no-malware-typo?name=";
-    private static final String BLOCK_IP = "0.0.0.0";
+    private static final String API_URL = "https://protective.joindns4.eu/dns-query?dns=";
 
     /**
      * Constructor for the provider.
      *
      * @param circuitBreakerService The circuit breaker service to use for handling failures.
      */
-    public ControlDSecurity(CircuitBreakerService circuitBreakerService) {
+    public DNS4EU(CircuitBreakerService circuitBreakerService) {
         super(circuitBreakerService);
     }
 
     @Override
     public @NonNull String getDisplayName() {
-        return "Control D Security";
+        return "DNS4EU";
     }
 
     @Override
     public @NonNull String getEndpointName() {
-        return "controld-security";
+        return "dns4eu";
     }
 
     @Override
@@ -68,11 +66,6 @@ public class ControlDSecurity extends AbstractDNSProvider {
     }
 
     @Override
-    protected DNSFormat getDnsFormat() {
-        return DNSFormat.NAME_MESSAGE;
-    }
-
-    @Override
     protected LookupResult interpret(byte @Nullable [] rawBytes,
                                      @Nullable Map<String, Object> jsonResponse) {
         if (rawBytes == null || rawBytes.length == 0) {
@@ -82,7 +75,7 @@ public class ControlDSecurity extends AbstractDNSProvider {
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
             if (type == Record.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
-                return BLOCK_IP.equals(ip);
+                return "51.15.69.11".equals(ip);
             }
             return false;
         });
