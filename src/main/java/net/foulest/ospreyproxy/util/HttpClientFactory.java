@@ -94,13 +94,11 @@ public final class HttpClientFactory {
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
                         .setTimeToLive(Timeout.ofMinutes(5))
-                        .setValidateAfterInactivity(TimeValue.ofSeconds(5))
                         .build())
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))
                         .setResponseTimeout(Timeout.ofSeconds(responseTimeoutSeconds))
                         .build())
-                .evictIdleConnections(TimeValue.ofSeconds(30))
                 .disableRedirectHandling()
                 .setRetryStrategy(STALE_CONNECTION_RETRY)
                 .build();
