@@ -73,7 +73,7 @@ public class IZOOlogic extends AbstractProvider {
     @SuppressWarnings("NestedMethodCall")
     public @NonNull Map<String, Object> buildBody(@NonNull String url) {
         return Map.of(
-                "uri", url
+                "url", url
         );
     }
 
@@ -85,6 +85,10 @@ public class IZOOlogic extends AbstractProvider {
         try {
             Map<String, Object> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.MAP_TYPE_OBJECT);
             Object result = data.get("result");
+
+            if ("Malicious or Phishing Url".equals(result)) {
+                return LookupResult.MALICIOUS;
+            }
 
             if ("Clean".equals(result)) {
                 return LookupResult.ALLOWED;
