@@ -143,7 +143,6 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
 
                     if (response.isEmpty()) {
-                        log.warn("[{}] Empty response returned", displayName);
                         yield LookupResult.FAILED;
                     }
                     yield interpret(null, response);

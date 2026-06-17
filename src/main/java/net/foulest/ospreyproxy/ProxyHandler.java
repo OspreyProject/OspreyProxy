@@ -52,6 +52,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -354,6 +355,9 @@ public class ProxyHandler {
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
             log.error("[{}] Upstream request blocked by SSRF resolver ({})", providerName, e.getClass().getName());
+            return ErrorUtil.RESP_502;
+        } catch (SocketException e) {
+            log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName(), e);
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName());
