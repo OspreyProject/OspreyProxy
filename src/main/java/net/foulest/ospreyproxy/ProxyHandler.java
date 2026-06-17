@@ -41,6 +41,7 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuil
 import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
+import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
@@ -79,6 +80,7 @@ public class ProxyHandler {
                     .setDefaultConnectionConfig(ConnectionConfig.custom()
                             .setConnectTimeout(Timeout.ofSeconds(5))
                             .setTimeToLive(Timeout.ofMinutes(5))
+                            .setValidateAfterInactivity(TimeValue.ofSeconds(5))
                             .build())
                     .build())
             .setDefaultRequestConfig(RequestConfig.custom()

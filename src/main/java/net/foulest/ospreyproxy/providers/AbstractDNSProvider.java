@@ -298,11 +298,14 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     log.warn("[{}] Empty response body after {} ms", displayName, totalElapsedMs);
                     return null;
                 }
+
+                circuitBreakerService.recordSuccess(displayName, System.nanoTime() - startNanos);
                 return body;
             });
-        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.warn("[{}] HTTP fetch failed: {} ({})",
-                    displayName, e.getMessage(), e.getClass().getName());
+        } catch (Exception e) {
+            long elapsed = System.nanoTime() - startNanos;
+            circuitBreakerService.recordFailure(displayName, elapsed, e);
+            log.warn("[{}] HTTP fetch failed: {} ({})", displayName, e.getMessage(), e.getClass().getName());
             return null;
         }
     }
