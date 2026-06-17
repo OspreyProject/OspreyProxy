@@ -89,3 +89,4 @@ machinet.conf
 # Yarn
 /yarn.lock
 /.run/
+src.zip
