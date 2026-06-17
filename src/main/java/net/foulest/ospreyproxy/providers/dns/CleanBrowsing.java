@@ -50,7 +50,7 @@ public class CleanBrowsing extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "cleanbrowsing";
+        return "cleanbrowsing-security";
     }
 
     @Override

@@ -51,7 +51,7 @@ public class Cloudflare extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "cloudflare";
+        return "cloudflare-security";
     }
 
     @Override

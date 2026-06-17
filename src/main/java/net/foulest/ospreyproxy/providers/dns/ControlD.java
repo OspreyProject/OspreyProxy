@@ -54,7 +54,7 @@ public class ControlD extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "controld";
+        return "controld-security";
     }
 
     @Override

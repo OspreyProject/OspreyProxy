@@ -52,7 +52,7 @@ public class OpenDNS extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "opendns";
+        return "opendns-security";
     }
 
     @Override
