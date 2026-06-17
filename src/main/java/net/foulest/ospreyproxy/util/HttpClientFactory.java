@@ -22,15 +22,18 @@ import lombok.NoArgsConstructor;
 import org.apache.hc.client5.http.HttpRequestRetryStrategy;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.config.TlsConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.protocol.HttpContext;
+import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jetbrains.annotations.Contract;
@@ -94,6 +97,54 @@ public final class HttpClientFactory {
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
                         .setTimeToLive(Timeout.ofMinutes(5))
+                        .build())
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))
+                        .setResponseTimeout(Timeout.ofSeconds(responseTimeoutSeconds))
+                        .build())
+                .disableRedirectHandling()
+                .setRetryStrategy(STALE_CONNECTION_RETRY)
+                .build();
+
+        asyncClient.start();
+        return HttpAsyncClients.classic(asyncClient, Timeout.ofSeconds(operationTimeoutSeconds));
+    }
+
+    /**
+     * Creates a shared protocol-negotiating client with the given timeout settings.
+     * <p>
+     * Unlike {@link #createHttp2Client}, this client advertises both {@code h2} and {@code http/1.1}
+     * via ALPN ({@link HttpVersionPolicy#NEGOTIATE}) and uses whichever protocol the server selects,
+     * preferring HTTP/2 but gracefully falling back to HTTP/1.1. This is the correct choice for
+     * fetching from heterogeneous third-party sources whose protocol support is unknown or varies,
+     * since an HTTP/2-only client throws {@code ProtocolNegotiationException} the moment a server
+     * answers with {@code http/1.1}.
+     *
+     * @param connectTimeoutSeconds Connection establishment timeout in seconds.
+     * @param connectionRequestTimeoutSeconds Timeout for requesting a connection from the connection manager, in seconds.
+     * @param responseTimeoutSeconds Socket timeout for waiting for a response, in seconds.
+     * @param operationTimeoutSeconds Overall timeout for the entire request execution, in seconds.
+     * @return A synchronous {@link CloseableHttpClient} facade over a negotiating async client, where
+     *         {@code operationTimeoutSeconds} bounds the total blocking time per request.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    public static @NonNull CloseableHttpClient createNegotiatingClient(int connectTimeoutSeconds,
+                                                                       int connectionRequestTimeoutSeconds,
+                                                                       int responseTimeoutSeconds,
+                                                                       int operationTimeoutSeconds) {
+        CloseableHttpAsyncClient asyncClient = HttpAsyncClients.custom()
+                .setConnectionManager(PoolingAsyncClientConnectionManagerBuilder.create()
+                        .setDnsResolver(NetworkUtil.DNS_RESOLVER)
+                        .setMaxConnTotal(100)
+                        .setMaxConnPerRoute(50)
+                        .setDefaultConnectionConfig(ConnectionConfig.custom()
+                                .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSeconds))
+                                .setTimeToLive(Timeout.ofMinutes(5))
+                                .setValidateAfterInactivity(TimeValue.ofSeconds(5))
+                                .build())
+                        .setDefaultTlsConfig(TlsConfig.custom()
+                                .setVersionPolicy(HttpVersionPolicy.NEGOTIATE)
+                                .build())
                         .build())
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectionRequestTimeout(Timeout.ofSeconds(connectionRequestTimeoutSeconds))

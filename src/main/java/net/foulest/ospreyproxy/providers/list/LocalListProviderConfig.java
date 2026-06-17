@@ -119,5 +119,4 @@ public class LocalListProviderConfig {
     public LocalListProvider validinProvider() {
         return new LocalListProvider(Descriptor.VALIDIN);
     }
-
 }

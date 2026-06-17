@@ -55,10 +55,10 @@ import java.util.concurrent.atomic.AtomicReference;
 @SuppressWarnings("NestedMethodCall")
 public final class LocalListUtil {
 
-    // HTTP/2 client for list fetches.
+    // Protocol-negotiating client for list fetches (prefers HTTP/2, falls back to HTTP/1.1 via ALPN).
     // 30s connect, 30s connection-request, 30s response, 35s operation timeout.
     private static final CloseableHttpClient FETCH_CLIENT =
-            HttpClientFactory.createHttp2Client(30, 30, 30, 35);
+            HttpClientFactory.createNegotiatingClient(30, 30, 30, 35);
 
     // Minimum number of comma-separated fields required in a CSV threat-feed line
     private static final int MIN_CSV_FIELDS = 4;
