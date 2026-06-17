@@ -252,6 +252,7 @@ public class ProxyHandler {
                                                    @NonNull String forwardUrl) {
         // Skip the upstream call if the circuit breaker is open (too many recent failures)
         if (circuitBreaker.isOpen(providerName)) {
+            log.warn("[{}] Circuit breaker is open, skipping upstream call", providerName);
             return ErrorUtil.RESP_429;
         }
 
@@ -316,15 +317,13 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 429 -> {
-                            circuitBreaker.recordFailure(providerName, durationNanos,
-                                    new RuntimeException("HTTP 429"));
+                            circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP 429"));
                             yield ErrorUtil.RESP_429;
                         }
 
                         default -> {
                             if (statusCode >= 500) {
-                                circuitBreaker.recordFailure(providerName, durationNanos,
-                                        new RuntimeException("HTTP " + statusCode));
+                                circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP " + statusCode));
                             }
                             yield ErrorUtil.RESP_502;
                         }

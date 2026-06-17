@@ -33,11 +33,14 @@ import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.protocol.HttpContext;
+import org.apache.hc.core5.http2.H2Error;
+import org.apache.hc.core5.http2.H2StreamResetException;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 
@@ -56,7 +59,7 @@ public final class HttpClientFactory {
         @Contract(pure = true)
         public boolean retryRequest(HttpRequest request, IOException exception,
                                     int execCount, HttpContext context) {
-            return execCount <= 1 && exception instanceof ConnectionClosedException;
+            return execCount <= 1 && (exception instanceof ConnectionClosedException || isRefusedStream(exception));
         }
 
         @Override
@@ -66,9 +69,10 @@ public final class HttpClientFactory {
         }
 
         @Override
+        @Contract(pure = true)
         public TimeValue getRetryInterval(HttpRequest request, IOException exception,
                                           int execCount, HttpContext context) {
-            return HttpRequestRetryStrategy.super.getRetryInterval(request, exception, execCount, context);
+            return TimeValue.ZERO_MILLISECONDS;
         }
 
         @Override
@@ -77,6 +81,27 @@ public final class HttpClientFactory {
             return TimeValue.ZERO_MILLISECONDS;
         }
     };
+
+    /**
+     * Returns {@code true} if the throwable, or any cause in its chain, is an HTTP/2 stream reset
+     * carrying the {@link H2Error#REFUSED_STREAM} (0x7) error code. The chain is walked because the
+     * reset can arrive raw or wrapped in a {@code TransportException} by the classic-over-async
+     * adaptor. REFUSED_STREAM guarantees the origin never began processing the request, so retrying
+     * it on a fresh stream is always safe.
+     *
+     * @param throwable The failure to inspect.
+     * @return {@code true} if a REFUSED_STREAM reset is present in the cause chain.
+     */
+    @Contract(pure = true)
+    private static boolean isRefusedStream(@Nullable Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof H2StreamResetException reset
+                    && reset.getCode() == H2Error.REFUSED_STREAM.getCode()) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * Creates a shared HTTP/2 client with the given timeout settings.
