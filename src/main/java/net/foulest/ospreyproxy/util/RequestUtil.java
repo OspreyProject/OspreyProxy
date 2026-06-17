@@ -270,8 +270,7 @@ public final class RequestUtil {
             String encoded = NetworkUtil.encodeIllegalUriChars(url);
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with malformed URL (" + e.getClass().getName() + ")");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
