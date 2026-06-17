@@ -90,7 +90,7 @@ public class IZOOlogic extends AbstractProvider {
                 return LookupResult.MALICIOUS;
             }
 
-            if ("Clean".equals(result)) {
+            if ("Clean".equals(result) || "Suspicious-Activity".equals(result)) {
                 return LookupResult.ALLOWED;
             }
 
