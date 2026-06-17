@@ -22,8 +22,16 @@ import lombok.Getter;
 import net.foulest.ospreyproxy.result.LookupResult;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Represents a descriptor for a list provider, containing all necessary information to fetch and interpret the list.
+ * <p>
+ * A descriptor may aggregate more than one source URL under a single endpoint. When multiple URLs
+ * are present, each is fetched and conditionally refreshed independently (its own ETag), and the
+ * parsed domains from every source are merged into one live set served by the descriptor's endpoint.
  */
 @Getter
 @AllArgsConstructor
@@ -33,7 +41,7 @@ public enum Descriptor {
      * OpenPhish
      */
     OPEN_PHISH(
-            "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
+            List.of("https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt"),
             Format.TEXT,
             "OpenPhish",
             "openphish",
@@ -46,7 +54,7 @@ public enum Descriptor {
      * PhishDestroy
      */
     PHISH_DESTROY(
-            "https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.txt",
+            List.of("https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.txt"),
             Format.TEXT,
             "PhishDestroy",
             "phishdestroy",
@@ -59,7 +67,7 @@ public enum Descriptor {
      * Phishing.Database
      */
     PHISHING_DATABASE(
-            "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt",
+            List.of("https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt"),
             Format.TEXT,
             "Phishing.Database",
             "phishing-database",
@@ -72,7 +80,7 @@ public enum Descriptor {
      * Phishunt.io
      */
     PHISHUNT_IO(
-            "https://phishunt.io/feed.txt",
+            List.of("https://phishunt.io/feed.txt"),
             Format.TEXT,
             "Phishunt.io",
             "phishunt-io",
@@ -82,10 +90,32 @@ public enum Descriptor {
     ),
 
     /**
+     * Validin
+     */
+    VALIDIN(
+            List.of(
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-1.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-2.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-3.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-4.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-5.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-6.txt",
+                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-7.txt"
+            ),
+            Format.TEXT,
+            "Validin",
+            "validin",
+            LookupResult.PHISHING,
+            120L,
+            null
+    ),
+
+    /**
      * URLhaus
      */
     URLHAUS(
-            "https://urlhaus.abuse.ch/downloads/text",
+            List.of("https://urlhaus.abuse.ch/downloads/text"),
             Format.TEXT,
             "URLhaus",
             "urlhaus",
@@ -98,7 +128,7 @@ public enum Descriptor {
      * THREATfox
      */
     THREATFOX(
-            "https://threatfox-api.abuse.ch/v2/files/exports/%api_key%/hostfile.txt",
+            List.of("https://threatfox-api.abuse.ch/v2/files/exports/%api_key%/hostfile.txt"),
             Format.TEXT,
             "THREATfox",
             "threatfox",
@@ -108,11 +138,12 @@ public enum Descriptor {
     );
 
     /**
-     * The URL template from which to fetch the list data.
-     * May contain {@code %api_key%} as a placeholder, which is substituted at runtime
+     * The URL templates from which to fetch the list data.
+     * Each entry may contain {@code %api_key%} as a placeholder, which is substituted at runtime
      * with the value of the environment variable named by {@link #apiKeyEnvVar}.
+     * Most descriptors have a single source; some aggregate several into one endpoint.
      */
-    private final String url;
+    private final List<String> urls;
 
     /**
      * The format of the list, which determines how it should be parsed.
@@ -142,26 +173,35 @@ public enum Descriptor {
     /**
      * The name of the environment variable that holds the API key for this feed,
      * or {@code null} if no key is required.
-     * When non-null, {@link #getResolvedUrl()} substitutes {@code %api_key%} in
-     * {@link #url} with the value of this environment variable.
+     * When non-null, {@link #getResolvedUrls()} substitutes {@code %api_key%} in each
+     * URL with the value of this environment variable.
      */
     private final @Nullable String apiKeyEnvVar;
 
     /**
-     * Returns the fetch URL with the {@code %api_key%} placeholder substituted.
+     * Returns the fetch URLs with the {@code %api_key%} placeholder substituted in each.
+     * <p>
+     * If this descriptor requires an API key that is not configured, an empty list is returned
+     * so the caller can skip scheduling entirely (fail-open for lookups).
      *
-     * @return The resolved URL, or {@code null} if a required API key is not configured.
+     * @return The resolved URLs, or an empty list if a required API key is not configured.
      */
-    @Nullable String getResolvedUrl() {
+    List<String> getResolvedUrls() {
         if (apiKeyEnvVar == null) {
-            return url;
+            return urls;
         }
 
         String key = System.getenv(apiKeyEnvVar);
 
         if (key == null || key.isBlank()) {
-            return null;
+            return List.of();
         }
-        return url.replace("%api_key%", key);
+
+        List<String> resolved = new ArrayList<>(urls.size());
+
+        for (String url : urls) {
+            resolved.add(url.replace("%api_key%", key));
+        }
+        return Collections.unmodifiableList(resolved);
     }
 }

@@ -70,7 +70,13 @@ public final class LocalListUtil {
     private static final int MAX_DOMAIN_CHARS = 253;
 
     // Runtime state per descriptor, keyed by descriptor identity
+    // Holds the live, merged domain set served to lookups (published for request threads to read)
     private static final Map<Descriptor, AtomicReference<ListSnapshot>> stateMap = new EnumMap<>(Descriptor.class);
+
+    // Per-source-URL fetch cache, keyed by descriptor then by resolved URL
+    // A descriptor may aggregate several source URLs; each is fetched and conditionally refreshed
+    // independently (its own ETag) so a 304 on one source does not discard the others' domains
+    private static final Map<Descriptor, Map<String, FetchResult>> perUrlCache = new EnumMap<>(Descriptor.class);
 
     // Descriptors keyed by endpoint name for O(1) routing in ProxyHandler
     private static final Map<String, Descriptor> descriptorsByEndpointName;
@@ -99,11 +105,12 @@ public final class LocalListUtil {
     public void init() {
         for (Descriptor descriptor : Descriptor.values()) {
             stateMap.put(descriptor, new AtomicReference<>(ListSnapshot.EMPTY));
+            perUrlCache.put(descriptor, new HashMap<>());
 
-            // If this descriptor requires an API key that isn't configured, skip scheduling
-            // and leave the state slot at EMPTY (fail-open for lookups).
-            if (descriptor.getResolvedUrl() == null) {
-                log.warn("[{}] Skipping list feed: {} environment variable is not set",
+            // If this descriptor has no usable source URLs (e.g. a required API key isn't
+            // configured), skip scheduling and leave the state slot at EMPTY (fail-open for lookups).
+            if (descriptor.getResolvedUrls().isEmpty()) {
+                log.warn("[{}] Skipping list feed: no usable source URLs ({} environment variable is not set)",
                         descriptor.getShortName(), descriptor.getApiKeyEnvVar());
                 continue;
             }
@@ -279,52 +286,80 @@ public final class LocalListUtil {
     }
 
     /**
-     * Fetches the list content from the descriptor's URL and updates the live domain set.
-     * Sends the stored ETag as {@code If-None-Match} so the server can return 304 Not Modified
-     * when the content is unchanged, avoiding a full download.
+     * Refreshes every source URL for the descriptor and republishes the merged domain set.
+     * <p>
+     * Each source is fetched independently using its own stored ETag ({@code If-None-Match}),
+     * so a 304 Not Modified on one source keeps that source's previously parsed domains while
+     * others may still update. A fetch failure on a single source is logged and that source
+     * retains its last good domains rather than aborting the whole refresh. The merged set is
+     * republished only when at least one source actually changed.
      *
      * @param descriptor The list descriptor to fetch and update.
      */
-    @SuppressWarnings("NestedMethodCall")
     private static void fetchAndUpdate(@NonNull Descriptor descriptor) {
-        try {
-            AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+        Map<String, FetchResult> cache = perUrlCache.get(descriptor);
 
-            // Checks if the state slot is null, which should never happen
-            if (state == null) {
-                log.warn("[{}] No state slot exists for descriptor", descriptor.getShortName());
-                return;
-            }
-
-            ListSnapshot current = state.get();
-            FetchResult result = fetchRaw(descriptor, current.etag());
-
-            // If result is null, the server returned 304 Not Modified, so we can skip
-            // the update and keep the current snapshot
-            if (result != null) {
-                applyContent(descriptor, result.domainSet(), result.etag());
-            }
-        } catch (IOException | RuntimeException e) {
-            log.warn("[{}] Failed to fetch list update: {}", descriptor.getShortName(), e.getClass().getName(), e);
+        if (cache == null) {
+            log.warn("[{}] No per-URL cache slot exists for descriptor", descriptor.getShortName());
+            return;
         }
+
+        boolean anyChanged = false;
+
+        for (String url : descriptor.getResolvedUrls()) {
+            FetchResult previous = cache.get(url);
+            String previousEtag = previous == null ? null : previous.etag();
+
+            try {
+                FetchResult result = fetchRaw(descriptor, url, previousEtag);
+
+                if (result != null) {
+                    cache.put(url, result);
+                    anyChanged = true;
+                }
+            } catch (IOException | RuntimeException e) {
+                log.warn("[{}] Failed to fetch list source {}: {}",
+                        descriptor.getShortName(), url, e.getClass().getName(), e);
+            }
+        }
+
+        if (!anyChanged) {
+            return;
+        }
+
+        Set<String> merged = new HashSet<>();
+
+        for (FetchResult result : cache.values()) {
+            for (String domain : result.domainSet()) {
+                if (merged.add(domain) && merged.size() > MAX_DOMAINS) {
+                    log.warn("[{}] Merged list exceeds {} unique domains; keeping current snapshot",
+                            descriptor.getShortName(), MAX_DOMAINS);
+                    return;
+                }
+            }
+        }
+
+        applyContent(descriptor, merged);
     }
 
     /**
-     * Fetches and parses content from the descriptor's URL.
+     * Fetches and parses content from a single source URL.
      * <p>
      * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. A 304 Not Modified
-     * response causes this method to return {@code null}, signaling that the caller should skip
-     * the update. A 200 response is parsed directly from the response stream with hard byte and
-     * domain-count caps; the raw body is never materialized as one byte array or string.
+     * response causes this method to return {@code null}, signaling that the caller should keep the
+     * source's previous domains. A 200 response is parsed directly from the response stream with hard
+     * byte and domain-count caps; the raw body is never materialized as one byte array or string.
      *
-     * @param descriptor The list descriptor to fetch.
-     * @param currentEtag The ETag from the last successful fetch, or {@code null} on first fetch.
+     * @param descriptor The list descriptor being fetched (selects the parse format).
+     * @param url The resolved source URL to fetch.
+     * @param currentEtag The ETag from the last successful fetch of this source, or {@code null}.
      * @return A {@link FetchResult} with the parsed domains and ETag, or {@code null} on 304.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
+                                                  @NonNull String url,
                                                   @Nullable String currentEtag) throws IOException {
-        ClassicHttpRequest request = new HttpGet(descriptor.getResolvedUrl());
+        ClassicHttpRequest request = new HttpGet(url);
         request.addHeader("Accept", "application/json, text/plain, */*");
 
         if (currentEtag != null) {
@@ -388,15 +423,13 @@ public final class LocalListUtil {
     }
 
     /**
-     * Applies a parsed domain set to the live snapshot for the given descriptor.
+     * Applies a parsed (merged) domain set to the live snapshot for the given descriptor.
      *
      * @param descriptor The list descriptor to update.
-     * @param domainSet The parsed domain set.
-     * @param etag The ETag from the response, or {@code null} if the server did not send one.
+     * @param domainSet The merged domain set.
      */
     private static void applyContent(@NonNull Descriptor descriptor,
-                                     @NonNull Set<String> domainSet,
-                                     @Nullable String etag) {
+                                     @NonNull Set<String> domainSet) {
         if (domainSet.isEmpty()) {
             log.warn("[{}] Refusing to apply empty parsed list; keeping current snapshot",
                     descriptor.getShortName());
@@ -410,7 +443,7 @@ public final class LocalListUtil {
             return;
         }
 
-        state.set(new ListSnapshot(Collections.unmodifiableSet(domainSet), etag));
+        state.set(new ListSnapshot(Collections.unmodifiableSet(domainSet)));
     }
 
     /**

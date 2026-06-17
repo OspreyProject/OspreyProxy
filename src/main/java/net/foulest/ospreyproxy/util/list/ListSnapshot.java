@@ -22,12 +22,15 @@ import org.jspecify.annotations.Nullable;
 import java.util.Set;
 
 /**
- * Represents a snapshot of the list content, including the set of domains and the associated ETag.
+ * Represents a snapshot of the live, merged list content for a descriptor.
+ * <p>
+ * This holds only the merged domain set served to lookups. Conditional-fetch ETags are tracked
+ * per source URL by {@code LocalListUtil} (a descriptor may aggregate several sources), so there
+ * is no single ETag that meaningfully describes the merged snapshot.
  *
- * @param domainSet The set of domains in the snapshot, or null if not available.
- * @param etag The ETag associated with the snapshot, or null if not available.
+ * @param domainSet The set of domains in the snapshot, or null if not yet loaded.
  */
-record ListSnapshot(@Nullable Set<String> domainSet, @Nullable String etag) {
+record ListSnapshot(@Nullable Set<String> domainSet) {
 
-    static final ListSnapshot EMPTY = new ListSnapshot(null, null);
+    static final ListSnapshot EMPTY = new ListSnapshot(null);
 }

@@ -70,6 +70,17 @@ public class LocalListProviderConfig {
     }
 
     /**
+     * Defines a bean for the Validin local list provider, which uses the VALIDIN descriptor.
+     * This descriptor aggregates eight source feeds under the single {@code validin} endpoint.
+     *
+     * @return A LocalListProvider instance configured for the Validin list.
+     */
+    @Bean
+    public LocalListProvider validinProvider() {
+        return new LocalListProvider(Descriptor.VALIDIN);
+    }
+
+    /**
      * Defines a bean for the URLhaus local list provider, which uses the URLHAUS descriptor.
      *
      * @return A LocalListProvider instance configured for the URLhaus list.
