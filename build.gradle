@@ -20,21 +20,21 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.3'
-    implementation 'com.bucket4j:bucket4j_jdk17-core:8.16.1'
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.5'
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'com.google.guava:guava:33.4.0-jre'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.4'
+    implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.5.1' // KEEP ON 5.5.1
+    implementation 'org.springframework.boot:spring-boot-starter-web:4.1.0'
+    implementation 'com.google.guava:guava:33.6.0-jre'
 
     // Actuator + Micrometer - for metrics and health endpoints
     // https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:4.1.0'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.17.0'
 
     // Resilience4j - for circuit breaking on upstream API providers
     // https://resilience4j.readme.io/docs/getting-started
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
-    implementation 'io.github.resilience4j:resilience4j-micrometer:2.3.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
+    implementation 'io.github.resilience4j:resilience4j-micrometer:2.4.0'
 
     // JetBrains Annotations - for code inspection and documentation
     // https://mvnrepository.com/artifact/org.jetbrains/annotations
@@ -42,8 +42,8 @@ dependencies {
 
     // Lombok - for reducing boilerplate code
     // https://projectlombok.org
-    compileOnly 'org.projectlombok:lombok:1.18.42'
-    annotationProcessor 'org.projectlombok:lombok:1.18.42'
+    compileOnly 'org.projectlombok:lombok:1.18.46'
+    annotationProcessor 'org.projectlombok:lombok:1.18.46'
 }
 
 tasks {
