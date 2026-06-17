@@ -70,14 +70,33 @@ public class LocalListProviderConfig {
     }
 
     /**
-     * Defines a bean for the Validin local list provider, which uses the VALIDIN descriptor.
-     * This descriptor aggregates eight source feeds under the single {@code validin} endpoint.
+     * Defines a bean for the Red Flag Domains local list provider, which uses the RED_FLAG_DOMAINS descriptor.
      *
-     * @return A LocalListProvider instance configured for the Validin list.
+     * @return A LocalListProvider instance configured for the Red Flag Domains list.
      */
     @Bean
-    public LocalListProvider validinProvider() {
-        return new LocalListProvider(Descriptor.VALIDIN);
+    public LocalListProvider redFlagDomainsProvider() {
+        return new LocalListProvider(Descriptor.RED_FLAG_DOMAINS);
+    }
+
+    /**
+     * Defines a bean for the SinkingYachts local list provider, which uses the SINKING_YACHTS descriptor.
+     *
+     * @return A LocalListProvider instance configured for the SinkingYachts list.
+     */
+    @Bean
+    public LocalListProvider sinkingYachtsProvider() {
+        return new LocalListProvider(Descriptor.SINKING_YACHTS);
+    }
+
+    /**
+     * Defines a bean for the THREATfox local list provider, which uses the THREATFOX descriptor.
+     *
+     * @return A LocalListProvider instance configured for the THREATfox list.
+     */
+    @Bean
+    public LocalListProvider threatfoxProvider() {
+        return new LocalListProvider(Descriptor.THREATFOX);
     }
 
     /**
@@ -91,12 +110,14 @@ public class LocalListProviderConfig {
     }
 
     /**
-     * Defines a bean for the THREATfox local list provider, which uses the THREATFOX descriptor.
+     * Defines a bean for the Validin local list provider, which uses the VALIDIN descriptor.
+     * This descriptor aggregates eight source feeds under the single {@code validin} endpoint.
      *
-     * @return A LocalListProvider instance configured for the THREATfox list.
+     * @return A LocalListProvider instance configured for the Validin list.
      */
     @Bean
-    public LocalListProvider threatfoxProvider() {
-        return new LocalListProvider(Descriptor.THREATFOX);
+    public LocalListProvider validinProvider() {
+        return new LocalListProvider(Descriptor.VALIDIN);
     }
+
 }

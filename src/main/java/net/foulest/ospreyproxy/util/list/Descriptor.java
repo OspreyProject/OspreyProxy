@@ -90,6 +90,58 @@ public enum Descriptor {
     ),
 
     /**
+     * Red Flag Domains
+     */
+    RED_FLAG_DOMAINS(
+            List.of("https://dl.red.flag.domains/red.flag.domains.txt"),
+            Format.TEXT,
+            "Red Flag Domains",
+            "red-flag-domains",
+            LookupResult.MALICIOUS,
+            120L,
+            null
+    ),
+
+    /**
+     * SinkingYachts
+     */
+    SINKING_YACHTS(
+            List.of("https://phish.sinking.yachts/v2/text"),
+            Format.TEXT,
+            "SinkingYachts",
+            "sinking-yachts",
+            LookupResult.PHISHING,
+            120L,
+            null
+    ),
+
+    /**
+     * THREATfox
+     */
+    THREATFOX(
+            List.of("https://threatfox-api.abuse.ch/v2/files/exports/%api_key%/hostfile.txt"),
+            Format.TEXT,
+            "THREATfox",
+            "threatfox",
+            LookupResult.MALICIOUS,
+            120L,
+            "THREATFOX_API_KEY"
+    ),
+
+    /**
+     * URLhaus
+     */
+    URLHAUS(
+            List.of("https://urlhaus.abuse.ch/downloads/text"),
+            Format.TEXT,
+            "URLhaus",
+            "urlhaus",
+            LookupResult.MALICIOUS,
+            120L,
+            null
+    ),
+
+    /**
      * Validin
      */
     VALIDIN(
@@ -109,32 +161,6 @@ public enum Descriptor {
             LookupResult.PHISHING,
             120L,
             null
-    ),
-
-    /**
-     * URLhaus
-     */
-    URLHAUS(
-            List.of("https://urlhaus.abuse.ch/downloads/text"),
-            Format.TEXT,
-            "URLhaus",
-            "urlhaus",
-            LookupResult.MALICIOUS,
-            120L,
-            null
-    ),
-
-    /**
-     * THREATfox
-     */
-    THREATFOX(
-            List.of("https://threatfox-api.abuse.ch/v2/files/exports/%api_key%/hostfile.txt"),
-            Format.TEXT,
-            "THREATfox",
-            "threatfox",
-            LookupResult.MALICIOUS,
-            120L,
-            "THREATFOX_API_KEY"
     );
 
     /**
