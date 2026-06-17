@@ -49,14 +49,6 @@ public final class JacksonUtil {
             .build();
 
     /**
-     * The pre-resolved {@link JavaType} for {@code Map<String, String>} to avoid construction overhead.
-     */
-    public static final JavaType MAP_TYPE_STRING = MAPPER.constructType(
-            new TypeReference<Map<String, String>>() {
-            }
-    );
-
-    /**
      * The pre-resolved {@link JavaType} for {@code Map<String, Object>} to avoid construction overhead.
      */
     public static final JavaType MAP_TYPE_OBJECT = MAPPER.constructType(
