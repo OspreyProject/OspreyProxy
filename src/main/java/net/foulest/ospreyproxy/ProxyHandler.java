@@ -27,10 +27,7 @@ import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
-import net.foulest.ospreyproxy.util.ErrorUtil;
-import net.foulest.ospreyproxy.util.JacksonUtil;
-import net.foulest.ospreyproxy.util.NetworkUtil;
-import net.foulest.ospreyproxy.util.RequestUtil;
+import net.foulest.ospreyproxy.util.*;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -134,7 +131,6 @@ public class ProxyHandler {
         }
 
         AbstractDNSProvider.closeSharedClients();
-        RequestUtil.closeResolverResources();
     }
 
     /**
@@ -212,7 +208,13 @@ public class ProxyHandler {
                 metrics.recordCacheMiss();
             }
 
-            RequestUtil.validateDNS(host, provider, providerName, hashedIp);
+            if (NetworkUtil.isPrivateHost(host)) {
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                        "Blocked request with private/internal host"
+                );
+                throw new StatusCodeException(ErrorUtil.RESP_400);
+            }
+
             metrics.recordRequest(providerName);
 
             if (provider instanceof AbstractDNSProvider dnsProvider) {

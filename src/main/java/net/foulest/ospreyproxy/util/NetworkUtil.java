@@ -273,7 +273,7 @@ public final class NetworkUtil {
      * @param host The hostname to lookup.
      * @return {@code true} if the host is considered private/internal, {@code false} otherwise.
      */
-    static boolean isPrivateHost(@NonNull String host) {
+    public static boolean isPrivateHost(@NonNull String host) {
         host = normalize(host);
 
         // Checks if the host is empty

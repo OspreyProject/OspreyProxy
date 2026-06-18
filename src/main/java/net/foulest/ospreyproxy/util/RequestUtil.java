@@ -386,6 +386,11 @@ public final class RequestUtil {
             return host;
         }
 
+        // Rejects private hosts
+        if (NetworkUtil.isPrivateHost(host)) {
+            rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with private/internal host");
+        }
+
         String asciiHost;
 
         // Converts the host to ASCII using IDN processing
@@ -459,37 +464,6 @@ public final class RequestUtil {
                                           String message) {
         RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, message);
         throw new StatusCodeException(ErrorUtil.RESP_400);
-    }
-
-    /**
-     * Releases resolver resources owned by RequestUtil/ResolveUtil.
-     */
-    public static void closeResolverResources() {
-        ResolveUtil.closeDohClient();
-    }
-
-    /**
-     * Validates a request's DNS.
-     *
-     * @param host         The normalized hostname to validate.
-     * @param provider     The provider to reject invalid requests with.
-     * @param providerName The name of the provider.
-     * @param hashedIp     The hashed IP address of the sender.
-     * @throws StatusCodeException If the DNS is found to be invalid.
-     */
-    public static void validateDNS(@NonNull String host, Provider provider,
-                                   String providerName, String hashedIp) {
-        // Blocks private/internal hosts (string-based; IP-level blocking happens inside
-        // NetworkUtil's DNS resolver at connection time to prevent DNS rebinding)
-        if (NetworkUtil.isPrivateHost(host)) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
-            throw new StatusCodeException(ErrorUtil.RESP_400);
-        }
-
-        // Confirms the hostname resolves in DNS before forwarding to any upstream provider.
-        if (!NetworkUtil.isIpLiteral(host) && !ResolveUtil.doesHostResolve(host)) {
-            throw new StatusCodeException(ErrorUtil.RESP_400);
-        }
     }
 
     /**

@@ -39,13 +39,26 @@ public final class DNSUtil {
     private static final Pattern VALID_DOMAIN = Pattern.compile("^[a-zA-Z0-9._-]+$");
 
     /**
-     * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
+     * Builds a Base64url-encoded wire-format DNS query for the given hostname, defaulting to an
+     * {@link Record#A} record query.
      *
      * @param host The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
      * @return Base64url-encoded wire-format DNS query (no padding).
-     * @throws IllegalArgumentException If the hostname or type is invalid.
+     * @throws IllegalArgumentException If the hostname is invalid.
      */
     public static @NonNull String buildBase64Query(@NonNull String host) {
+        return buildBase64Query(host, Record.A);
+    }
+
+    /**
+     * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
+     *
+     * @param host  The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
+     * @param qtype The DNS QTYPE to query for, e.g. {@link Record#A} or {@link Record#NS}.
+     * @return Base64url-encoded wire-format DNS query (no padding).
+     * @throws IllegalArgumentException If the hostname is invalid.
+     */
+    private static @NonNull String buildBase64Query(@NonNull String host, int qtype) {
         String stripped = getStrippedHost(host);
 
         // Header: ID=0x0000, flags=0x0100 (RD), QDCOUNT=1, ANCOUNT/NSCOUNT/ARCOUNT=0
@@ -62,8 +75,8 @@ public final class DNSUtil {
 
         // QTYPE (2 bytes big-endian) + QCLASS IN (0x00 0x01)
         byte[] qtypeAndClass = {
-                (byte) ((Record.A >>> 8) & 0xFF),
-                (byte) (Record.A & 0xFF),
+                (byte) ((qtype >>> 8) & 0xFF),
+                (byte) (qtype & 0xFF),
                 0x00, 0x01  // IN
         };
 

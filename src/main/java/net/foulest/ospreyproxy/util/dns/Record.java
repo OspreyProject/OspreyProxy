@@ -32,6 +32,11 @@ public final class Record {
     public static final int A = 1;
 
     /**
+     * The NS record type, which delegates a DNS zone to an authoritative name server.
+     */
+    public static final int NS = 2;
+
+    /**
      * The CNAME record type, which maps a domain name to another domain name (canonical name).
      */
     public static final int CNAME = 5;

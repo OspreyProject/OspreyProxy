@@ -29,7 +29,7 @@ import org.jspecify.annotations.NonNull;
  */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-final class RateLimitUtil {
+public final class RateLimitUtil {
 
     /**
      * Checks if the given {@code hashedIp} is burst-blocked or has exceeded the burst rate limit.
@@ -104,10 +104,10 @@ final class RateLimitUtil {
      * @param providerName The provider name for logging purposes.
      * @param logMessage The warning message to log when the request is rejected.
      */
-    static void rejectInvalidRequest(@NonNull Provider provider,
-                                     @NonNull String hashedIp,
-                                     @NonNull String providerName,
-                                     @NonNull String logMessage) {
+    public static void rejectInvalidRequest(@NonNull Provider provider,
+                                            @NonNull String hashedIp,
+                                            @NonNull String providerName,
+                                            @NonNull String logMessage) {
         // Checks if abuse limiting is enabled for the provider
         if (!provider.isAbuseLimitingEnabled()) {
             if (!logMessage.isEmpty()) {
