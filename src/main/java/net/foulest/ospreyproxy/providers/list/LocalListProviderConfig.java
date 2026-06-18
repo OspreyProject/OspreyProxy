@@ -30,6 +30,16 @@ import org.springframework.context.annotation.Configuration;
 public class LocalListProviderConfig {
 
     /**
+     * Defines a bean for the KAD Anti-Scam local list provider, which uses the KAD_ANTI_SCAM descriptor.
+     *
+     * @return A LocalListProvider instance configured for the KAD Anti-Scam list.
+     */
+    @Bean
+    public LocalListProvider kadAntiScamProvider() {
+        return new LocalListProvider(Descriptor.KAD_ANTI_SCAM);
+    }
+
+    /**
      * Defines a bean for the OpenPhish local list provider, which uses the OPEN_PHISH descriptor.
      *
      * @return A LocalListProvider instance configured for the OpenPhish list.
