@@ -14,8 +14,8 @@ for [Osprey: Browser Protection](https://osprey.ac).
 - **SSRF-hardened**: Custom Apache HttpClient DNS resolver blocks private and reserved IP ranges at connection time,
   preventing DNS rebinding attacks. Also blocks private hostnames and raw IP literals before the request is sent.
 - **Input & output validation**: Enforces a URL scheme allowlist, request body and URL length limits, port range
-  validation, strict single-field JSON body parsing, and DNS existence validation via Cloudflare's DoH API before
-  forwarding to any upstream. Upstream responses are validated as well-formed JSON with a size cap as defense-in-depth.
+  validation, and strict single-field JSON body parsing. Upstream responses are validated as well-formed JSON with a
+  size cap as defense-in-depth.
 - **Virtual thread execution**: Blocking upstream HTTP calls park rather than occupy platform threads, keeping
   concurrency high without manual thread pool tuning.
 - **Security by default**: HSTS, CSP, Cache-Control restrictions, X-Frame-Options, Content-Type enforcement,
@@ -36,11 +36,6 @@ analytics, no cookies, and no user accounts.
   configured. These are verifiable in [`application.properties`](src/main/resources/application.properties).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,
   non-persistent, and lost on restart.
-- **Cloudflare**: Requests are proxied through [Cloudflare](https://www.cloudflare.com) (orange cloud enabled) for DDoS
-  protection and bot mitigation. Cloudflare terminates TLS at their edge, meaning they can see request and response
-  traffic before it reaches our origin server. The origin firewall only accepts connections
-  from [Cloudflare IP ranges](https://www.cloudflare.com/ips). Refer
-  to [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy) for how they handle traffic data.
 
 ##
 
