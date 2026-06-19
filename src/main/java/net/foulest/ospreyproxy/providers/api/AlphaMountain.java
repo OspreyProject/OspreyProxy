@@ -132,7 +132,7 @@ public class AlphaMountain extends AbstractProvider {
 
             boolean isMalicious = categories.stream().anyMatch(obj -> obj instanceof Number num
                     && num.intValue() == 39) // Malicious category ID
-                    && ("rt-medium".equals(source) || confidence >= 0.961485);
+                    && ("rt-medium".equals(source) || confidence >= 0.95307525);
             if (isMalicious) {
                 return LookupResult.MALICIOUS;
             }
