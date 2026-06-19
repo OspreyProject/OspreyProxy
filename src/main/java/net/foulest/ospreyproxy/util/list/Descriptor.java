@@ -38,25 +38,6 @@ import java.util.List;
 public enum Descriptor {
 
     /**
-     * Combined Threat List
-     */
-    COMBINED(
-            List.of(
-                    "https://raw.githubusercontent.com/Neo23x0/signature-base/refs/heads/master/iocs/c2-iocs.txt",
-                    "https://raw.githubusercontent.com/spmedia/Crypto-Scam-and-Crypto-Phishing-Threat-Intel-Feed/refs/heads/main/detected_urls.txt",
-                    "https://raw.githubusercontent.com/ShadowWhisperer/BlockLists/refs/heads/master/Lists/Malware",
-                    "https://raw.githubusercontent.com/AdguardTeam/HostlistsRegistry/main/filters/security/filter_30_PhishingURLBlocklist/filter.txt",
-                    "https://hosts.tweedge.net/malicious.txt"
-            ),
-            Format.TEXT,
-            "Combined",
-            "combined",
-            LookupResult.MALICIOUS,
-            120L,
-            null
-    ),
-
-    /**
      * KAD Anti-Scam
      */
     KAD_ANTI_SCAM(

@@ -30,16 +30,6 @@ import org.springframework.context.annotation.Configuration;
 public class LocalListProviderConfig {
 
     /**
-     * Defines a bean for the Combined Threat List local list provider, which uses the COMBINED descriptor.
-     *
-     * @return A LocalListProvider instance configured for the Combined Threat List.
-     */
-    @Bean
-    public LocalListProvider combinedProvider() {
-        return new LocalListProvider(Descriptor.COMBINED);
-    }
-
-    /**
      * Defines a bean for the KAD Anti-Scam local list provider, which uses the KAD_ANTI_SCAM descriptor.
      *
      * @return A LocalListProvider instance configured for the KAD Anti-Scam list.
