@@ -1,0 +1,118 @@
+/*
+ * OspreyProxy - backend code for our proxy server using Spring MVC.
+ * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+package net.foulest.ospreyproxy.providers.api;
+
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.providers.AbstractProvider;
+import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.JacksonUtil;
+import org.jspecify.annotations.NonNull;
+import org.springframework.stereotype.Component;
+
+import java.util.Map;
+
+/**
+ * Provider implementation for URLQuery.
+ */
+@Slf4j
+@Component
+public class URLQuery extends AbstractProvider {
+
+    private static final String API_KEY = System.getenv("URLQUERY_API_KEY");
+    private static final String API_URL = "https://api.urlquery.net/public/v1/reputation/check/?query=";
+
+    /**
+     * Validates the provider configuration after construction.
+     * Ensures that if the provider is enabled, the API key is set and not blank.
+     */
+    @PostConstruct
+    public void validateConfig() {
+        if (API_KEY == null || API_KEY.isBlank()) {
+            throw new IllegalStateException("URLQUERY_API_KEY environment variable is not set");
+        }
+    }
+
+    @Override
+    public @NonNull String getDisplayName() {
+        return "URLQuery";
+    }
+
+    @Override
+    public @NonNull String getEndpointName() {
+        return "urlquery";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+
+    @Override
+    public @NonNull String getApiUrl() {
+        return API_URL;
+    }
+
+    @Override
+    public @NonNull String getApiKey() {
+        return API_KEY != null ? API_KEY : "";
+    }
+
+    @SuppressWarnings("NestedMethodCall")
+    @Override
+    public @NonNull Map<String, String> getHeaders() {
+        return Map.of("x-apikey", getApiKey());
+    }
+
+    @Override
+    public boolean isStripToHost() {
+        // URLQuery only accepts a bare domain; no scheme, path, query, or fragment.
+        return true;
+    }
+
+    @Override
+    public @NonNull String buildRequestUrl(@NonNull String url) {
+        return API_URL + url;
+    }
+
+    @Override
+    @SuppressWarnings("NestedMethodCall")
+    public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+        String displayName = getDisplayName();
+
+        try {
+            Map<String, Object> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.MAP_TYPE_OBJECT);
+            Object result = data.get("verdict");
+
+            if ("malware".equals(result) || "suspicious".equals(result)) {
+                return LookupResult.MALICIOUS;
+            }
+
+            if ("unknown".equals(result)) {
+                return LookupResult.ALLOWED;
+            }
+
+            log.warn("[{}] Unexpected result value: {}", displayName, result);
+            return LookupResult.FAILED;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.warn("[{}] Failed to interpret response: {} ({})",
+                    displayName, e.getMessage(), e.getClass().getName());
+            return LookupResult.FAILED;
+        }
+    }
+}
