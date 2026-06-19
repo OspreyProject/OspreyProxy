@@ -319,6 +319,34 @@ public final class NetworkUtil {
     }
 
     /**
+     * Strictly validates that {@code host} is a well-formed IPv6 literal in bare form
+     * (no brackets, no zone identifier), e.g. "::1" or "::ffff:192.168.1.1".
+     * <p>
+     * Unlike {@link #isIpLiteral(String)}, which treats any colon-containing string as
+     * an IPv6 literal, this parses the literal and rejects malformed input. A colon can
+     * never appear in a hostname, so {@link InetAddress#getByName(String)} parses the
+     * candidate as a numeric literal without performing any DNS resolution.
+     *
+     * @param host The candidate host (expected bare and lowercased).
+     * @return {@code true} if {@code host} is a syntactically valid IPv6 literal.
+     */
+    static boolean isIpv6Literal(@NonNull String host) {
+        if (host.indexOf(':') < 0
+                || host.indexOf('%') >= 0
+                || host.indexOf('[') >= 0
+                || host.indexOf(']') >= 0) {
+            return false;
+        }
+
+        try {
+            InetAddress.getByName(host);
+            return true;
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
      * Validates strict dotted-decimal IPv4 (four octets, 0-255, no signs, no hex,
      * parts of at most 3 digits).
      */

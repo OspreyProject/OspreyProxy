@@ -348,6 +348,11 @@ public final class RequestUtil {
 
         host = host.strip().toLowerCase(Locale.ROOT);
 
+        // Strips surrounding brackets that URI.getHost() returns for IPv6 literals
+        if (host.length() >= 2 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
+            host = host.substring(1, host.length() - 1);
+        }
+
         // Removes leading dot(s)
         while (!host.isBlank() && host.charAt(0) == '.') {
             host = host.substring(1);
@@ -369,11 +374,14 @@ public final class RequestUtil {
                     "Blocked request with excessively long host (" + host.length() + " characters)");
         }
 
-        // Current reconstructURI() does not bracket IPv6 literals, so keep IPv6 unsupported
-        // instead of returning a host that reconstructURI() would mishandle.
+        // Handles IPv6 literals with colons without further processing
         if (host.indexOf(':') >= 0) {
-            rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with unsupported IPv6 literal host");
+            if (!NetworkUtil.isIpv6Literal(host)) {
+                rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with invalid IPv6 literal host: '" + host + "'"
+                );
+            }
+            return host;
         }
 
         // Rejects hosts without a . symbol
@@ -493,7 +501,9 @@ public final class RequestUtil {
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
 
-            String authority = port == -1 ? host : (host + ":" + port);
+            // Brackets IPv6 literal hosts so the authority is valid
+            String authorityHost = host.indexOf(':') >= 0 ? ("[" + host + "]") : host;
+            String authority = port == -1 ? authorityHost : (authorityHost + ":" + port);
             String rawPath = parsedUri.getRawPath();
             String rawQuery = parsedUri.getRawQuery();
 
