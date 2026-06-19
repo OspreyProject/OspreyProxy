@@ -50,7 +50,27 @@ public enum LookupResult {
     /**
      * Returned when the provider returns a result indicating that the domain is a phishing website.
      */
-    PHISHING("phishing");
+    PHISHING("phishing"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is suspicious or potentially harmful.
+     */
+    SUSPICIOUS("suspicious"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is newly registered.
+     */
+    NEWLY_REGISTERED("newly_registered"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is associated with dynamic DNS services.
+     */
+    DYNAMIC_DNS("dynamic_dns"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is associated with CSAM.
+     */
+    CSAM("csam");
 
     private final String value;
 }

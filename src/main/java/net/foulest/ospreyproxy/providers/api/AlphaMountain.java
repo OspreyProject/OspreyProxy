@@ -130,18 +130,42 @@ public class AlphaMountain extends AbstractProvider {
                 return LookupResult.PHISHING;
             }
 
-            boolean isMalicious = categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 39) // Malicious category ID
-                    && ("rt-medium".equals(source) || confidence >= 0.95307525);
-            if (isMalicious) {
+            // Malicious category ID
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 39)
+                    && ("rt-medium".equals(source) || confidence >= 0.95307525)) {
                 return LookupResult.MALICIOUS;
             }
 
-            boolean isSpam = categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 70) // Spam category ID
-                    && confidence >= 0.970767;
-            if (isSpam) {
+            // Spam
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 70)
+                    && confidence >= 0.970767) {
                 return LookupResult.MALICIOUS;
+            }
+
+            // Suspicious
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 72)) {
+                return LookupResult.SUSPICIOUS;
+            }
+
+            // Newly Registered
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 87)) {
+                return LookupResult.NEWLY_REGISTERED;
+            }
+
+            // Dynamic DNS
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 85)) {
+                return LookupResult.DYNAMIC_DNS;
+            }
+
+            // CSAM
+            if (categories.stream().anyMatch(obj -> obj instanceof Number num
+                    && num.intValue() == 11)) {
+                return LookupResult.CSAM;
             }
             return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
