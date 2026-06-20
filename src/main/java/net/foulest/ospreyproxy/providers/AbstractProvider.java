@@ -21,7 +21,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.util.HashUtil;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
@@ -92,8 +92,8 @@ public abstract class AbstractProvider implements Provider {
             .build();
 
     // Separate caches per TTL tier; Caffeine does not support per-entry TTLs.
-    private final Cache<String, LookupResult> allowedCache;
-    private final Cache<String, LookupResult> blockedCache;
+    private final Cache<String, LookupVerdict> allowedCache;
+    private final Cache<String, LookupVerdict> blockedCache;
 
     // Per-instance Bandwidth definitions, built once from this provider's config methods
     private final Bandwidth burstBandwidth;
@@ -155,34 +155,36 @@ public abstract class AbstractProvider implements Provider {
     }
 
     /**
-     * Gets a cached result for the given lookup string if one exists, or {@code null} if not.
+     * Gets a cached verdict for the given lookup string if one exists, or {@code null} if not.
      *
      * @param lookupStr The validated string to look up (host or URL).
-     * @return The cached {@link LookupResult} for this string, or {@code null} if no cache entry exists.
+     * @return The cached {@link LookupVerdict} for this string, or {@code null} if no cache entry exists.
      */
-    public final @Nullable LookupResult getCachedResult(@NonNull String lookupStr) {
+    public final @Nullable LookupVerdict getCachedResult(@NonNull String lookupStr) {
         String key = HashUtil.hashUrl(lookupStr);
-        LookupResult allowed = allowedCache.getIfPresent(key);
+        LookupVerdict allowed = allowedCache.getIfPresent(key);
         return allowed != null ? allowed : blockedCache.getIfPresent(key);
     }
 
     /**
-     * Caches the given result for the given lookup string. Does nothing if the result is {@link LookupResult#FAILED}.
+     * Caches the given verdict for the given lookup string. Does nothing for control-state
+     * verdicts ({@link LookupVerdict#FAILED}, {@link LookupVerdict#RATE_LIMITED}), which carry
+     * no durable information about the host.
      *
      * @param lookupStr The validated string that was looked up (host or URL).
-     * @param result The {@link LookupResult} to cache for this string, if not {@link LookupResult#FAILED}.
+     * @param verdict The {@link LookupVerdict} to cache for this string.
      */
-    public final void putCachedResult(@NonNull String lookupStr, @NonNull LookupResult result) {
-        if (result == LookupResult.FAILED) {
+    public final void putCachedResult(@NonNull String lookupStr, @NonNull LookupVerdict verdict) {
+        if (verdict.isFailed() || verdict.isRateLimited()) {
             return;
         }
 
         String key = HashUtil.hashUrl(lookupStr);
 
-        if (result == LookupResult.ALLOWED) {
-            allowedCache.put(key, LookupResult.ALLOWED);
+        if (verdict.isAllowedOnly()) {
+            allowedCache.put(key, verdict);
         } else {
-            blockedCache.put(key, result);
+            blockedCache.put(key, verdict);
         }
     }
 

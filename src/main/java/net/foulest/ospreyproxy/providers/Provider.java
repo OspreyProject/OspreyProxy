@@ -19,6 +19,7 @@ package net.foulest.ospreyproxy.providers;
 
 import io.github.bucket4j.Bucket;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -141,11 +142,13 @@ public interface Provider {
     }
 
     /**
-     * Interprets the raw upstream response bytes and returns a {@link LookupResult}.
+     * Interprets the raw upstream response bytes and returns a single {@link LookupResult}.
      * <p>
-     * API providers (e.g. AlphaMountain, PrecisionSec) override this to parse their
-     * upstream JSON and map it to a result. DNS providers use a separate
-     * {@link AbstractDNSProvider#interpret} contract and do not override this method.
+     * This is the common case: most providers report exactly one verdict per URL.
+     * Single-result API providers (e.g. PrecisionSec, ChainPatrol) override this.
+     * Providers whose upstream can report several independent categories for one URL
+     * (e.g. AlphaMountain) override {@link #interpretAll} instead and leave this alone.
+     * DNS providers use a separate {@link AbstractDNSProvider#interpret} contract.
      * <p>
      * The default implementation returns {@link LookupResult#FAILED}, which is safe
      * for DNS providers since they never reach {@code executeUpstream}.
@@ -156,6 +159,27 @@ public interface Provider {
      */
     default @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
         return LookupResult.FAILED;
+    }
+
+    /**
+     * Interprets the raw upstream response bytes and returns a {@link LookupVerdict}, which may
+     * carry one or several {@link LookupResult}s.
+     * <p>
+     * This is the verdict-level entry point used by the proxy pipeline (the result cache and the
+     * HTTP response are both keyed on {@link LookupVerdict}). The default implementation simply
+     * wraps {@link #interpret}, so single-result providers need only implement {@code interpret}
+     * and get a one-element verdict for free.
+     * <p>
+     * Override this method directly only when a single URL can legitimately map to multiple
+     * independent categories at once (e.g. AlphaMountain reporting that a host is both newly
+     * registered and malicious). Such providers should not also override {@link #interpret}.
+     *
+     * @param responseBytes The validated, non-empty upstream response bytes.
+     * @param normalizedUrl The normalized URL that was checked, for logging context.
+     * @return The {@link LookupVerdict} for this lookup; never empty.
+     */
+    default @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+        return LookupVerdict.of(interpret(responseBytes, normalizedUrl));
     }
 
     /**

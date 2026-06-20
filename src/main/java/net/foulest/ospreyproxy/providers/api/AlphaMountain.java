@@ -21,12 +21,14 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -101,7 +103,7 @@ public class AlphaMountain extends AbstractProvider {
 
     @Override
     @SuppressWarnings("NestedMethodCall")
-    public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+    public @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
         String displayName = getDisplayName();
 
         try {
@@ -110,68 +112,71 @@ public class AlphaMountain extends AbstractProvider {
 
             if (!(categoryBlock instanceof Map<?, ?> categoryMap)) {
                 log.warn("[{}] Response missing 'category' block", displayName);
-                return LookupResult.FAILED;
+                return LookupVerdict.FAILED;
             }
 
             Object categoriesObj = categoryMap.get("categories");
 
             if (!(categoriesObj instanceof List<?> categories) || categories.isEmpty()) {
                 log.warn("[{}] No categories found", displayName);
-                return LookupResult.FAILED;
+                return LookupVerdict.FAILED;
             }
 
             double confidence = categoryMap.get("confidence") instanceof Number num ? num.doubleValue() : Double.NaN;
             String source = categoryMap.get("source") instanceof String sourceValue ? sourceValue : "";
+            List<LookupResult> results = new ArrayList<>();
 
-            boolean isPhishing = categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 51) // Phishing category ID
-                    && confidence >= 0.970767;
-            if (isPhishing) {
-                return LookupResult.PHISHING;
+            // Phishing
+            if (hasCategory(categories, 51) && confidence >= 0.970767) {
+                results.add(LookupResult.PHISHING);
             }
 
-            // Malicious category ID
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 39)
+            // Malicious
+            if (hasCategory(categories, 39)
                     && ("rt-medium".equals(source) || confidence >= 0.95307525)) {
-                return LookupResult.MALICIOUS;
+                results.add(LookupResult.MALICIOUS);
             }
 
             // Spam
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 70)
-                    && confidence >= 0.970767) {
-                return LookupResult.MALICIOUS;
-            }
-
-            // Suspicious
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 72)) {
-                return LookupResult.SUSPICIOUS;
-            }
-
-            // Newly Registered
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 87)) {
-                return LookupResult.NEWLY_REGISTERED;
-            }
-
-            // Dynamic DNS
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 85)) {
-                return LookupResult.DYNAMIC_DNS;
+            if (hasCategory(categories, 70) && confidence >= 0.970767) {
+                results.add(LookupResult.MALICIOUS);
             }
 
             // CSAM
-            if (categories.stream().anyMatch(obj -> obj instanceof Number num
-                    && num.intValue() == 11)) {
-                return LookupResult.CSAM;
+            if (hasCategory(categories, 11)) {
+                results.add(LookupResult.CSAM);
             }
-            return LookupResult.ALLOWED;
+
+            // Suspicious
+            if (hasCategory(categories, 72)) {
+                results.add(LookupResult.SUSPICIOUS);
+            }
+
+            // Newly Registered
+            if (hasCategory(categories, 87)) {
+                results.add(LookupResult.NEWLY_REGISTERED);
+            }
+
+            // Dynamic DNS
+            if (hasCategory(categories, 85)) {
+                results.add(LookupResult.DYNAMIC_DNS);
+            }
+            return results.isEmpty() ? LookupVerdict.ALLOWED : LookupVerdict.of(results);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response: {} ({})",
                     displayName, e.getMessage(), e.getClass().getName());
-            return LookupResult.FAILED;
+            return LookupVerdict.FAILED;
         }
+    }
+
+    /**
+     * Returns whether the AlphaMountain {@code categories} array contains the given numeric category ID.
+     *
+     * @param categories The raw {@code categories} list from the response.
+     * @param categoryId The AlphaMountain category ID to look for.
+     * @return {@code true} if the ID is present.
+     */
+    private static boolean hasCategory(@NonNull List<?> categories, int categoryId) {
+        return categories.stream().anyMatch(obj -> obj instanceof Number num && num.intValue() == categoryId);
     }
 }

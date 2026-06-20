@@ -25,6 +25,7 @@ import net.foulest.ospreyproxy.providers.AbstractDNSProvider;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.*;
@@ -53,6 +54,8 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -197,7 +200,7 @@ public class ProxyHandler {
             String lookupKey = hostKeyed ? host : parsedUri.toString();
 
             if (descriptor == null && provider instanceof AbstractProvider ap) {
-                LookupResult cached = ap.getCachedResult(lookupKey);
+                LookupVerdict cached = ap.getCachedResult(lookupKey);
 
                 if (cached != null) {
                     metrics.recordRequest(providerName);
@@ -218,16 +221,16 @@ public class ProxyHandler {
             metrics.recordRequest(providerName);
 
             if (provider instanceof AbstractDNSProvider dnsProvider) {
-                LookupResult result = dnsProvider.lookupAndCache(lookupKey);
+                LookupVerdict result = dnsProvider.lookupAndCache(lookupKey);
 
-                if (result == LookupResult.RATE_LIMITED) {
+                if (result.isRateLimited()) {
                     return ErrorUtil.RESP_429;
                 }
                 return resultResponse(result, providerName);
             }
 
             if (descriptor != null) {
-                return resultResponse(LocalListUtil.lookup(descriptor, lookupKey), providerName);
+                return resultResponse(LookupVerdict.of(LocalListUtil.lookup(descriptor, lookupKey)), providerName);
             }
             return executeUpstream(provider, providerName, lookupKey);
         } catch (StatusCodeException e) {
@@ -343,7 +346,7 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                LookupResult result = provider.interpret(responseBytes, forwardUrl);
+                LookupVerdict result = provider.interpretAll(responseBytes, forwardUrl);
 
                 // Record success so the circuit breaker counts this call in its sliding window
                 circuitBreaker.recordSuccess(providerName, durationNanos);
@@ -372,18 +375,27 @@ public class ProxyHandler {
     }
 
     /**
-     * Serializes a {@link LookupResult} into a {@code {"result": "<value>"}} JSON response.
-     * Centralizes the response-building pattern shared by all execute paths.
+     * Serializes a {@link LookupVerdict} into a JSON response.
+     * <p>
+     * Emits both a backward-compatible {@code "result"} scalar (the single most severe
+     * {@link LookupResult}, for clients that expect one value) and a {@code "results"} array
+     * containing every result in the verdict, severity-ordered. Single-result providers therefore
+     * produce {@code {"result":"x","results":["x"]}}; multi-category providers such as AlphaMountain
+     * produce {@code {"result":"malicious","results":["malicious","newly_registered",...]}}.
      *
-     * @param result       The result to serialize.
+     * @param verdict      The verdict to serialize.
      * @param providerName The provider display name for error logging.
      * @return A {@link ResponseEntity} with the JSON body, or a 502 on serialization failure.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static @NonNull ResponseEntity<String> resultResponse(@NonNull LookupResult result,
+    private static @NonNull ResponseEntity<String> resultResponse(@NonNull LookupVerdict verdict,
                                                                   @NonNull String providerName) {
         try {
-            String responseBody = JacksonUtil.MAPPER.writeValueAsString(Map.of("result", result.getValue()));
+            Map<String, Object> payload = LinkedHashMap.newLinkedHashMap(2);
+            payload.put("result", verdict.primary().getValue());
+            payload.put("results", verdict.values());
+
+            String responseBody = JacksonUtil.MAPPER.writeValueAsString(payload);
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(responseBody);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Failed to serialize result: {} ({})", providerName, e.getMessage(), e.getClass().getName());

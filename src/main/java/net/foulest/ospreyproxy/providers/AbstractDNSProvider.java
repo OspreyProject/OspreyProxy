@@ -20,6 +20,7 @@ package net.foulest.ospreyproxy.providers;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
@@ -97,16 +98,16 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
      * and the cache write.
      *
      * @param host The hostname to lookup, e.g. "example.com".
-     * @return The {@link LookupResult} for this host, or {@link LookupResult#RATE_LIMITED} if the circuit breaker is open.
+     * @return The {@link LookupVerdict} for this host, or {@link LookupVerdict#RATE_LIMITED} if the circuit breaker is open.
      */
-    public final @NonNull LookupResult lookupAndCache(@NonNull String host) {
+    public final @NonNull LookupVerdict lookupAndCache(@NonNull String host) {
         if (circuitBreakerService.isOpen(getDisplayName())) {
-            return LookupResult.RATE_LIMITED;
+            return LookupVerdict.RATE_LIMITED;
         }
 
-        LookupResult result = lookup(host);
-        putCachedResult(host, result);
-        return result;
+        LookupVerdict verdict = LookupVerdict.of(lookup(host));
+        putCachedResult(host, verdict);
+        return verdict;
     }
 
     /**
