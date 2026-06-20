@@ -308,7 +308,10 @@ public class ProxyHandler {
                     log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
 
                     return switch (statusCode) {
-                        case 400 -> ErrorUtil.RESP_400;
+                        case 400 -> {
+                            log.warn("[{}] Upstream returned 400 with body: {}", providerName, new String(responseBytes, StandardCharsets.UTF_8));
+                            yield ErrorUtil.RESP_400;
+                        }
 
                         case 401, 498 -> {
                             log.error("[{}] Upstream rejected API key (HTTP {})", providerName, statusCode);
@@ -319,12 +322,14 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 429 -> {
+                            log.warn("[{}] Upstream rate limit hit (HTTP 429)", providerName);
                             circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP 429"));
                             yield ErrorUtil.RESP_429;
                         }
 
                         default -> {
                             if (statusCode >= 500) {
+                                log.warn("[{}] Upstream server error (HTTP {})", providerName, statusCode);
                                 circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP " + statusCode));
                             }
                             yield ErrorUtil.RESP_502;
@@ -355,7 +360,7 @@ public class ProxyHandler {
             circuitBreaker.recordFailure(providerName, durationNanos, e);
             return ErrorUtil.RESP_504;
         } catch (UnknownHostException e) {
-            log.error("[{}] Upstream request blocked by SSRF resolver ({})", providerName, e.getClass().getName());
+            log.error("[{}] Upstream request blocked by SSRF resolver", providerName, e);
             return ErrorUtil.RESP_502;
         } catch (SocketException e) {
             log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName(), e);

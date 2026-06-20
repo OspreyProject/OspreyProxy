@@ -105,6 +105,7 @@ public final class RequestUtil {
     private static @Nullable String normalizeClientIp(@Nullable String candidate) {
         // Returns null for missing candidates
         if (candidate == null) {
+            log.warn("Received null IP candidate");
             return null;
         }
 
@@ -115,6 +116,7 @@ public final class RequestUtil {
                 || ip.length() > MAX_IP_LITERAL_LENGTH
                 || ip.indexOf(',') >= 0
                 || !isValidIpLiteral(ip)) {
+            log.warn("Received invalid IP candidate: '{}'", candidate);
             return null;
         }
         return ip.toLowerCase(Locale.ROOT);
@@ -137,6 +139,7 @@ public final class RequestUtil {
                 || ip.indexOf('%') >= 0
                 || ip.indexOf('[') >= 0
                 || ip.indexOf(']') >= 0) {
+            log.warn("Rejected IP candidate with invalid characters or unsupported IPv6 zone identifier: '{}'", ip);
             return false;
         }
 
@@ -148,6 +151,7 @@ public final class RequestUtil {
                     && !(c >= '0' && c <= '9')
                     && !(c >= 'a' && c <= 'f')
                     && !(c >= 'A' && c <= 'F')) {
+                log.warn("Rejected IP candidate with invalid character '{}': '{}'", c, ip);
                 return false;
             }
         }
@@ -158,6 +162,7 @@ public final class RequestUtil {
             InetAddress address = InetAddress.getByName(ip);
             return address instanceof Inet6Address || (address instanceof Inet4Address && ip.indexOf(':') >= 0);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            log.warn("Rejected IP candidate that failed InetAddress parsing: '{}'", ip);
             return false;
         }
     }
@@ -252,7 +257,9 @@ public final class RequestUtil {
     public static URI validateURI(@NonNull String url, Provider provider, String providerName, String hashedIp) {
         // Rejects missing or empty URLs
         if (url.isBlank()) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "Blocked request with missing or empty URL");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Blocked request with missing or empty URL"
+            );
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -260,7 +267,8 @@ public final class RequestUtil {
         int length = url.length();
         if (length > 8192) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with excessively long URL (" + length + " characters)");
+                    "Blocked request with excessively long URL (" + length + " characters)"
+            );
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -270,7 +278,10 @@ public final class RequestUtil {
             String encoded = NetworkUtil.encodeIllegalUriChars(url);
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
+            RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
+                    "Rejected request with malformed URL: '" + url
+                            + "' (" + e.getClass().getName() + ": " + e.getMessage() + ")"
+            );
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
@@ -281,7 +292,8 @@ public final class RequestUtil {
                 parsedUri.toURL();
             } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with malformed URL (" + e.getClass().getName() + ")");
+                        "Blocked request with malformed URL (" + e.getClass().getName() + ")"
+                );
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
         }
@@ -305,7 +317,8 @@ public final class RequestUtil {
         // Rejects unsupported schemes (only http and https allowed)
         if (!"http".equals(scheme) && !"https".equals(scheme)) {
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Blocked request with disallowed URL scheme '" + scheme);
+                    "Blocked request with disallowed URL scheme '" + scheme + "'"
+            );
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
         return scheme;
@@ -332,7 +345,9 @@ public final class RequestUtil {
 
             // Rejects requests with no authority/host component
             if (authority == null || authority.isBlank()) {
-                rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with no host");
+                rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with no host"
+                );
                 return "";
             }
 
@@ -365,13 +380,16 @@ public final class RequestUtil {
 
         // Rejects hosts that are empty after normalization
         if (host.isBlank()) {
-            rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with empty host");
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with empty host"
+            );
         }
 
         // Rejects excessively long hosts
         if (host.length() > MAX_HOST_LENGTH) {
             rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with excessively long host (" + host.length() + " characters)");
+                    "Blocked request with excessively long host (" + host.length() + " characters)"
+            );
         }
 
         // Handles IPv6 literals with colons without further processing
@@ -396,7 +414,9 @@ public final class RequestUtil {
 
         // Rejects private hosts
         if (NetworkUtil.isPrivateHost(host)) {
-            rejectInvalidHost(provider, providerName, hashedIp, "Blocked request with private/internal host");
+            rejectInvalidHost(provider, providerName, hashedIp,
+                    "Blocked request with private/internal host"
+            );
         }
 
         String asciiHost;
@@ -406,20 +426,23 @@ public final class RequestUtil {
             asciiHost = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
         } catch (IllegalArgumentException e) {
             rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with invalid IDN host");
+                    "Blocked request with invalid IDN host"
+            );
             return "";
         }
 
         // Rejects hosts that are empty after IDN normalization
         if (asciiHost.isBlank() || asciiHost.length() > MAX_HOST_LENGTH) {
             rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with invalid DNS host length");
+                    "Blocked request with invalid DNS host length"
+            );
         }
 
         // Rejects hosts without a . symbol after IDN normalization
         if (!asciiHost.contains(".")) {
             rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with host missing dot after IDN normalization");
+                    "Blocked request with host missing dot after IDN normalization"
+            );
         }
 
         String[] labels = asciiHost.split("\\.", -1);
@@ -428,30 +451,32 @@ public final class RequestUtil {
             // Rejects empty labels (e.g., consecutive dots or leading/trailing dot)
             if (label.isEmpty()) {
                 rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with empty DNS label");
+                        "Blocked request with empty DNS label"
+                );
             }
 
             // Rejects labels that are too long
             if (label.length() > MAX_DNS_LABEL_LENGTH) {
                 rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with oversized DNS label");
+                        "Blocked request with oversized DNS label"
+                );
             }
 
             // Rejects labels that start or end with a hyphen
             if (label.charAt(0) == '-' || label.charAt(label.length() - 1) == '-') {
                 rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with DNS label starting or ending with hyphen");
+                        "Blocked request with DNS label starting or ending with hyphen"
+                );
             }
 
             // Rejects labels with characters other than letters, digits, or hyphens
             for (int i = 0; i < label.length(); i++) {
                 char c = label.charAt(i);
 
-                if (c != '-'
-                        && !(c >= '0' && c <= '9')
-                        && !(c >= 'a' && c <= 'z')) {
+                if (c != '-' && !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'z')) {
                     rejectInvalidHost(provider, providerName, hashedIp,
-                            "Blocked request with invalid DNS label character");
+                            "Blocked request with invalid DNS label character"
+                    );
                 }
             }
         }
@@ -490,14 +515,14 @@ public final class RequestUtil {
     @Contract("_, _, _, _, _, _ -> new")
     public static @NonNull URI reconstructURI(@NonNull URI parsedUri, @NonNull String host, @NonNull String scheme,
                                               Provider provider, String providerName, String hashedIp) {
-        // Reconstructs the URI with the normalized host and scheme
         try {
             int port = parsedUri.getPort();
 
             // Rejects ports outside the valid range (1-65535); -1 means no port specified
             if (port != -1 && (port < 1 || port > 65535)) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with invalid port: " + port);
+                        "Blocked request with invalid port: '" + port + "'"
+                );
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
 

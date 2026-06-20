@@ -30,6 +30,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.EOFException;
+
 /**
  * Global exception handler for Spring MVC.
  */
@@ -82,12 +84,15 @@ public class GlobalExceptionHandler {
      */
     @SuppressWarnings("NestedMethodCall")
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<String> handleNotReadable(@NonNull HttpMessageNotReadableException ex) {
+    public ResponseEntity<String> handleNotReadable(@NonNull Throwable ex) {
         Throwable cause = ex.getCause();
 
-        if (!(cause instanceof ClientAbortException)) {
-            log.warn("Could not read request body: {}", ex.getClass().getName());
+        // Client aborted request before body was fully read
+        if (cause instanceof ClientAbortException || cause instanceof EOFException) {
+            return ErrorUtil.RESP_400;
         }
+
+        log.warn("Request body could not be read: {}", ex.getMessage());
         return ErrorUtil.RESP_400;
     }
 

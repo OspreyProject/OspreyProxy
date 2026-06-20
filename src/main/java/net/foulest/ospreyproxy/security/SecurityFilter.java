@@ -52,6 +52,7 @@ public class SecurityFilter implements Filter {
 
         // Reject requests with disallowed HTTP methods before any further processing
         if (!ALLOWED_METHODS.contains(method)) {
+            log.warn("Rejected request with disallowed HTTP method: {}", method);
             sendError(httpResponse, HttpServletResponse.SC_METHOD_NOT_ALLOWED, ErrorUtil.BODY_405);
             return;
         }

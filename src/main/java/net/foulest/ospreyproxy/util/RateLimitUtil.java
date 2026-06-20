@@ -50,6 +50,7 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked
         if (provider.isBurstBlocked(hashedIp)) {
+            log.warn("[{}] 'Burst' block active for {}", providerName, provider.getViolatorId(hashedIp));
             return true;
         }
 
@@ -82,6 +83,7 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked
         if (provider.isSustainedBlocked(hashedIp)) {
+            log.warn("[{}] 'Sustained' block active for {}", providerName, provider.getViolatorId(hashedIp));
             return true;
         }
 
@@ -118,6 +120,7 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked for invalid requests
         if (provider.isInvalidRequestBlocked(hashedIp)) {
+            log.warn("[{}] 'Invalid request' block active for {}", providerName, provider.getViolatorId(hashedIp));
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
 

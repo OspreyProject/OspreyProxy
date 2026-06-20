@@ -269,7 +269,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     } else if (statusCode >= 500) {
                         circuitBreakerService.recordFailure(displayName, 0L, new RuntimeException("HTTP " + statusCode));
                     } else {
-                        log.warn("[{}] Unexpected status code: {}", displayName, statusCode);
+                        log.warn("[{}] Unexpected status code {} for '{}'", displayName, statusCode, url);
                     }
                     return null;
                 }
