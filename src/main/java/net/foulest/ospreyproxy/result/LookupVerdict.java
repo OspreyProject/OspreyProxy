@@ -34,9 +34,9 @@ public final class LookupVerdict {
      * without silently changing verdict semantics.
      */
     private static final List<LookupResult> SEVERITY_ORDER = List.of(
-            LookupResult.MALICIOUS,
             LookupResult.CSAM,
             LookupResult.PHISHING,
+            LookupResult.MALICIOUS,
             LookupResult.SUSPICIOUS,
             LookupResult.NEWLY_REGISTERED,
             LookupResult.DYNAMIC_DNS,
