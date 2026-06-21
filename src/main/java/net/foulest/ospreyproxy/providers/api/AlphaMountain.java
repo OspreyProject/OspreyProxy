@@ -126,11 +126,6 @@ public class AlphaMountain extends AbstractProvider {
             String source = categoryMap.get("source") instanceof String sourceValue ? sourceValue : "";
             List<LookupResult> results = new ArrayList<>();
 
-            // CSAM
-            if (hasCategory(categories, 11)) {
-                results.add(LookupResult.CSAM);
-            }
-
             // Phishing
             if (hasCategory(categories, 51) && confidence >= 0.970767) {
                 results.add(LookupResult.PHISHING);

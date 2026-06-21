@@ -43,14 +43,14 @@ public enum LookupResult {
     ALLOWED("allowed"),
 
     /**
-     * Returned when the provider returns a result indicating that the domain is malicious or blocked.
-     */
-    MALICIOUS("malicious"),
-
-    /**
      * Returned when the provider returns a result indicating that the domain is a phishing website.
      */
     PHISHING("phishing"),
+
+    /**
+     * Returned when the provider returns a result indicating that the domain is malicious or blocked.
+     */
+    MALICIOUS("malicious"),
 
     /**
      * Returned when the provider returns a result indicating that the domain is suspicious or potentially harmful.
@@ -65,12 +65,7 @@ public enum LookupResult {
     /**
      * Returned when the provider returns a result indicating that the domain is associated with dynamic DNS services.
      */
-    DYNAMIC_DNS("dynamic_dns"),
-
-    /**
-     * Returned when the provider returns a result indicating that the domain is associated with CSAM.
-     */
-    CSAM("csam");
+    DYNAMIC_DNS("dynamic_dns");
 
     private final String value;
 }
