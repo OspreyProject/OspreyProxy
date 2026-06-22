@@ -168,7 +168,6 @@ public final class LocalListUtil {
         Set<String> domainSet = ref.get().domainSet();
 
         if (domainSet == null) {
-            log.warn("[{}] List not yet loaded; skipping pending lookup", descriptor.getShortName());
             return LookupResult.FAILED;
         }
 
@@ -731,7 +730,6 @@ public final class LocalListUtil {
         // subdomain to match and are unlikely to be intentional list entries
         try {
             if (InternetDomainName.from(normalized).isRegistrySuffix()) {
-                log.warn("Refusing list entry that is a registry suffix: {}", normalized);
                 return null;
             }
         } catch (IllegalArgumentException ignored) {

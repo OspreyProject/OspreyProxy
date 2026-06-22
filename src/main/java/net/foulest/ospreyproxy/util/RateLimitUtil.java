@@ -50,7 +50,6 @@ public final class RateLimitUtil {
 
         // Checks if the IP is already blocked
         if (provider.isBurstBlocked(hashedIp)) {
-            log.warn("[{}] 'Burst' block active for {}", providerName, provider.getViolatorId(hashedIp));
             return true;
         }
 

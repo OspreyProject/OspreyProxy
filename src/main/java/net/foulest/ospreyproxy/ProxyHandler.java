@@ -212,9 +212,7 @@ public class ProxyHandler {
             }
 
             if (NetworkUtil.isPrivateHost(host)) {
-                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                        "Blocked request with private/internal host"
-                );
+                RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
                 throw new StatusCodeException(ErrorUtil.RESP_400);
             }
 
@@ -325,14 +323,12 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 429 -> {
-                            log.warn("[{}] Upstream rate limit hit (HTTP 429)", providerName);
                             circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP 429"));
                             yield ErrorUtil.RESP_429;
                         }
 
                         default -> {
                             if (statusCode >= 500) {
-                                log.warn("[{}] Upstream server error (HTTP {})", providerName, statusCode);
                                 circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP " + statusCode));
                             }
                             yield ErrorUtil.RESP_502;
