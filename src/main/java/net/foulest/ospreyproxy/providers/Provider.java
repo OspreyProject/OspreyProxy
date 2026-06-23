@@ -154,10 +154,10 @@ public interface Provider {
      * for DNS providers since they never reach {@code executeUpstream}.
      *
      * @param responseBytes The validated, non-empty upstream response bytes.
-     * @param normalizedUrl The normalized URL that was checked, for logging context.
+     * @param url The normalized URL that was checked, for logging context.
      * @return The {@link LookupResult} for this lookup.
      */
-    default @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+    default @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String url) {
         return LookupResult.FAILED;
     }
 
@@ -175,11 +175,11 @@ public interface Provider {
      * registered and malicious). Such providers should not also override {@link #interpret}.
      *
      * @param responseBytes The validated, non-empty upstream response bytes.
-     * @param normalizedUrl The normalized URL that was checked, for logging context.
+     * @param url The normalized URL that was checked, for logging context.
      * @return The {@link LookupVerdict} for this lookup; never empty.
      */
-    default @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
-        return LookupVerdict.of(interpret(responseBytes, normalizedUrl));
+    default @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String url) {
+        return LookupVerdict.of(interpret(responseBytes, url));
     }
 
     /**

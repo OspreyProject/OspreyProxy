@@ -103,7 +103,7 @@ public class AlphaMountain extends AbstractProvider {
 
     @Override
     @SuppressWarnings("NestedMethodCall")
-    public @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+    public @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String url) {
         String displayName = getDisplayName();
 
         try {

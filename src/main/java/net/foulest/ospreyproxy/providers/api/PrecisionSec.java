@@ -92,7 +92,7 @@ public class PrecisionSec extends AbstractProvider {
 
     @Override
     @SuppressWarnings("NestedMethodCall")
-    public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String normalizedUrl) {
+    public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String url) {
         String displayName = getDisplayName();
 
         try {
