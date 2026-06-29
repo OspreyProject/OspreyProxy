@@ -98,7 +98,7 @@ public enum Descriptor {
             "Red Flag Domains",
             "red-flag-domains",
             LookupResult.MALICIOUS,
-            120L,
+            300L,
             null
     ),
 
