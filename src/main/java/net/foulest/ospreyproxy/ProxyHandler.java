@@ -155,6 +155,7 @@ public class ProxyHandler {
         Provider provider = providersByEndpointName.get(providerName);
 
         if (provider == null) {
+            metrics.recordBlocked("unknown", 404);
             return ErrorUtil.RESP_404;
         }
         return proxyRequest(body, request, provider);
@@ -184,6 +185,8 @@ public class ProxyHandler {
 
         try {
             if (!provider.isEnabled()) {
+                metrics.recordBlocked(providerName, 503);
+                log.warn("[{}] Request blocked with HTTP 503", providerName);
                 return ErrorUtil.RESP_503;
             }
 
@@ -232,7 +235,11 @@ public class ProxyHandler {
             }
             return executeUpstream(provider, providerName, lookupKey);
         } catch (StatusCodeException e) {
-            return e.getStatus();
+            ResponseEntity<String> status = e.getStatus();
+            int code = status.getStatusCode().value();
+            metrics.recordBlocked(providerName, code);
+            log.warn("[{}] Request blocked with HTTP {}", providerName, code);
+            return status;
         }
     }
 

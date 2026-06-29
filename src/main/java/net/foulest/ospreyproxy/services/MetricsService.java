@@ -61,6 +61,18 @@ public class MetricsService {
         registry.counter("osprey.cache.misses").increment();
     }
 
+    /**
+     * Records a blocked request (any non-2xx response) for the given provider and HTTP status code.
+     * Tagged by both provider and status so Grafana can break down block reasons.
+     *
+     * @param providerName The name of the provider that rejected the request.
+     * @param statusCode   The HTTP status code returned to the client (e.g., 400, 429, 502).
+     */
+    public void recordBlocked(@NonNull String providerName, int statusCode) {
+        registry.counter("osprey.requests.blocked",
+                Tags.of("provider", providerName, "status", String.valueOf(statusCode))).increment();
+    }
+
     private @NonNull Counter requestCounter(@NonNull String providerName) {
         return registry.counter("osprey.requests.total", Tags.of("provider", providerName));
     }
