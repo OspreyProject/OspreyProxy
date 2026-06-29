@@ -77,19 +77,6 @@ public enum Descriptor {
     ),
 
     /**
-     * Phishing.Database
-     */
-    PHISHING_DATABASE(
-            List.of("https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt"),
-            Format.TEXT,
-            "Phishing.Database",
-            "phishing-database",
-            LookupResult.PHISHING,
-            120L,
-            null
-    ),
-
-    /**
      * Phishunt.io
      */
     PHISHUNT_IO(

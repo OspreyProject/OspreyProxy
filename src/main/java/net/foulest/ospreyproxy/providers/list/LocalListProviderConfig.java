@@ -70,16 +70,6 @@ public class LocalListProviderConfig {
     }
 
     /**
-     * Defines a bean for the Phishing.Database local list provider, which uses the PHISHING_DATABASE descriptor.
-     *
-     * @return A LocalListProvider instance configured for the Phishing.Database list.
-     */
-    @Bean
-    public LocalListProvider phishingDatabaseProvider() {
-        return new LocalListProvider(Descriptor.PHISHING_DATABASE);
-    }
-
-    /**
      * Defines a bean for the Red Flag Domains local list provider, which uses the RED_FLAG_DOMAINS descriptor.
      *
      * @return A LocalListProvider instance configured for the Red Flag Domains list.
