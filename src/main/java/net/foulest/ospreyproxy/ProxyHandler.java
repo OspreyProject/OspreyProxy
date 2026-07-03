@@ -311,8 +311,12 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
+                // A 404 from providers that report misses this way (e.g. BforeAI) is a valid
+                // "not in database" answer, not a failure: fall through to interpret-and-cache
+                boolean notFoundIsValid = statusCode == 404 && provider.isNotFoundValidResponse();
+
                 // Rejects non-200 responses with provider-specific error mapping
-                if (statusCode != 200) {
+                if (statusCode != 200 && !notFoundIsValid) {
                     log.warn("[{}] Upstream request failed with status code: {}", providerName, statusCode);
 
                     return switch (statusCode) {
@@ -372,7 +376,7 @@ public class ProxyHandler {
             log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName(), e);
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
-            log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName());
+            log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName(), e);
             return ErrorUtil.RESP_502;
         }
     }

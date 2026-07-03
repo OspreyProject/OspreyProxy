@@ -142,6 +142,20 @@ public interface Provider {
     }
 
     /**
+     * Whether an upstream HTTP 404 should be treated as a valid lookup result rather than an error.
+     * <p>
+     * Some providers (e.g. BforeAI) return 404 with a message body when the requested URL is simply
+     * not present in their threat database. For those providers a 404 is not a failure: it is a clean
+     * "not found" answer that should be passed to {@link #interpretAll} and cached like any 200 response.
+     * Defaults to {@code false}, so 404 is treated as an error for every other provider.
+     *
+     * @return {@code true} if a 404 response body should be interpreted and cached, {@code false} otherwise.
+     */
+    default boolean isNotFoundValidResponse() {
+        return false;
+    }
+
+    /**
      * Interprets the raw upstream response bytes and returns a single {@link LookupResult}.
      * <p>
      * This is the common case: most providers report exactly one verdict per URL.
