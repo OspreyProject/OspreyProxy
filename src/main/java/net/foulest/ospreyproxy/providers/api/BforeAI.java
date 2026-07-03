@@ -112,26 +112,26 @@ public class BforeAI extends AbstractProvider {
             Map<String, Object> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.MAP_TYPE_OBJECT);
             Object itemsObj = data.get("items");
 
+            // Returns if the 'items' field is missing or not an array
             if (!(itemsObj instanceof Iterable<?> items)) {
-                log.warn("[{}] Response missing or invalid 'items' field", displayName);
                 return LookupVerdict.FAILED;
             }
 
             for (Object itemObj : items) {
+                // Returns if the item is not a map
                 if (!(itemObj instanceof Map<?, ?> itemMap)) {
-                    log.warn("[{}] Invalid item in 'items' array: {}", displayName, itemObj);
                     continue;
                 }
 
                 Object scoreObj = itemMap.get("score");
 
+                // Returns if the 'score' field is missing or not a number
                 if (!(scoreObj instanceof Number score)) {
-                    log.warn("[{}] Item missing or invalid 'score' field: {}", displayName, itemMap);
                     continue;
                 }
 
+                // If the score is 0.8 or higher, classify the URL as malicious
                 if (score.doubleValue() >= 0.8) {
-                    log.info("[{}] Malicious content detected for {}: score={}", displayName, url, score);
                     return LookupVerdict.of(LookupResult.MALICIOUS);
                 }
             }
