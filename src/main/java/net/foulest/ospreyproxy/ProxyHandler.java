@@ -186,7 +186,7 @@ public class ProxyHandler {
         try {
             if (!provider.isEnabled()) {
                 metrics.recordBlocked(providerName, 503);
-                log.warn("[{}] Request blocked with HTTP 503", providerName);
+                log.warn("[{}] Request blocked with HTTP 503 (provider disabled)", providerName);
                 return ErrorUtil.RESP_503;
             }
 
@@ -218,7 +218,7 @@ public class ProxyHandler {
 
             if (NetworkUtil.isPrivateHost(host)) {
                 RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, "");
-                throw new StatusCodeException(ErrorUtil.RESP_400);
+                return ErrorUtil.RESP_400;
             }
 
             metrics.recordRequest(providerName);

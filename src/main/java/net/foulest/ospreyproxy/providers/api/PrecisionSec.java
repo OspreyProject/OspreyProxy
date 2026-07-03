@@ -81,7 +81,6 @@ public class PrecisionSec extends AbstractProvider {
 
     @Override
     public boolean isStripToHost() {
-        // PrecisionSec only accepts a bare domain; no scheme, path, query, or fragment.
         return true;
     }
 
