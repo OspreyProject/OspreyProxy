@@ -17,9 +17,9 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import net.foulest.ospreyproxy.result.LookupResult;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -34,7 +34,6 @@ import java.util.List;
  * parsed domains from every source are merged into one live set served by the descriptor's endpoint.
  */
 @Getter
-@AllArgsConstructor
 public enum Descriptor {
 
     /**
@@ -174,6 +173,22 @@ public enum Descriptor {
             LookupResult.PHISHING,
             120L,
             null
+    ),
+
+    /**
+     * Artists Against 419 (AA419)
+     */
+    AA419(
+            List.of("https://api.aa419.org/fakesites?fields=Url&pgsize=500&expired=0"),
+            Format.JSON,
+            "AA419",
+            "aa419",
+            LookupResult.MALICIOUS,
+            600L,
+            "AA419_API_KEY",
+            true,
+            "Auth-API-Id",
+            "Url"
     );
 
     /**
@@ -213,9 +228,81 @@ public enum Descriptor {
      * The name of the environment variable that holds the API key for this feed,
      * or {@code null} if no key is required.
      * When non-null, {@link #getResolvedUrls()} substitutes {@code %api_key%} in each
-     * URL with the value of this environment variable.
+     * URL with the value of this environment variable. If {@link #authHeaderName} is also
+     * set, the same environment variable's value is instead (or additionally) sent as an
+     * authentication request header.
      */
     private final @Nullable String apiKeyEnvVar;
+
+    /**
+     * Whether this descriptor accumulates domains across fetches instead of overwriting.
+     * <p>
+     * When {@code false} (the default) each refresh republishes only what the current fetch
+     * returned, so a domain that disappears from the source is dropped. When {@code true},
+     * every fetch unions its domains into the existing live set and nothing is ever removed;
+     * the backing {@link java.util.Set} keeps the merged set de-duplicated. This suits feeds
+     * that expose only a rolling window of recent entries (e.g. AA419).
+     */
+    private final boolean accumulate;
+
+    /**
+     * The name of an HTTP request header used to authenticate the fetch (e.g. {@code Auth-API-Id}),
+     * or {@code null} if the feed needs no auth header. When non-null, the header is sent on every
+     * fetch with the value of the {@link #apiKeyEnvVar} environment variable.
+     */
+    private final @Nullable String authHeaderName;
+
+    /**
+     * For {@link Format#JSON} feeds that return an array of objects, the name of the field on each
+     * object that holds the URL or hostname (e.g. {@code Url}). When {@code null}, a JSON feed is
+     * parsed as an array of bare strings (the original behavior).
+     */
+    private final @Nullable String jsonObjectField;
+
+    /**
+     * Canonical constructor.
+     */
+    Descriptor(@NonNull List<String> urls, @NonNull Format format, @NonNull String shortName,
+               @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
+               @Nullable String apiKeyEnvVar, boolean accumulate, @Nullable String authHeaderName,
+               @Nullable String jsonObjectField) {
+        this.urls = urls;
+        this.format = format;
+        this.shortName = shortName;
+        this.endpointName = endpointName;
+        this.resultType = resultType;
+        this.refreshIntervalSeconds = refreshIntervalSeconds;
+        this.apiKeyEnvVar = apiKeyEnvVar;
+        this.accumulate = accumulate;
+        this.authHeaderName = authHeaderName;
+        this.jsonObjectField = jsonObjectField;
+    }
+
+    /**
+     * Convenience constructor for the common case: overwrite semantics, no auth header, and
+     * (for JSON) an array of bare strings. Existing descriptors use this seven-argument form.
+     */
+    Descriptor(@NonNull List<String> urls, @NonNull Format format, @NonNull String shortName,
+               @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
+               @Nullable String apiKeyEnvVar) {
+        this(urls, format, shortName, endpointName, resultType, refreshIntervalSeconds, apiKeyEnvVar,
+                false, null, null);
+    }
+
+    /**
+     * Resolves the authentication header value from {@link #apiKeyEnvVar}, or returns {@code null}
+     * if no auth header is configured or the environment variable is unset/blank.
+     *
+     * @return The header value to send, or {@code null} if none should be sent.
+     */
+    @Nullable String getAuthHeaderValue() {
+        if (authHeaderName == null || apiKeyEnvVar == null) {
+            return null;
+        }
+
+        String key = System.getenv(apiKeyEnvVar);
+        return key == null || key.isBlank() ? null : key;
+    }
 
     /**
      * Returns the fetch URLs with the {@code %api_key%} placeholder substituted in each.

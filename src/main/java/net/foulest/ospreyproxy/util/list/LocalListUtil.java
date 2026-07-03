@@ -325,7 +325,24 @@ public final class LocalListUtil {
             return;
         }
 
+        // Accumulate mode: union this fetch's domains into the existing live set and never
+        // remove anything. Seed from the current published snapshot so domains that have dropped
+        // out of the source's rolling window survive. The HashSet keeps the set de-duplicated.
+        // Overwrite mode (default): rebuild the merged set purely from the current per-URL cache,
+        // so a domain removed from a source is dropped on the next refresh.
         Set<String> merged = new HashSet<>();
+
+        if (descriptor.isAccumulate()) {
+            AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+
+            if (state != null) {
+                Set<String> current = state.get().domainSet();
+
+                if (current != null) {
+                    merged.addAll(current);
+                }
+            }
+        }
 
         for (FetchResult result : cache.values()) {
             for (String domain : result.domainSet()) {
@@ -360,6 +377,19 @@ public final class LocalListUtil {
         ClassicHttpRequest request = new HttpGet(url);
         request.addHeader("Accept", "application/json, text/plain, */*");
 
+        // Header-based authentication (e.g. AA419's Auth-API-Id), kept out of the URL so the
+        // secret never appears in logs. Resolved to null when the env var is unset, but the
+        // descriptor would already have been skipped at scheduling time in that case.
+        String authHeaderName = descriptor.getAuthHeaderName();
+
+        if (authHeaderName != null) {
+            String authHeaderValue = descriptor.getAuthHeaderValue();
+
+            if (authHeaderValue != null) {
+                request.addHeader(authHeaderName, authHeaderValue);
+            }
+        }
+
         if (currentEtag != null) {
             request.addHeader("If-None-Match", currentEtag);
         }
@@ -372,7 +402,7 @@ public final class LocalListUtil {
                 return null;
             }
 
-            if (statusCode != 200) {
+            if (statusCode != 200 && statusCode != 201) {
                 EntityUtils.consumeQuietly(response.getEntity());
                 throw new IllegalStateException("HTTP " + statusCode);
             }
@@ -401,7 +431,7 @@ public final class LocalListUtil {
                 domains = switch (descriptor.getFormat()) {
                     case TEXT -> parsePlainText(body);
                     case CSV -> parseCsv(body);
-                    case JSON -> parseJson(body);
+                    case JSON -> parseJson(body, descriptor.getJsonObjectField());
                 };
             } catch (IOException | RuntimeException e) {
                 EntityUtils.consumeQuietly(entity);
@@ -446,13 +476,21 @@ public final class LocalListUtil {
 
     /**
      * Parses JSON content into a set of hostnames and URL paths.
-     * Expects a JSON array of strings. Null entries and empty strings are ignored.
+     * <p>
+     * When {@code objectField} is {@code null}, expects a JSON array of strings (each a URL or
+     * hostname). When {@code objectField} is non-null, expects a JSON array of objects and extracts
+     * that field's string value from each object (e.g. {@code Url} for AA419's
+     * {@code [{"Url":"https:\/\/..."}]} responses). JSON string-unescaping (including {@code \/}
+     * to {@code /}) is handled by the parser, so escaped slashes need no special treatment.
+     * Null entries, empty strings, and objects lacking the field are ignored.
      *
      * @param rawJson The raw JSON stream from the list endpoint.
+     * @param objectField The object field holding the URL/hostname, or {@code null} for a string array.
      * @return A set of normalized hostnames and URL paths.
      */
     @SuppressWarnings({"NestedMethodCall", "NestedAssignment"})
-    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson) {
+    private static @NonNull Set<String> parseJson(@NonNull InputStream rawJson,
+                                                  @Nullable String objectField) {
         Set<String> set = new HashSet<>();
 
         try (JsonParser parser = JacksonUtil.MAPPER.createParser(cappedInputStream(rawJson))) {
@@ -471,14 +509,63 @@ public final class LocalListUtil {
                     continue;
                 }
 
-                if (token != JsonToken.VALUE_STRING) {
-                    throw new IllegalArgumentException("Expected JSON string entry but got " + token);
-                }
+                if (objectField == null) {
+                    if (token != JsonToken.VALUE_STRING) {
+                        throw new IllegalArgumentException("Expected JSON string entry but got " + token);
+                    }
 
-                addNormalizedEntry(parser.getString(), set);
+                    addNormalizedEntry(parser.getString(), set);
+                } else {
+                    if (token != JsonToken.START_OBJECT) {
+                        throw new IllegalArgumentException("Expected JSON object entry but got " + token);
+                    }
+
+                    addNormalizedEntry(extractObjectField(parser, objectField), set);
+                }
             }
         }
         return set;
+    }
+
+    /**
+     * Reads a single JSON object from the parser (positioned on its {@code START_OBJECT} token)
+     * and returns the string value of the named field, or {@code null} if absent or non-string.
+     * The parser is always advanced past the matching {@code END_OBJECT}, including through any
+     * nested arrays or objects, so iteration of the enclosing array continues cleanly.
+     *
+     * @param parser The JSON parser, positioned on the object's {@code START_OBJECT} token.
+     * @param objectField The field name whose string value should be extracted.
+     * @return The field's string value, or {@code null} if the field is missing or not a string.
+     */
+    @SuppressWarnings("NestedAssignment")
+    private static @Nullable String extractObjectField(@NonNull JsonParser parser,
+                                                       @NonNull String objectField) {
+        String value = null;
+        JsonToken token;
+
+        while ((token = parser.nextToken()) != JsonToken.END_OBJECT) {
+            if (token == null) {
+                throw new IllegalArgumentException("Unexpected end of JSON object");
+            }
+
+            if (token != JsonToken.PROPERTY_NAME) {
+                throw new IllegalArgumentException("Expected JSON property name but got " + token);
+            }
+
+            String fieldName = parser.currentName();
+            token = parser.nextToken();
+
+            // Skip over nested structures so the parser stays aligned with this object's fields
+            if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
+                parser.skipChildren();
+                continue;
+            }
+
+            if (objectField.equals(fieldName) && token == JsonToken.VALUE_STRING) {
+                value = parser.getString();
+            }
+        }
+        return value;
     }
 
     /**

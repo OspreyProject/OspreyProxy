@@ -129,4 +129,16 @@ public class LocalListProviderConfig {
     public LocalListProvider validinProvider() {
         return new LocalListProvider(Descriptor.VALIDIN);
     }
+
+    /**
+     * Defines a bean for the AA419 (Artists Against 419) local list provider,
+     * which uses the AA419 descriptor. This feed is JSON, authenticates via the
+     * {@code Auth-API-Id} header, and accumulates domains across fetches.
+     *
+     * @return A LocalListProvider instance configured for the AA419 list.
+     */
+    @Bean
+    public LocalListProvider aa419Provider() {
+        return new LocalListProvider(Descriptor.AA419);
+    }
 }
