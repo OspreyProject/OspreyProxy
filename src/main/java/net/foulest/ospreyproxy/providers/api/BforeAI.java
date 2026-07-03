@@ -36,9 +36,6 @@ import java.util.Map;
 public class BforeAI extends AbstractProvider {
 
     private static final String API_KEY = System.getenv("BFORE_AI_API_KEY");
-
-    // Intel feed: https://api.bfore.ai/v2/feed/intel?url=
-    // Disruption feed: https://api.bfore.ai/v2/feed/disruption?url= (deprecated via Quad9)
     private static final String API_URL = "https://api.bfore.ai/v2/feed/intel?since=2000-01-01T00:00:00Z&url=";
 
     /**
@@ -83,7 +80,7 @@ public class BforeAI extends AbstractProvider {
     }
 
     @Override
-    public boolean isStripToHost() {
+    public boolean isStripToBareHost() {
         return true;
     }
 

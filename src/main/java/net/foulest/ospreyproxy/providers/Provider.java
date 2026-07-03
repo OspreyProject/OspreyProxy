@@ -121,13 +121,29 @@ public interface Provider {
     }
 
     /**
-     * Whether to strip the URL down to a bare hostname before forwarding to this provider.
-     * Providers like PrecisionSec only accept a domain with no scheme, path, query, or fragment.
-     * Defaults to {@code false}.
+     * Whether to strip the URL down to a hostname before forwarding to this provider, removing
+     * the path and query string. Defaults to {@code false}. Override for providers that only accept a host.
      *
      * @return {@code true} if only the bare host should be forwarded, {@code false} otherwise.
      */
     default boolean isStripToHost() {
+        return false;
+    }
+
+    /**
+     * Whether to strip the URL down to its bare registrable domain (eTLD+1) before forwarding to
+     * this provider, removing the path, query string, and any subdomains. For example,
+     * {@code https://test.google.com/test} is reduced to {@code google.com}. The reduction is
+     * driven by the Public Suffix List, so multi-level suffixes are handled correctly (e.g.
+     * {@code foo.example.co.uk} becomes {@code example.co.uk}, not {@code co.uk}).
+     * <p>
+     * This is a stronger form of {@link #isStripToHost()}: it also collapses subdomains, so a
+     * provider that returns {@code true} here is always treated as host-keyed. Defaults to
+     * {@code false}. Override for providers that only accept a bare host.
+     *
+     * @return {@code true} if only the bare registrable domain should be forwarded, {@code false} otherwise.
+     */
+    default boolean isStripToBareHost() {
         return false;
     }
 

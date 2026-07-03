@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util;
 
+import com.google.common.net.InternetDomainName;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -481,6 +482,37 @@ public final class RequestUtil {
             }
         }
         return asciiHost;
+    }
+
+    /**
+     * Reduces an already-validated host to its bare registrable domain (eTLD+1), removing any
+     * subdomains. For example, {@code test.google.com} becomes {@code google.com}, while
+     * {@code foo.example.co.uk} correctly becomes {@code example.co.uk} rather than {@code co.uk},
+     * because the reduction is driven by the Public Suffix List via {@link InternetDomainName}
+     * instead of naively keeping the last two labels.
+     *
+     * @param host The normalized, ASCII (punycode), lowercased host returned by
+     *             {@link #validateHost(URI, Provider, String, String)}.
+     * @return The bare registrable domain, or the original host if it cannot be reduced.
+     */
+    public static @NonNull String getBareHost(@NonNull String host) {
+        // IP literals have no registrable domain; forward them untouched
+        if (NetworkUtil.isIpLiteral(host)) {
+            return host;
+        }
+
+        try {
+            InternetDomainName domain = InternetDomainName.from(host);
+
+            // Only reduce when there is at least one label beyond the public suffix,
+            // otherwise topPrivateDomain() would throw (e.g. "co.uk" or "localhost")
+            if (domain.isUnderPublicSuffix()) {
+                return domain.topPrivateDomain().toString();
+            }
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.debug("Unable to reduce host '{}' to a bare host: {}", host, e.getMessage());
+        }
+        return host;
     }
 
     /**

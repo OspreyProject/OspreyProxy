@@ -199,8 +199,10 @@ public class ProxyHandler {
             parsedUri = RequestUtil.reconstructURI(parsedUri, host, scheme, provider, providerName, hashedIp);
 
             Descriptor descriptor = LocalListUtil.findByEndpointName(endpointName);
-            boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost();
-            String lookupKey = hostKeyed ? host : parsedUri.toString();
+            boolean stripToBareHost = provider.isStripToBareHost();
+            boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
+            String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
+            String lookupKey = hostKeyed ? hostKey : parsedUri.toString();
 
             if (descriptor == null && provider instanceof AbstractProvider ap) {
                 LookupVerdict cached = ap.getCachedResult(lookupKey);
