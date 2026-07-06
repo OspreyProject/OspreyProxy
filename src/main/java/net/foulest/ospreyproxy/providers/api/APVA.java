@@ -78,10 +78,18 @@ public class APVA extends AbstractProvider {
                 return LookupResult.ALLOWED;
             }
 
-            boolean isPhishing = data.stream().anyMatch(entry -> "phishing".equals(entry.get("threat_type")));
+            for (Map<String, Object> entry : data) {
+                if ("phishing".equals(entry.get("threat_type"))) {
+                    return LookupResult.PHISHING;
+                }
 
-            if (isPhishing) {
-                return LookupResult.PHISHING;
+                if ("malicious".equals(entry.get("threat_type"))) {
+                    return LookupResult.MALICIOUS;
+                }
+
+                if ("malware".equals(entry.get("threat_type"))) {
+                    return LookupResult.MALICIOUS;
+                }
             }
 
             log.warn("[{}] Unexpected result value: {}", displayName, data);
