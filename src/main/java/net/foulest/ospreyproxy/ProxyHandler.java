@@ -92,6 +92,9 @@ public class ProxyHandler {
             .disableAutomaticRetries()
             .build();
 
+    // Maximum number of bytes to read from an upstream response (1 MB)
+    private static final int MAX_RESPONSE_BYTES = 1_048_576;
+
     // All providers keyed by endpoint name for O(1) dispatch and O(1) DNS provider lookup
     private final Map<String, Provider> providersByEndpointName;
 
@@ -186,7 +189,6 @@ public class ProxyHandler {
         try {
             if (!provider.isEnabled()) {
                 metrics.recordBlocked(providerName, 503);
-                log.warn("[{}] Request blocked with HTTP 503 (provider disabled)", providerName);
                 return ErrorUtil.RESP_503;
             }
 
@@ -240,7 +242,6 @@ public class ProxyHandler {
             ResponseEntity<String> status = e.getStatus();
             int code = status.getStatusCode().value();
             metrics.recordBlocked(providerName, code);
-            log.warn("[{}] Request blocked with HTTP {}", providerName, code);
             return status;
         }
     }
@@ -306,10 +307,15 @@ public class ProxyHandler {
                 byte[] responseBytes;
 
                 try {
-                    responseBytes = EntityUtils.toByteArray(entity, 10_000);
+                    responseBytes = EntityUtils.toByteArray(entity, MAX_RESPONSE_BYTES + 1);
                 } catch (IOException e) {
                     EntityUtils.consumeQuietly(entity);
                     log.error("[{}] Failed to read response body: {}", providerName, e.getClass().getName());
+                    return ErrorUtil.RESP_502;
+                }
+
+                if (responseBytes != null && responseBytes.length > MAX_RESPONSE_BYTES) {
+                    log.warn("[{}] Upstream response exceeded {} bytes; rejecting", providerName, MAX_RESPONSE_BYTES);
                     return ErrorUtil.RESP_502;
                 }
 
