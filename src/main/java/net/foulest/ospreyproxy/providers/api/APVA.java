@@ -82,17 +82,7 @@ public class APVA extends AbstractProvider {
                 if ("phishing".equals(entry.get("threat_type"))) {
                     return LookupResult.PHISHING;
                 }
-
-                if ("malicious".equals(entry.get("threat_type"))) {
-                    return LookupResult.MALICIOUS;
-                }
-
-                if ("malware".equals(entry.get("threat_type"))) {
-                    return LookupResult.MALICIOUS;
-                }
             }
-
-            log.warn("[{}] Unexpected result value: {}", displayName, data);
             return LookupResult.FAILED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response: {} ({})",
