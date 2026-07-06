@@ -71,7 +71,7 @@ public enum Descriptor {
             "PhishDestroy",
             "phishdestroy",
             LookupResult.PHISHING,
-            120L,
+            180L,
             null
     ),
 
