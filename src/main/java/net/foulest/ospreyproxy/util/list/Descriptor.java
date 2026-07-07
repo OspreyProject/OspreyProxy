@@ -158,7 +158,7 @@ public enum Descriptor {
             "Validin",
             "validin",
             LookupResult.PHISHING,
-            120L,
+            180L,
             null
     ),
 

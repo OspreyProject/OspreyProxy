@@ -45,6 +45,7 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -58,6 +59,12 @@ public final class LocalListUtil {
     // Protocol-negotiating client for list fetches (prefers HTTP/2, falls back to HTTP/1.1 via ALPN)
     private static final CloseableHttpClient FETCH_CLIENT =
             HttpClientFactory.createNegotiatingClient(40, 40, 40, 45);
+
+    // Minimum spacing between consecutive upstream list fetches
+    private static final long MIN_FETCH_SPACING_MILLIS = 1000L;
+
+    // Epoch-millis of the next permitted fetch slot; advanced atomically by throttleFetches()
+    private static final AtomicLong nextFetchSlotMillis = new AtomicLong(0L);
 
     // Minimum number of comma-separated fields required in a CSV threat-feed line
     private static final int MIN_CSV_FIELDS = 4;
@@ -358,6 +365,28 @@ public final class LocalListUtil {
     }
 
     /**
+     * Blocks until the next permitted fetch slot, enforcing a minimum spacing of
+     * {@link #MIN_FETCH_SPACING_MILLIS} between consecutive upstream fetches. Atomically reserves a
+     * slot at least that far after the previously reserved one (and never in the past), so callers
+     * are spaced out even if fetches ever run concurrently. In steady state the reserved slot is
+     * already in the past and no wait is incurred; only the startup burst is throttled.
+     */
+    private static void throttleFetches() {
+        long now = System.currentTimeMillis();
+        long slot = nextFetchSlotMillis.accumulateAndGet(now,
+                (previousSlot, currentTime) -> Math.max(previousSlot + MIN_FETCH_SPACING_MILLIS, currentTime));
+        long waitMillis = slot - now;
+
+        if (waitMillis > 0L) {
+            try {
+                Thread.sleep(waitMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
      * Fetches and parses content from a single source URL.
      * <p>
      * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. A 304 Not Modified
@@ -374,6 +403,9 @@ public final class LocalListUtil {
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
                                                   @NonNull String url,
                                                   @Nullable String currentEtag) throws IOException {
+        // Space out upstream hits so startup doesn't fire every feed at once (see throttleFetches)
+        throttleFetches();
+
         ClassicHttpRequest request = new HttpGet(url);
         request.addHeader("Accept", "application/json, text/plain, */*");
 
