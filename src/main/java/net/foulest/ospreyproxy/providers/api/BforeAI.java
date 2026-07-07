@@ -122,14 +122,12 @@ public class BforeAI extends AbstractProvider {
                     Object scoreObj = itemMap.get("score");
 
                     // Returns if the 'score' field is missing or not a number
-                    if (!(scoreObj instanceof Number score)) {
+                    if (!(scoreObj instanceof Number)) {
                         continue;
                     }
 
-                    // If the score is 0.8 or higher, classify the URL as malicious
-                    if (score.doubleValue() >= 0.8) {
-                        return LookupVerdict.of(LookupResult.MALICIOUS);
-                    }
+                    // As long as the score is present, it's malicious
+                    return LookupVerdict.of(LookupResult.MALICIOUS);
                 }
             }
             return LookupVerdict.ALLOWED;
