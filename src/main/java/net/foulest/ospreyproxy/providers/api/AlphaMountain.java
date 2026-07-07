@@ -139,7 +139,7 @@ public class AlphaMountain extends AbstractProvider {
 
             // Spam
             if (hasCategory(categories, 70) && confidence >= 0.970767) {
-                results.add(LookupResult.MALICIOUS);
+                results.add(LookupResult.SUSPICIOUS);
             }
 
             // Suspicious
