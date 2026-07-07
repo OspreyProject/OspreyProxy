@@ -37,19 +37,6 @@ import java.util.List;
 public enum Descriptor {
 
     /**
-     * KAD Anti-Scam
-     */
-    KAD_ANTI_SCAM(
-            List.of("https://raw.githubusercontent.com/FiltersHeroes/KADhosts/master/KADomains.txt"),
-            Format.TEXT,
-            "KAD",
-            "kad",
-            LookupResult.MALICIOUS,
-            120L,
-            null
-    ),
-
-    /**
      * OpenPhish
      */
     OPEN_PHISH(
