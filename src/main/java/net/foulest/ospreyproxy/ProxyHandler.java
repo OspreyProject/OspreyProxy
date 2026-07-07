@@ -204,7 +204,14 @@ public class ProxyHandler {
             boolean stripToBareHost = provider.isStripToBareHost();
             boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
             String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
-            String lookupKey = hostKeyed ? hostKey : parsedUri.toString();
+            String lookupKey;
+
+            if (hostKeyed) {
+                lookupKey = hostKey;
+            } else {
+                URI canonicalUri = RequestUtil.reconstructURI(parsedUri, host, "https", provider, providerName, hashedIp);
+                lookupKey = canonicalUri.toString();
+            }
 
             if (descriptor == null && provider instanceof AbstractProvider ap) {
                 LookupVerdict cached = ap.getCachedResult(lookupKey);
