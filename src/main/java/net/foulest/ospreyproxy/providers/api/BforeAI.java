@@ -114,7 +114,7 @@ public class BforeAI extends AbstractProvider {
 
             // Returns if the 'items' field is missing or not an array
             if (!(itemsObj instanceof Iterable<?> items)) {
-                return LookupVerdict.FAILED;
+                return LookupVerdict.ALLOWED;
             }
 
             for (Object itemObj : items) {
