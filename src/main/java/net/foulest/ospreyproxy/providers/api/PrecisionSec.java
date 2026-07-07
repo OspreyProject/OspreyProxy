@@ -101,13 +101,7 @@ public class PrecisionSec extends AbstractProvider {
             if ("Malicious".equals(result)) {
                 return LookupResult.MALICIOUS;
             }
-
-            if ("No result".equals(result)) {
-                return LookupResult.ALLOWED;
-            }
-
-            log.warn("[{}] Unexpected result value: {}", displayName, result);
-            return LookupResult.FAILED;
+            return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response: {} ({})",
                     displayName, e.getMessage(), e.getClass().getName());

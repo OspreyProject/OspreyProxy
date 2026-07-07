@@ -103,23 +103,10 @@ public class ChainPatrol extends AbstractProvider {
             Map<String, Object> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.MAP_TYPE_OBJECT);
             Object status = data.get("status");
 
-            if (!(status instanceof String statusStr)) {
-                log.warn("[{}] Response missing or invalid 'status' field", displayName);
-                return LookupResult.FAILED;
+            if (status instanceof String statusStr && "BLOCKED".equals(statusStr)) {
+                return LookupResult.PHISHING;
             }
-
-            switch (statusStr) {
-                case "BLOCKED" -> {
-                    return LookupResult.PHISHING;
-                }
-                case "UNKNOWN", "ALLOWED" -> {
-                    return LookupResult.ALLOWED;
-                }
-                default -> {
-                    log.warn("[{}] Unexpected 'status' value: {}", displayName, statusStr);
-                    return LookupResult.FAILED;
-                }
-            }
+            return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response: {} ({})",
                     displayName, e.getMessage(), e.getClass().getName());

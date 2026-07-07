@@ -74,13 +74,11 @@ public class APVA extends AbstractProvider {
         try {
             List<Map<String, Object>> data = JacksonUtil.MAPPER.readValue(responseBytes, JacksonUtil.LIST_OF_MAP_TYPE);
 
-            if (data.isEmpty()) {
-                return LookupResult.ALLOWED;
-            }
-
-            for (Map<String, Object> entry : data) {
-                if ("phishing".equals(entry.get("threat_type"))) {
-                    return LookupResult.PHISHING;
+            if (!data.isEmpty()) {
+                for (Map<String, Object> entry : data) {
+                    if ("phishing".equals(entry.get("threat_type"))) {
+                        return LookupResult.PHISHING;
+                    }
                 }
             }
             return LookupResult.ALLOWED;
