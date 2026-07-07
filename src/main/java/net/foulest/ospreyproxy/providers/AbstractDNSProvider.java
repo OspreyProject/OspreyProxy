@@ -106,6 +106,13 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
         }
 
         LookupVerdict verdict = LookupVerdict.of(lookup(host));
+
+        // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+        // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+        if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+            log.warn("[{}] Result for '{}': {}", getDisplayName(), host, verdict.primary().getValue());
+        }
+
         putCachedResult(host, verdict);
         return verdict;
     }

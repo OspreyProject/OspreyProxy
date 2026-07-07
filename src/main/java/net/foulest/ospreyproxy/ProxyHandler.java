@@ -368,16 +368,22 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                LookupVerdict result = provider.interpretAll(responseBytes, forwardUrl);
+                LookupVerdict verdict = provider.interpretAll(responseBytes, forwardUrl);
+
+                // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+                // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+                if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+                    log.warn("[{}] Result for '{}': {}", providerName, forwardUrl, verdict.primary().getValue());
+                }
 
                 // Record success so the circuit breaker counts this call in its sliding window
                 circuitBreaker.recordSuccess(providerName, durationNanos);
 
                 // Caches the result for future requests
                 if (provider instanceof AbstractProvider ap) {
-                    ap.putCachedResult(forwardUrl, result);
+                    ap.putCachedResult(forwardUrl, verdict);
                 }
-                return resultResponse(result, providerName);
+                return resultResponse(verdict, providerName);
             });
         } catch (SocketTimeoutException | ConnectionRequestTimeoutException | NoHttpResponseException e) {
             long durationNanos = System.nanoTime() - callStart;
