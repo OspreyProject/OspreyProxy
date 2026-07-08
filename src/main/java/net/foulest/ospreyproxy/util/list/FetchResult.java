@@ -27,7 +27,9 @@ import java.util.Set;
  *
  * @param domainSet The set of domains fetched from the provider, which may be empty.
  * @param etag The ETag associated with the fetched content, if available.
+ * @param lastModified The Last-Modified value associated with the fetched content, if available.
+ *                     Used as an If-Modified-Since fallback for sources that don't send an ETag.
  */
-record FetchResult(@NonNull Set<String> domainSet, @Nullable String etag) {
+record FetchResult(@NonNull Set<String> domainSet, @Nullable String etag, @Nullable String lastModified) {
 
 }

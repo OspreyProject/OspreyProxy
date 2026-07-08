@@ -61,7 +61,7 @@ public final class LocalListUtil {
             HttpClientFactory.createNegotiatingClient(40, 40, 40, 45);
 
     // Minimum spacing between consecutive upstream list fetches
-    private static final long MIN_FETCH_SPACING_MILLIS = 20000L;
+    private static final long MIN_FETCH_SPACING_MILLIS = 3000L;
 
     // Epoch-millis of the next permitted fetch slot; advanced atomically by throttleFetches()
     private static final AtomicLong nextFetchSlotMillis = new AtomicLong(0L);
@@ -314,9 +314,10 @@ public final class LocalListUtil {
         for (String url : descriptor.getResolvedUrls()) {
             FetchResult previous = cache.get(url);
             String previousEtag = previous == null ? null : previous.etag();
+            String previousLastModified = previous == null ? null : previous.lastModified();
 
             try {
-                FetchResult result = fetchRaw(descriptor, url, previousEtag);
+                FetchResult result = fetchRaw(descriptor, url, previousEtag, previousLastModified);
 
                 if (result != null) {
                     cache.put(url, result);
@@ -389,29 +390,31 @@ public final class LocalListUtil {
     /**
      * Fetches and parses content from a single source URL.
      * <p>
-     * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. A 304 Not Modified
-     * response causes this method to return {@code null}, signaling that the caller should keep the
-     * source's previous domains. A 200 response is parsed directly from the response stream with hard
-     * byte and domain-count caps; the raw body is never materialized as one byte array or string.
+     * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. If no ETag is
+     * available but {@code currentLastModified} is non-null, it is sent as {@code If-Modified-Since}
+     * instead, letting sources that don't emit ETags still return 304. A 304 Not Modified response
+     * causes this method to return {@code null}, signaling that the caller should keep the source's
+     * previous domains. A 200 response is parsed directly from the response stream with hard byte and
+     * domain-count caps; the raw body is never materialized as one byte array or string.
      *
      * @param descriptor The list descriptor being fetched (selects the parse format).
      * @param url The resolved source URL to fetch.
      * @param currentEtag The ETag from the last successful fetch of this source, or {@code null}.
-     * @return A {@link FetchResult} with the parsed domains and ETag, or {@code null} on 304.
+     * @param currentLastModified The Last-Modified from the last successful fetch, or {@code null}.
+     * @return A {@link FetchResult} with the parsed domains, ETag, and Last-Modified, or {@code null} on 304.
      */
     @SuppressWarnings("NestedMethodCall")
     private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
                                                   @NonNull String url,
-                                                  @Nullable String currentEtag) throws IOException {
+                                                  @Nullable String currentEtag,
+                                                  @Nullable String currentLastModified) throws IOException {
         // Space out upstream hits so startup doesn't fire every feed at once (see throttleFetches)
         throttleFetches();
 
         ClassicHttpRequest request = new HttpGet(url);
         request.addHeader("Accept", "application/json, text/plain, */*");
 
-        // Header-based authentication (e.g. AA419's Auth-API-Id), kept out of the URL so the
-        // secret never appears in logs. Resolved to null when the env var is unset, but the
-        // descriptor would already have been skipped at scheduling time in that case.
+        // Header-based authentication, kept out of the URL so the secret never appears in logs
         String authHeaderName = descriptor.getAuthHeaderName();
 
         if (authHeaderName != null) {
@@ -422,9 +425,20 @@ public final class LocalListUtil {
             }
         }
 
+        String conditionHeader;
+
+        // Fall back to If-Modified-Since if no ETag is available
         if (currentEtag != null) {
             request.addHeader("If-None-Match", currentEtag);
+            conditionHeader = "If-None-Match: " + currentEtag;
+        } else if (currentLastModified != null) {
+            request.addHeader("If-Modified-Since", currentLastModified);
+            conditionHeader = "If-Modified-Since: " + currentLastModified;
+        } else {
+            conditionHeader = "no validators";
         }
+
+        log.warn("[{}] Fetching list source {} ({})", descriptor.getShortName(), url, conditionHeader);
 
         return FETCH_CLIENT.execute(request, (ClassicHttpResponse response) -> {
             int statusCode = response.getCode();
@@ -478,7 +492,16 @@ public final class LocalListUtil {
             String etag = Optional.ofNullable(response.getFirstHeader("ETag"))
                     .map(Header::getValue)
                     .orElse(null);
-            return new FetchResult(domains, etag);
+
+            String lastModified = Optional.ofNullable(response.getFirstHeader("Last-Modified"))
+                    .map(Header::getValue)
+                    .orElse(null);
+
+            log.warn("[{}] Fetched {} domains from {} (ETag: {}, Last-Modified: {})",
+                    descriptor.getShortName(), domains.size(), url,
+                    etag == null ? "<none>" : etag,
+                    lastModified == null ? "<none>" : lastModified);
+            return new FetchResult(domains, etag, lastModified);
         });
     }
 

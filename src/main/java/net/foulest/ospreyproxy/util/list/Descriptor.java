@@ -45,7 +45,7 @@ public enum Descriptor {
             "AA419",
             "aa419",
             LookupResult.MALICIOUS,
-            60L,
+            300L,
             "AA419_API_KEY",
             true,
             "Auth-API-Id",
@@ -61,7 +61,7 @@ public enum Descriptor {
             "OpenPhish",
             "openphish",
             LookupResult.PHISHING,
-            60L,
+            300L,
             null
     ),
 
@@ -74,7 +74,7 @@ public enum Descriptor {
             "PhishDestroy",
             "phishdestroy",
             LookupResult.PHISHING,
-            60L,
+            300L,
             null
     ),
 
@@ -87,7 +87,7 @@ public enum Descriptor {
             "Phishunt.io",
             "phishunt-io",
             LookupResult.PHISHING,
-            60L,
+            300L,
             null
     ),
 
@@ -100,7 +100,7 @@ public enum Descriptor {
             "Red Flag Domains",
             "red-flag-domains",
             LookupResult.MALICIOUS,
-            60L,
+            300L,
             null
     ),
 
@@ -113,7 +113,7 @@ public enum Descriptor {
             "SecureFeed",
             "securefeed",
             LookupResult.MALICIOUS,
-            200L, // keep at 200L
+            600L, // keep at 600L
             "SECUREFEED_API_KEY"
     ),
 
@@ -126,7 +126,7 @@ public enum Descriptor {
             "SinkingYachts",
             "sinking-yachts",
             LookupResult.PHISHING,
-            60L,
+            300L,
             null
     ),
 
@@ -139,7 +139,7 @@ public enum Descriptor {
             "THREATfox",
             "threatfox",
             LookupResult.MALICIOUS,
-            60L,
+            300L,
             "THREATFOX_API_KEY"
     ),
 
@@ -152,7 +152,7 @@ public enum Descriptor {
             "URLhaus",
             "urlhaus",
             LookupResult.MALICIOUS,
-            60L,
+            300L,
             null
     ),
 
