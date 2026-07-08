@@ -52,7 +52,7 @@ public class AdGuard extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "adguard-security";
+        return "adguard-dns";
     }
 
     @Override

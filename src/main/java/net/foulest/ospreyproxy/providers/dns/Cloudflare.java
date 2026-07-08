@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Cloudflare DNS.
+ * Provider implementation for Cloudflare.
  */
 @Component
 public class Cloudflare extends AbstractDNSProvider {
@@ -51,7 +51,7 @@ public class Cloudflare extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "cloudflare-security";
+        return "cloudflare";
     }
 
     @Override

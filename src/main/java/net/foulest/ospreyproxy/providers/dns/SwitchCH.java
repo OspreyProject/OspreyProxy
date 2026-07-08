@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Switch.ch DNS.
+ * Provider implementation for Switch.ch.
  */
 @Component
 public class SwitchCH extends AbstractDNSProvider {

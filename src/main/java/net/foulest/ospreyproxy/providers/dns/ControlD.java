@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Control D DNS.
+ * Provider implementation for Control D.
  */
 @Component
 public class ControlD extends AbstractDNSProvider {
@@ -54,7 +54,7 @@ public class ControlD extends AbstractDNSProvider {
 
     @Override
     public @NonNull String getEndpointName() {
-        return "controld-security";
+        return "control-d";
     }
 
     @Override

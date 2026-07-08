@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Provider implementation for Quad9 DNS.
+ * Provider implementation for Quad9.
  */
 @Component
 public class Quad9 extends AbstractDNSProvider {
