@@ -61,7 +61,7 @@ public final class LocalListUtil {
             HttpClientFactory.createNegotiatingClient(40, 40, 40, 45);
 
     // Minimum spacing between consecutive upstream list fetches
-    private static final long MIN_FETCH_SPACING_MILLIS = 2000L;
+    private static final long MIN_FETCH_SPACING_MILLIS = 20000L;
 
     // Epoch-millis of the next permitted fetch slot; advanced atomically by throttleFetches()
     private static final AtomicLong nextFetchSlotMillis = new AtomicLong(0L);
