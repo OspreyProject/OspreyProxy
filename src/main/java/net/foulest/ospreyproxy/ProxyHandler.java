@@ -233,16 +233,29 @@ public class ProxyHandler {
             metrics.recordRequest(providerName);
 
             if (provider instanceof AbstractDNSProvider dnsProvider) {
-                LookupVerdict result = dnsProvider.lookupAndCache(lookupKey);
+                LookupVerdict verdict = dnsProvider.lookupAndCache(lookupKey);
 
-                if (result.isRateLimited()) {
+                if (verdict.isRateLimited()) {
                     return ErrorUtil.RESP_429;
                 }
-                return resultResponse(result, providerName);
+
+                // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+                // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+                if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+                    log.warn("[{}] Result for '{}': {}", dnsProvider.getDisplayName(), host, verdict.primary().getValue());
+                }
+                return resultResponse(verdict, providerName);
             }
 
             if (descriptor != null) {
-                return resultResponse(LookupVerdict.of(LocalListUtil.lookup(descriptor, lookupKey)), providerName);
+                LookupVerdict verdict = LookupVerdict.of(LocalListUtil.lookup(descriptor, lookupKey));
+
+                // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+                // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+                if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+                    log.warn("[{}] Result for '{}': {}", descriptor.getShortName(), host, verdict.primary().getValue());
+                }
+                return resultResponse(verdict, providerName);
             }
             return executeUpstream(provider, providerName, lookupKey);
         } catch (StatusCodeException e) {
