@@ -113,7 +113,7 @@ public enum Descriptor {
             "SecureFeed",
             "securefeed",
             LookupResult.MALICIOUS,
-            60L,
+            180L, // keep at 180L
             "SECUREFEED_API_KEY"
     ),
 
@@ -174,7 +174,7 @@ public enum Descriptor {
             "Validin",
             "validin",
             LookupResult.PHISHING,
-            120L,
+            240L, // keep at 240L
             null
     );
 
