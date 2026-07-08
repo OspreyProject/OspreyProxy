@@ -37,6 +37,22 @@ import java.util.List;
 public enum Descriptor {
 
     /**
+     * Artists Against 419 (AA419)
+     */
+    AA419(
+            List.of("https://api.aa419.org/fakesites?fields=Url&pgsize=500&expired=0"),
+            Format.JSON,
+            "AA419",
+            "aa419",
+            LookupResult.MALICIOUS,
+            60L,
+            "AA419_API_KEY",
+            true,
+            "Auth-API-Id",
+            "Url"
+    ),
+
+    /**
      * OpenPhish
      */
     OPEN_PHISH(
@@ -160,22 +176,6 @@ public enum Descriptor {
             LookupResult.PHISHING,
             120L,
             null
-    ),
-
-    /**
-     * Artists Against 419 (AA419)
-     */
-    AA419(
-            List.of("https://api.aa419.org/fakesites?fields=Url&pgsize=500&expired=0"),
-            Format.JSON,
-            "AA419",
-            "aa419",
-            LookupResult.MALICIOUS,
-            60L,
-            "AA419_API_KEY",
-            true,
-            "Auth-API-Id",
-            "Url"
     );
 
     /**
