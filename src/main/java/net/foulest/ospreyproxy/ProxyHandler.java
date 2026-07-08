@@ -102,6 +102,10 @@ public class ProxyHandler {
     private final MetricsService metrics;
     private final CircuitBreakerService circuitBreaker;
 
+    // Collapses concurrent duplicate lookups (same provider + same key) into a single execution,
+    // so a burst of identical requests doesn't fan out into redundant upstream calls or log lines
+    private final RequestCoalescer<ResponseEntity<String>> coalescer = new RequestCoalescer<>();
+
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
      *
@@ -232,32 +236,41 @@ public class ProxyHandler {
 
             metrics.recordRequest(providerName);
 
+            // One key per (provider, lookup target). Concurrent duplicates share a single execution;
+            // the NUL separator can't appear in an endpoint name or normalized host/URL, so it's an
+            // unambiguous delimiter between the two parts
+            String coalesceKey = endpointName + '\u0000' + lookupKey;
+
             if (provider instanceof AbstractDNSProvider dnsProvider) {
-                LookupVerdict verdict = dnsProvider.lookupAndCache(lookupKey);
+                return coalescer.get(coalesceKey, () -> {
+                    LookupVerdict verdict = dnsProvider.lookupAndCache(lookupKey);
 
-                if (verdict.isRateLimited()) {
-                    return ErrorUtil.RESP_429;
-                }
+                    if (verdict.isRateLimited()) {
+                        return ErrorUtil.RESP_429;
+                    }
 
-                // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
-                // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
-                if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
-                    log.warn("[{}] Result for '{}': {}", dnsProvider.getDisplayName(), host, verdict.primary().getValue());
-                }
-                return resultResponse(verdict, providerName);
+                    // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+                    // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+                    if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+                        log.warn("[{}] Result for '{}': {}", dnsProvider.getDisplayName(), host, verdict.primary().getValue());
+                    }
+                    return resultResponse(verdict, providerName);
+                });
             }
 
             if (descriptor != null) {
-                LookupVerdict verdict = LookupVerdict.of(LocalListUtil.lookup(descriptor, lookupKey));
+                return coalescer.get(coalesceKey, () -> {
+                    LookupVerdict verdict = LookupVerdict.of(LocalListUtil.lookup(descriptor, lookupKey));
 
-                // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
-                // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
-                if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
-                    log.warn("[{}] Result for '{}': {}", descriptor.getShortName(), host, verdict.primary().getValue());
-                }
-                return resultResponse(verdict, providerName);
+                    // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
+                    // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
+                    if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
+                        log.warn("[{}] Result for '{}': {}", descriptor.getShortName(), host, verdict.primary().getValue());
+                    }
+                    return resultResponse(verdict, providerName);
+                });
             }
-            return executeUpstream(provider, providerName, lookupKey);
+            return coalescer.get(coalesceKey, () -> executeUpstream(provider, providerName, lookupKey));
         } catch (StatusCodeException e) {
             ResponseEntity<String> status = e.getStatus();
             int code = status.getStatusCode().value();
