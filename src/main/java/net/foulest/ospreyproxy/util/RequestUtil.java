@@ -485,6 +485,37 @@ public final class RequestUtil {
     }
 
     /**
+     * Determines whether a host has a registrable domain (an eTLD+1) that can be extracted.
+     * <p>
+     * This is {@code false} for hosts that are themselves a public suffix ({@code gov.il},
+     * {@code co.uk}, {@code com}), for hosts with no public suffix at all, and for IP literals,
+     * since none of those can be reduced to a bare registrable domain via
+     * {@link #getBareHost(String)}. Providers that key on the bare host (see
+     * {@link Provider#isStripToBareHost()}) cannot meaningfully look up such a value, so callers
+     * should skip the upstream request when this returns {@code false}.
+     *
+     * @param host The normalized, ASCII (punycode), lowercased host returned by
+     *             {@link #validateHost(URI, Provider, String, String)}.
+     * @return {@code true} if the host has a registrable domain, {@code false} otherwise.
+     */
+    public static boolean hasRegistrableDomain(@NonNull String host) {
+        // IP literals have no registrable domain
+        if (NetworkUtil.isIpLiteral(host)) {
+            return false;
+        }
+
+        try {
+            // isUnderPublicSuffix() is true only when there is at least one label beyond the
+            // public suffix, which is exactly the condition under which topPrivateDomain() (and
+            // therefore getBareHost()) can produce a registrable domain
+            return InternetDomainName.from(host).isUnderPublicSuffix();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.debug("Unable to determine registrable domain for host '{}': {}", host, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Reduces an already-validated host to its bare registrable domain (eTLD+1), removing any
      * subdomains. For example, {@code test.google.com} becomes {@code google.com}, while
      * {@code foo.example.co.uk} correctly becomes {@code example.co.uk} rather than {@code co.uk},

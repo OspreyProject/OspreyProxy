@@ -208,6 +208,16 @@ public class ProxyHandler {
             boolean stripToBareHost = provider.isStripToBareHost();
             boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
             String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
+
+            if (stripToBareHost && !RequestUtil.hasRegistrableDomain(host)) {
+                metrics.recordRequest(providerName);
+
+                if (provider instanceof AbstractProvider ap) {
+                    ap.putCachedResult(hostKey, LookupVerdict.ALLOWED);
+                }
+                return resultResponse(LookupVerdict.ALLOWED, providerName);
+            }
+
             String lookupKey;
 
             if (hostKeyed) {
