@@ -45,7 +45,7 @@ public enum Descriptor {
             "AA419",
             "aa419",
             LookupResult.MALICIOUS,
-            300L,
+            300L, // 5 minutes
             "AA419_API_KEY",
             true,
             "Auth-API-Id",
@@ -62,7 +62,7 @@ public enum Descriptor {
             "OpenPhish",
             "openphish",
             LookupResult.PHISHING,
-            300L,
+            300L, // 5 minutes
             null,
             true
     ),
@@ -76,7 +76,7 @@ public enum Descriptor {
             "PhishDestroy",
             "phishdestroy",
             LookupResult.PHISHING,
-            300L,
+            300L, // 5 minutes
             null
     ),
 
@@ -89,7 +89,7 @@ public enum Descriptor {
             "Phishunt.io",
             "phishunt-io",
             LookupResult.PHISHING,
-            300L,
+            300L, // 5 minutes
             null
     ),
 
@@ -102,7 +102,7 @@ public enum Descriptor {
             "Red Flag Domains",
             "red-flag-domains",
             LookupResult.MALICIOUS,
-            300L,
+            300L, // 5 minutes
             null
     ),
 
@@ -115,7 +115,7 @@ public enum Descriptor {
             "SecureFeed",
             "securefeed",
             LookupResult.MALICIOUS,
-            600L, // keep at 600L
+            900L, // 15 minutes
             "SECUREFEED_API_KEY"
     ),
 
@@ -128,7 +128,7 @@ public enum Descriptor {
             "SinkingYachts",
             "sinking-yachts",
             LookupResult.PHISHING,
-            300L,
+            300L, // 5 minutes
             null
     ),
 
@@ -141,7 +141,7 @@ public enum Descriptor {
             "THREATfox",
             "threatfox",
             LookupResult.MALICIOUS,
-            300L,
+            300L, // 5 minutes
             "THREATFOX_API_KEY"
     ),
 
@@ -154,7 +154,7 @@ public enum Descriptor {
             "URLhaus",
             "urlhaus",
             LookupResult.MALICIOUS,
-            300L,
+            300L, // 5 minutes
             null
     ),
 
@@ -176,7 +176,7 @@ public enum Descriptor {
             "Validin",
             "validin",
             LookupResult.PHISHING,
-            600L, // keep at 600L
+            300L, // 5 minutes
             null,
             true
     );
