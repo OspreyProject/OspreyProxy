@@ -66,19 +66,6 @@ public enum Descriptor {
     ),
 
     /**
-     * PhishDestroy
-     */
-    PHISH_DESTROY(
-            List.of("https://raw.githubusercontent.com/phishdestroy/destroylist/main/list.txt"),
-            Format.TEXT,
-            "PhishDestroy",
-            "phishdestroy",
-            LookupResult.PHISHING,
-            300L,
-            null
-    ),
-
-    /**
      * Phishunt.io
      */
     PHISHUNT_IO(
