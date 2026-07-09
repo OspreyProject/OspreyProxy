@@ -20,6 +20,7 @@ package net.foulest.ospreyproxy.util.list;
 import com.google.common.net.InternetDomainName;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
@@ -61,7 +62,17 @@ public final class LocalListUtil {
             HttpClientFactory.createNegotiatingClient(40, 40, 40, 45);
 
     // Minimum spacing between consecutive upstream list fetches
-    private static final long MIN_FETCH_SPACING_MILLIS = 3000L;
+    private static final long MIN_FETCH_SPACING_MILLIS = 1000L;
+
+    // Environment variable holding a GitHub token (PAT or fine-grained) for authenticated
+    // Contents API fetches. Optional: if unset, GitHub feeds are fetched unauthenticated.
+    private static final String GITHUB_TOKEN_ENV = "GITHUB_API_TOKEN";
+
+    // Bounded retry for transient rate-limit/unavailable responses. The refresh runs on a single
+    // thread, so we never inline-wait longer than the cap: a long cooldown (e.g. GitHub's 30-minute
+    // penalty) exceeds it, and we bail to the next scheduled cycle rather than stalling every feed.
+    private static final int MAX_FETCH_ATTEMPTS = 3;
+    private static final long MAX_INLINE_RETRY_WAIT_MILLIS = 10_000L;
 
     // Epoch-millis of the next permitted fetch slot; advanced atomically by throttleFetches()
     private static final AtomicLong nextFetchSlotMillis = new AtomicLong(0L);
@@ -388,14 +399,57 @@ public final class LocalListUtil {
     }
 
     /**
-     * Fetches and parses content from a single source URL.
+     * Fetches and parses content from a single source URL, retrying transient rate-limit/unavailable
+     * responses a bounded number of times.
      * <p>
-     * If {@code currentEtag} is non-null, it is sent as {@code If-None-Match}. If no ETag is
-     * available but {@code currentLastModified} is non-null, it is sent as {@code If-Modified-Since}
-     * instead, letting sources that don't emit ETags still return 304. A 304 Not Modified response
-     * causes this method to return {@code null}, signaling that the caller should keep the source's
-     * previous domains. A 200 response is parsed directly from the response stream with hard byte and
-     * domain-count caps; the raw body is never materialized as one byte array or string.
+     * Each attempt is delegated to {@link #attemptFetch}. On a {@link RetryableStatusException} the
+     * call is retried after the server-specified delay (or an exponential backoff if none is given),
+     * up to {@link #MAX_FETCH_ATTEMPTS}. Because the refresh runs on a single thread, a delay longer
+     * than {@link #MAX_INLINE_RETRY_WAIT_MILLIS} is not waited out inline; instead the fetch fails for
+     * this cycle (the previous list is kept) and the next scheduled refresh retries. A 304 propagates
+     * through as {@code null}.
+     *
+     * @param descriptor The list descriptor being fetched (selects the parse format).
+     * @param url The resolved source URL to fetch.
+     * @param currentEtag The ETag from the last successful fetch of this source, or {@code null}.
+     * @param currentLastModified The Last-Modified from the last successful fetch, or {@code null}.
+     * @return A {@link FetchResult} with the parsed domains, ETag, and Last-Modified, or {@code null} on 304.
+     */
+    private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
+                                                  @NonNull String url,
+                                                  @Nullable String currentEtag,
+                                                  @Nullable String currentLastModified) throws IOException {
+        long backoffMillis = 1000L;
+        int attempt = 1;
+
+        while (true) {
+            try {
+                return attemptFetch(descriptor, url, currentEtag, currentLastModified);
+            } catch (RetryableStatusException e) {
+                long waitMillis = e.getRetryAfterMillis() > 0L ? e.getRetryAfterMillis() : backoffMillis;
+
+                // Give up (and keep the previous list) if we're out of attempts, or if the server
+                // wants us to wait longer than we're willing to block this single refresh thread.
+                // A long cooldown (e.g. GitHub's 30-minute penalty) exceeds the cap and bails here.
+                if (attempt >= MAX_FETCH_ATTEMPTS || waitMillis > MAX_INLINE_RETRY_WAIT_MILLIS) {
+                    throw new IllegalStateException(e.getMessage());
+                }
+
+                log.warn("[{}] {} for {}; retrying in {} ms (attempt {}/{})",
+                        descriptor.getShortName(), e.getMessage(), url, waitMillis, attempt, MAX_FETCH_ATTEMPTS);
+                sleepMillis(waitMillis);
+                backoffMillis *= 2L;
+            }
+
+            attempt++;
+        }
+    }
+
+    /**
+     * Performs a single fetch attempt for one source URL, sending conditional-request headers and
+     * (for GitHub feeds) authentication headers, and parsing a 200 response. Returns {@code null} on
+     * 304. Throws {@link RetryableStatusException} for transient rate-limit/unavailable statuses so
+     * the caller can retry, or {@link IllegalStateException} for other non-success statuses.
      *
      * @param descriptor The list descriptor being fetched (selects the parse format).
      * @param url The resolved source URL to fetch.
@@ -404,15 +458,31 @@ public final class LocalListUtil {
      * @return A {@link FetchResult} with the parsed domains, ETag, and Last-Modified, or {@code null} on 304.
      */
     @SuppressWarnings("NestedMethodCall")
-    private static @Nullable FetchResult fetchRaw(@NonNull Descriptor descriptor,
-                                                  @NonNull String url,
-                                                  @Nullable String currentEtag,
-                                                  @Nullable String currentLastModified) throws IOException {
+    private static @Nullable FetchResult attemptFetch(@NonNull Descriptor descriptor,
+                                                      @NonNull String url,
+                                                      @Nullable String currentEtag,
+                                                      @Nullable String currentLastModified) throws IOException {
         // Space out upstream hits so startup doesn't fire every feed at once (see throttleFetches)
         throttleFetches();
 
         ClassicHttpRequest request = new HttpGet(url);
-        request.addHeader("Accept", "application/json, text/plain, */*");
+
+        // GitHub Contents API feeds authenticate via header (raw.githubusercontent.com ignores auth),
+        // moving them from the ~60/hour unauthenticated per-IP limit to 5,000/hour. The token is
+        // optional: without it the same request still works, just unauthenticated.
+        if (descriptor.isGithubApi()) {
+            request.addHeader("Accept", "application/vnd.github.raw");
+            request.addHeader("X-GitHub-Api-Version", "2022-11-28");
+            request.addHeader("User-Agent", "OspreyProxy");
+
+            String githubToken = System.getenv(GITHUB_TOKEN_ENV);
+
+            if (githubToken != null && !githubToken.isBlank()) {
+                request.addHeader("Authorization", "Bearer " + githubToken.strip());
+            }
+        } else {
+            request.addHeader("Accept", "application/json, text/plain, */*");
+        }
 
         // Header-based authentication, kept out of the URL so the secret never appears in logs
         String authHeaderName = descriptor.getAuthHeaderName();
@@ -446,6 +516,13 @@ public final class LocalListUtil {
                 return null;
             }
 
+            if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504
+                    || (statusCode == 403 && isRateLimited(response))) {
+                long retryAfter = retryAfterMillis(response);
+                EntityUtils.consumeQuietly(response.getEntity());
+                throw new RetryableStatusException(statusCode, retryAfter);
+            }
+
             if (statusCode != 200 && statusCode != 201) {
                 EntityUtils.consumeQuietly(response.getEntity());
                 throw new IllegalStateException("HTTP " + statusCode);
@@ -456,7 +533,8 @@ public final class LocalListUtil {
                     .orElse("")
                     .toLowerCase(Locale.ROOT);
 
-            if (!contentType.contains("application/json") && !contentType.contains("text/")) {
+            if (!contentType.contains("application/json") && !contentType.contains("text/")
+                    && !contentType.contains("vnd.github")) {
                 EntityUtils.consumeQuietly(response.getEntity());
                 throw new IllegalStateException("Unexpected Content-Type: " + contentType);
             }
@@ -496,6 +574,84 @@ public final class LocalListUtil {
                     .orElse(null);
             return new FetchResult(domains, etag, lastModified);
         });
+    }
+
+    /**
+     * Returns {@code true} if the response reports an exhausted rate-limit budget
+     * ({@code X-RateLimit-Remaining: 0}), used to tell a rate-limited 403 from a genuine one.
+     *
+     * @param response The upstream response to inspect.
+     * @return {@code true} if the remaining budget header is present and zero.
+     */
+    private static boolean isRateLimited(@NonNull ClassicHttpResponse response) {
+        Header remaining = response.getFirstHeader("X-RateLimit-Remaining");
+        return remaining != null && "0".equals(remaining.getValue().strip());
+    }
+
+    /**
+     * Extracts a retry delay in milliseconds from {@code Retry-After} (delta-seconds form) or, failing
+     * that, from {@code X-RateLimit-Reset} (epoch seconds). Returns 0 if neither yields a positive wait.
+     *
+     * @param response The upstream response to inspect.
+     * @return A non-negative retry delay in milliseconds, or 0 if no usable hint is present.
+     */
+    private static long retryAfterMillis(@NonNull ClassicHttpResponse response) {
+        Header retryAfter = response.getFirstHeader("Retry-After");
+
+        if (retryAfter != null) {
+            try {
+                long seconds = Long.parseLong(retryAfter.getValue().strip());
+
+                if (seconds >= 0L) {
+                    return seconds * 1000L;
+                }
+            } catch (NumberFormatException ignored) {
+                // HTTP-date form is not parsed here; fall through to the reset header
+            }
+        }
+
+        Header reset = response.getFirstHeader("X-RateLimit-Reset");
+
+        if (reset != null) {
+            try {
+                long deltaMillis = Long.parseLong(reset.getValue().strip()) * 1000L - System.currentTimeMillis();
+
+                if (deltaMillis > 0L) {
+                    return deltaMillis;
+                }
+            } catch (NumberFormatException ignored) {
+                // Non-numeric reset header; treat as no hint
+            }
+        }
+        return 0L;
+    }
+
+    /**
+     * Sleeps for the given number of milliseconds, restoring the interrupt flag if interrupted.
+     *
+     * @param millis The duration to sleep, in milliseconds.
+     */
+    private static void sleepMillis(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Signals a transient, retryable upstream status (e.g. 429/503, or a rate-limited 403), carrying
+     * any server-specified retry delay in milliseconds (0 if unknown).
+     */
+    private static final class RetryableStatusException extends RuntimeException {
+
+        @Getter
+        private final long retryAfterMillis;
+
+        RetryableStatusException(int statusCode, long retryAfterMillis) {
+            super("HTTP " + statusCode);
+            this.retryAfterMillis = retryAfterMillis;
+        }
     }
 
     /**

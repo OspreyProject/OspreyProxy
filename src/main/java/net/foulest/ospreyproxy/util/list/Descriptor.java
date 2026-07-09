@@ -49,20 +49,22 @@ public enum Descriptor {
             "AA419_API_KEY",
             true,
             "Auth-API-Id",
-            "Url"
+            "Url",
+            false
     ),
 
     /**
      * OpenPhish
      */
     OPEN_PHISH(
-            List.of("https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt"),
+            List.of("https://api.github.com/repos/openphish/public_feed/contents/feed.txt?ref=main"),
             Format.TEXT,
             "OpenPhish",
             "openphish",
             LookupResult.PHISHING,
             300L,
-            null
+            null,
+            true
     ),
 
     /**
@@ -148,21 +150,22 @@ public enum Descriptor {
      */
     VALIDIN(
             List.of(
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-1.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-2.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-3.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-4.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-5.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-6.txt",
-                    "https://raw.githubusercontent.com/MikhailKasimov/validin-phish-feed/main/validin-phish-feed-7.txt"
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-1.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-2.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-3.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-4.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-5.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-6.txt?ref=main",
+                    "https://api.github.com/repos/MikhailKasimov/validin-phish-feed/contents/validin-phish-feed-7.txt?ref=main"
             ),
             Format.TEXT,
             "Validin",
             "validin",
             LookupResult.PHISHING,
             600L, // keep at 600L
-            null
+            null,
+            true
     );
 
     /**
@@ -234,12 +237,23 @@ public enum Descriptor {
     private final @Nullable String jsonObjectField;
 
     /**
+     * Whether this feed is served from GitHub's authenticated REST Contents API
+     * ({@code https://api.github.com/repos/OWNER/REPO/contents/PATH?ref=BRANCH}) rather than a plain
+     * URL. When {@code true}, fetches send the {@code application/vnd.github.raw} Accept header, the
+     * API version header, a User-Agent, and (if the token environment variable is set) an
+     * {@code Authorization: Bearer} header, so the fetch counts against the 5,000/hour authenticated
+     * limit instead of the ~60/hour unauthenticated per-IP limit that raw.githubusercontent.com
+     * enforces. The token is optional: if it is unset, the same request is made unauthenticated.
+     */
+    private final boolean githubApi;
+
+    /**
      * Canonical constructor.
      */
     Descriptor(@NonNull List<String> urls, @NonNull Format format, @NonNull String shortName,
                @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
                @Nullable String apiKeyEnvVar, boolean accumulate, @Nullable String authHeaderName,
-               @Nullable String jsonObjectField) {
+               @Nullable String jsonObjectField, boolean githubApi) {
         this.urls = urls;
         this.format = format;
         this.shortName = shortName;
@@ -250,6 +264,7 @@ public enum Descriptor {
         this.accumulate = accumulate;
         this.authHeaderName = authHeaderName;
         this.jsonObjectField = jsonObjectField;
+        this.githubApi = githubApi;
     }
 
     /**
@@ -260,7 +275,18 @@ public enum Descriptor {
                @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
                @Nullable String apiKeyEnvVar) {
         this(urls, format, shortName, endpointName, resultType, refreshIntervalSeconds, apiKeyEnvVar,
-                false, null, null);
+                false, null, null, false);
+    }
+
+    /**
+     * Convenience constructor for GitHub Contents API feeds: overwrite semantics, no auth header,
+     * bare-string parsing, with {@link #githubApi} enabled.
+     */
+    Descriptor(@NonNull List<String> urls, @NonNull Format format, @NonNull String shortName,
+               @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
+               @Nullable String apiKeyEnvVar, boolean githubApi) {
+        this(urls, format, shortName, endpointName, resultType, refreshIntervalSeconds, apiKeyEnvVar,
+                false, null, null, githubApi);
     }
 
     /**
@@ -288,7 +314,7 @@ public enum Descriptor {
      */
     List<String> getResolvedUrls() {
         if (apiKeyEnvVar == null) {
-            return urls;
+            return new ArrayList<>(urls);
         }
 
         String key = System.getenv(apiKeyEnvVar);
