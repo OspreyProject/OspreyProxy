@@ -298,7 +298,6 @@ public class ProxyHandler {
                                                    @NonNull String forwardUrl) {
         // Skip the upstream call if the circuit breaker is open (too many recent failures)
         if (circuitBreaker.isOpen(providerName)) {
-            log.warn("[{}] Circuit breaker is open, skipping upstream call", providerName);
             return ErrorUtil.RESP_429;
         }
 

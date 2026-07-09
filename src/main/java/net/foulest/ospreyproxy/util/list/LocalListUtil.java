@@ -438,8 +438,6 @@ public final class LocalListUtil {
             conditionHeader = "no validators";
         }
 
-        log.warn("[{}] Fetching list source {} ({})", descriptor.getShortName(), url, conditionHeader);
-
         return FETCH_CLIENT.execute(request, (ClassicHttpResponse response) -> {
             int statusCode = response.getCode();
 
@@ -496,11 +494,6 @@ public final class LocalListUtil {
             String lastModified = Optional.ofNullable(response.getFirstHeader("Last-Modified"))
                     .map(Header::getValue)
                     .orElse(null);
-
-            log.warn("[{}] Fetched {} domains from {} (ETag: {}, Last-Modified: {})",
-                    descriptor.getShortName(), domains.size(), url,
-                    etag == null ? "<none>" : etag,
-                    lastModified == null ? "<none>" : lastModified);
             return new FetchResult(domains, etag, lastModified);
         });
     }
