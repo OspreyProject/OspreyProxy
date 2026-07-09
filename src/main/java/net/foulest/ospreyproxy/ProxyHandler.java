@@ -373,6 +373,11 @@ public class ProxyHandler {
                         case 404 -> ErrorUtil.RESP_404;
                         case 415 -> ErrorUtil.RESP_415;
 
+                        case 422 -> {
+                            log.warn("[{}] Upstream returned 422 for {} with body: {}", providerName, forwardUrl, new String(responseBytes, StandardCharsets.UTF_8));
+                            yield ErrorUtil.RESP_422;
+                        }
+
                         case 429 -> {
                             circuitBreaker.recordFailure(providerName, durationNanos, new RuntimeException("HTTP 429"));
                             yield ErrorUtil.RESP_429;
