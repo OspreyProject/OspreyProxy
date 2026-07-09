@@ -40,6 +40,16 @@ public class LocalListProviderConfig {
     }
 
     /**
+     * Defines a bean for the PhishDestroy local list provider, which uses the PHISH_DESTROY descriptor.
+     *
+     * @return A LocalListProvider instance configured for the PhishDestroy list.
+     */
+    @Bean
+    public LocalListProvider phishDestroyProvider() {
+        return new LocalListProvider(Descriptor.PHISH_DESTROY);
+    }
+
+    /**
      * Defines a bean for the Phishunt.io local list provider, which uses the PHISHUNT_IO descriptor.
      *
      * @return A LocalListProvider instance configured for the Phishunt.io list.
