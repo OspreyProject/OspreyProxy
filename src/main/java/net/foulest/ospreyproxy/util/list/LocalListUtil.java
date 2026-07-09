@@ -495,17 +495,11 @@ public final class LocalListUtil {
             }
         }
 
-        String conditionHeader;
-
         // Fall back to If-Modified-Since if no ETag is available
         if (currentEtag != null) {
             request.addHeader("If-None-Match", currentEtag);
-            conditionHeader = "If-None-Match: " + currentEtag;
         } else if (currentLastModified != null) {
             request.addHeader("If-Modified-Since", currentLastModified);
-            conditionHeader = "If-Modified-Since: " + currentLastModified;
-        } else {
-            conditionHeader = "no validators";
         }
 
         return FETCH_CLIENT.execute(request, (ClassicHttpResponse response) -> {
@@ -516,9 +510,11 @@ public final class LocalListUtil {
                 return null;
             }
 
-            if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504
-                    || (statusCode == 403 && isRateLimited(response))) {
-                long retryAfter = retryAfterMillis(response);
+            boolean rateLimited = statusCode == 429 || (statusCode == 403 && isRateLimited(response));
+            boolean transientServerError = statusCode == 502 || statusCode == 503 || statusCode == 504;
+
+            if (rateLimited || transientServerError) {
+                long retryAfter = retryAfterMillis(response, rateLimited);
                 EntityUtils.consumeQuietly(response.getEntity());
                 throw new RetryableStatusException(statusCode, retryAfter);
             }
@@ -590,12 +586,18 @@ public final class LocalListUtil {
 
     /**
      * Extracts a retry delay in milliseconds from {@code Retry-After} (delta-seconds form) or, failing
-     * that, from {@code X-RateLimit-Reset} (epoch seconds). Returns 0 if neither yields a positive wait.
+     * that and only when {@code allowRateLimitReset} is set, from {@code X-RateLimit-Reset} (epoch
+     * seconds). Returns 0 if neither yields a positive wait.
+     * <p>
+     * {@code Retry-After} is a genuine hint on any status and is always honored. {@code X-RateLimit-Reset}
+     * is sent by GitHub on non-rate-limited responses too (including 5xx) and only marks when the quota
+     * window resets, so it is consulted only for actual rate-limit statuses.
      *
      * @param response The upstream response to inspect.
+     * @param allowRateLimitReset Whether {@code X-RateLimit-Reset} should be treated as a retry hint.
      * @return A non-negative retry delay in milliseconds, or 0 if no usable hint is present.
      */
-    private static long retryAfterMillis(@NonNull ClassicHttpResponse response) {
+    private static long retryAfterMillis(@NonNull ClassicHttpResponse response, boolean allowRateLimitReset) {
         Header retryAfter = response.getFirstHeader("Retry-After");
 
         if (retryAfter != null) {
@@ -608,6 +610,10 @@ public final class LocalListUtil {
             } catch (NumberFormatException ignored) {
                 // HTTP-date form is not parsed here; fall through to the reset header
             }
+        }
+
+        if (!allowRateLimitReset) {
+            return 0L;
         }
 
         Header reset = response.getFirstHeader("X-RateLimit-Reset");
