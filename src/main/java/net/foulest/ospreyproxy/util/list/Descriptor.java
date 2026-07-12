@@ -107,19 +107,6 @@ public enum Descriptor {
     ),
 
     /**
-     * SecureFeed
-     */
-    SECURE_FEED(
-            List.of("https://api.securefeed.com/Host/Feed?dateRange=5&type=host&tag=all&apiKey=%api_key%"),
-            Format.TEXT,
-            "SecureFeed",
-            "securefeed",
-            LookupResult.MALICIOUS,
-            900L, // 15 minutes
-            "SECUREFEED_API_KEY"
-    ),
-
-    /**
      * SinkingYachts
      */
     SINKING_YACHTS(

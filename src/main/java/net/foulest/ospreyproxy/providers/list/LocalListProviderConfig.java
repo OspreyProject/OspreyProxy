@@ -70,16 +70,6 @@ public class LocalListProviderConfig {
     }
 
     /**
-     * Defines a bean for the SecureFeed local list provider, which uses the SECURE_FEED descriptor.
-     *
-     * @return A LocalListProvider instance configured for the SecureFeed list.
-     */
-    @Bean
-    public LocalListProvider secureFeedProvider() {
-        return new LocalListProvider(Descriptor.SECURE_FEED);
-    }
-
-    /**
      * Defines a bean for the SinkingYachts local list provider, which uses the SINKING_YACHTS descriptor.
      *
      * @return A LocalListProvider instance configured for the SinkingYachts list.
