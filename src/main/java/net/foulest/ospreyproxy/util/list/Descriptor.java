@@ -62,7 +62,7 @@ public enum Descriptor {
             "OpenPhish",
             "openphish",
             LookupResult.PHISHING,
-            300L, // 5 minutes
+            900L, // 15 minutes
             null,
             true
     ),
@@ -150,7 +150,7 @@ public enum Descriptor {
             "Validin",
             "validin",
             LookupResult.PHISHING,
-            300L, // 5 minutes
+            900L, // 15 minutes
             null,
             true
     );
