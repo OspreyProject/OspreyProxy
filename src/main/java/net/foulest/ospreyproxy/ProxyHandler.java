@@ -434,7 +434,7 @@ public class ProxyHandler {
             log.error("[{}] Upstream request blocked by SSRF resolver", providerName, e);
             return ErrorUtil.RESP_502;
         } catch (SocketException e) {
-            log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName(), e);
+            log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName());
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName(), e);
