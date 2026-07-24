@@ -127,18 +127,27 @@ public class AlphaMountain extends AbstractProvider {
             List<LookupResult> results = new ArrayList<>();
 
             // Phishing
-            if (hasCategory(categories, 51) && confidence >= 0.970767) {
-                results.add(LookupResult.PHISHING);
+            if (hasCategory(categories, 51)) {
+                if (confidence >= 0.970767) {
+                    results.add(LookupResult.PHISHING);
+                } else {
+                    log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}", url, displayName, categories, confidence, source);
+                }
             }
 
             // Malicious
-            if (hasCategory(categories, 39)
-                    && ("rt-medium".equals(source) || confidence >= 0.95307525)) {
-                results.add(LookupResult.MALICIOUS);
+            if (hasCategory(categories, 39)) {
+                if ("rt-medium".equals(source)) {
+                    results.add(LookupResult.MALICIOUS);
+                } else if (confidence >= 0.95307525) {
+                    results.add(LookupResult.MALICIOUS);
+                } else {
+                    log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}", url, displayName, categories, confidence, source);
+                }
             }
 
             // Spam
-            if (hasCategory(categories, 70) && confidence >= 0.970767) {
+            if (hasCategory(categories, 70)) {
                 results.add(LookupResult.SUSPICIOUS);
             }
 
