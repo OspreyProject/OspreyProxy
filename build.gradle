@@ -19,6 +19,12 @@ repositories {
     mavenCentral()
 }
 
+configurations.configureEach {
+    resolutionStrategy {
+        force 'tools.jackson.core:jackson-databind:3.1.5'
+    }
+}
+
 dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.2.4'
     implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0'
