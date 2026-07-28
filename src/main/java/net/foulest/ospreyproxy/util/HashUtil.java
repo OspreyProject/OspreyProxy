@@ -1,6 +1,6 @@
 /*
- * OspreyProxy - backend code for our proxy server using Spring MVC.
- * Copyright (C) 2026 Osprey Project (https://github.com/OspreyProject)
+ * Copyright (C) 2024-2026 Osprey Project LLC and contributors (https://osprey.ac)
+ * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
