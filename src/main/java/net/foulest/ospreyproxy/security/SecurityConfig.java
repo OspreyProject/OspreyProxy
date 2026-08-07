@@ -17,20 +17,56 @@
  */
 package net.foulest.ospreyproxy.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+import java.util.List;
 
 /**
  * Global security configuration for the proxy server.
  */
 @Configuration
-public class SecurityConfig implements WebMvcConfigurer {
+public class SecurityConfig {
 
     /**
-     * Registers the security filter at order 1 (highest priority).
-     * All requests pass through this filter before reaching any controller.
+     * The single web origin allowed to call the browser-facing /check endpoint cross-origin.
+     * Every other endpoint stays same-origin only, since the extension calls them with host
+     * permissions and needs no CORS.
+     */
+    @Value("${osprey.check.allowed-origin:https://osprey.ac}")
+    private String checkAllowedOrigin;
+
+    /**
+     * Registers a servlet-level {@link CorsFilter} at order 0 so preflight OPTIONS requests
+     * to /check are intercepted and answered immediately before reaching the {@link SecurityFilter}.
+     *
+     * @return A FilterRegistrationBean registering the CorsFilter for /check.
+     */
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of(checkAllowedOrigin));
+        config.setAllowedHeaders(List.of("Content-Type", "Accept"));
+        config.setAllowedMethods(List.of("POST", "OPTIONS"));
+        config.setMaxAge(600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/check", config);
+
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
+        registration.setOrder(0);
+        registration.setName("corsFilter");
+        return registration;
+    }
+
+    /**
+     * Registers the security filter at order 1.
+     * All requests pass through this filter after CORS handling has completed.
      *
      * @return A FilterRegistrationBean that registers the SecurityFilter for all URL patterns.
      */

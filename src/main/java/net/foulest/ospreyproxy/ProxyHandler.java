@@ -29,6 +29,7 @@ import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
 import net.foulest.ospreyproxy.util.*;
+import net.foulest.ospreyproxy.util.check.PreparedUrl;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -41,6 +42,7 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -55,10 +57,7 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -105,6 +104,30 @@ public class ProxyHandler {
     // Collapses concurrent duplicate lookups (same provider + same key) into a single execution,
     // so a burst of identical requests doesn't fan out into redundant upstream calls or log lines
     private final RequestCoalescer<ResponseEntity<String>> coalescer = new RequestCoalescer<>();
+
+    // Coalesces concurrent duplicate DNS and local-list lookups for the /check aggregator, which
+    // resolves verdicts directly rather than HTTP responses. The costly upstream API path still
+    // shares the ResponseEntity coalescer above, so a /check and an extension request for the same
+    // provider and key collapse into one upstream call
+    private final RequestCoalescer<LookupVerdict> verdictCoalescer = new RequestCoalescer<>();
+
+    // Maps a provider result string back to its enum, so the /check aggregator can rebuild a verdict
+    // from an upstream ResponseEntity produced by executeUpstream without re-running the interpret step
+    private static final Map<String, LookupResult> RESULT_BY_VALUE = buildResultByValue();
+
+    /**
+     * Builds the immutable {@link LookupResult} lookup map keyed by wire value.
+     *
+     * @return A map from each {@link LookupResult#getValue()} to its enum constant.
+     */
+    private static @NonNull @Unmodifiable Map<String, LookupResult> buildResultByValue() {
+        Map<String, LookupResult> map = HashMap.newHashMap(LookupResult.values().length);
+
+        for (LookupResult result : LookupResult.values()) {
+            map.put(result.getValue(), result);
+        }
+        return Map.copyOf(map);
+    }
 
     /**
      * Constructor for ProxyHandler. Spring injects every {@link Provider} bean automatically.
@@ -439,6 +462,134 @@ public class ProxyHandler {
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName(), e);
             return ErrorUtil.RESP_502;
+        }
+    }
+
+    /**
+     * Resolves a single provider's verdict for the /check aggregator against an already-validated URL.
+     * <p>
+     * This reuses the same per-provider machinery as {@link #proxyRequest}: the result cache, the
+     * request coalescer, the DNS and local-list lookups, the circuit breaker, and the upstream cache
+     * write. It differs only in that it skips the per-request IP rate limiting and body validation,
+     * which the /check endpoint performs once up front, and returns a {@link LookupVerdict} instead of
+     * an HTTP response so that a single failing provider degrades to {@code failed} in the grid rather
+     * than aborting the whole scan.
+     *
+     * @param provider The enabled provider to resolve.
+     * @param prepared The URL prepared once for this scan.
+     * @return The provider's verdict, or {@link LookupVerdict#FAILED} if the lookup could not complete.
+     */
+    public @NonNull LookupVerdict resolveForCheck(@NonNull Provider provider, @NonNull PreparedUrl prepared) {
+        String providerName = provider.getDisplayName();
+        String endpointName = provider.getEndpointName();
+
+        Descriptor descriptor = LocalListUtil.findByEndpointName(endpointName);
+        boolean stripToBareHost = provider.isStripToBareHost();
+        boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
+
+        String lookupKey;
+
+        if (stripToBareHost) {
+            // A host with no registrable domain (a bare public suffix or an IP literal) cannot be
+            // looked up by bare-host providers, so it is treated as allowed, mirroring proxyRequest
+            if (!prepared.hasRegistrableDomain()) {
+                metrics.recordRequest(providerName);
+
+                if (provider instanceof AbstractProvider ap) {
+                    ap.putCachedResult(prepared.bareHost(), LookupVerdict.ALLOWED);
+                }
+                return LookupVerdict.ALLOWED;
+            }
+
+            lookupKey = prepared.bareHost();
+        } else if (hostKeyed) {
+            lookupKey = prepared.host();
+        } else {
+            lookupKey = prepared.canonicalUrl();
+        }
+
+        // Probe the result cache for API and DNS providers (local lists are looked up in memory)
+        if (descriptor == null && provider instanceof AbstractProvider ap) {
+            LookupVerdict cached = ap.getCachedResult(lookupKey);
+
+            if (cached != null) {
+                metrics.recordRequest(providerName);
+                metrics.recordCacheHit();
+                return cached;
+            }
+
+            metrics.recordCacheMiss();
+        }
+
+        metrics.recordRequest(providerName);
+
+        String coalesceKey = endpointName + '\u0000' + lookupKey;
+        String key = lookupKey;
+
+        if (provider instanceof AbstractDNSProvider dnsProvider) {
+            return verdictCoalescer.get(coalesceKey, () -> dnsProvider.lookupAndCache(key));
+        }
+
+        if (descriptor != null) {
+            return verdictCoalescer.get(coalesceKey, () -> LookupVerdict.of(LocalListUtil.lookup(descriptor, key)));
+        }
+
+        // Share the ResponseEntity coalescer with the extension endpoint so duplicate in-flight
+        // upstream calls collapse into one, then rebuild the verdict from the response
+        ResponseEntity<String> response = coalescer.get(coalesceKey, () -> executeUpstream(provider, providerName, key));
+        return verdictFromResponse(response);
+    }
+
+    /**
+     * Rebuilds a {@link LookupVerdict} from an HTTP response produced by {@link #executeUpstream}.
+     * <p>
+     * A 429 maps to {@link LookupVerdict#RATE_LIMITED}; any other non-200 or unparseable body maps to
+     * {@link LookupVerdict#FAILED}. A 200 body is parsed for its {@code results} array (falling back to
+     * the scalar {@code result}) and rebuilt into a verdict.
+     *
+     * @param response The response returned by the upstream execution.
+     * @return The reconstructed verdict, never empty.
+     */
+    @SuppressWarnings("NestedMethodCall")
+    private static @NonNull LookupVerdict verdictFromResponse(@NonNull ResponseEntity<String> response) {
+        int code = response.getStatusCode().value();
+
+        if (code == 429) {
+            return LookupVerdict.RATE_LIMITED;
+        }
+
+        String body = response.getBody();
+
+        if (code != 200 || body == null || body.isEmpty()) {
+            return LookupVerdict.FAILED;
+        }
+
+        try {
+            Map<String, Object> parsed = JacksonUtil.MAPPER.readValue(body, JacksonUtil.MAP_TYPE_OBJECT);
+            List<LookupResult> results = new ArrayList<>();
+            Object resultsValue = parsed.get("results");
+
+            if (resultsValue instanceof List<?> list) {
+                for (Object element : list) {
+                    LookupResult mapped = RESULT_BY_VALUE.get(String.valueOf(element));
+
+                    if (mapped != null) {
+                        results.add(mapped);
+                    }
+                }
+            }
+
+            if (results.isEmpty()) {
+                LookupResult mapped = RESULT_BY_VALUE.get(String.valueOf(parsed.get("result")));
+
+                if (mapped != null) {
+                    results.add(mapped);
+                }
+            }
+            return results.isEmpty() ? LookupVerdict.FAILED : LookupVerdict.of(results);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.warn("Failed to parse upstream verdict for /check: {}", e.getClass().getName());
+            return LookupVerdict.FAILED;
         }
     }
 

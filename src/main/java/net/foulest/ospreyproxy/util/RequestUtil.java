@@ -50,21 +50,25 @@ public final class RequestUtil {
     private static final Pattern PATTERN = Pattern.compile("/+$");
 
     /**
-     * Validates and rate-limits a request's IP address, and returns a hashed IP.
+     * Resolves the client IP from the request and returns its salted hash, with no rate-limit side
+     * effects. Prefers the {@code X-Real-IP} header set by the trusted reverse proxy, falls back to
+     * the socket remote address, and finally to a fixed {@code "unknown"} bucket.
+     * <p>
+     * This is the IP-resolution half of {@link #validateIP}, factored out so callers that run their
+     * own rate limiting (for example the /check aggregator) can obtain the same hashed IP without
+     * consuming any provider bucket tokens.
      *
-     * @param request      The request to validate.
-     * @param provider     The provider to lookup rate limits against.
-     * @param providerName The name of the provider.
-     * @return A hashed representation of the client's IP address for rate limiting purposes.
-     * @throws StatusCodeException If the IP address is found to be invalid/blocked.
+     * @param request The incoming request.
+     * @param context A short label for log correlation (for example a provider or endpoint name).
+     * @return The salted hash of the resolved client IP.
      */
-    public static String validateIP(@NonNull HttpServletRequest request, Provider provider, String providerName) {
+    public static @NonNull String hashClientIp(@NonNull HttpServletRequest request, @NonNull String context) {
         String headerIp = request.getHeader("X-Real-IP");
         String realIp = normalizeClientIp(headerIp);
 
         // Checks if the X-Real-IP header is present but malformed
         if (headerIp != null && !headerIp.isBlank() && realIp == null) {
-            log.warn("[{}] Ignoring malformed X-Real-IP header", providerName);
+            log.warn("[{}] Ignoring malformed X-Real-IP header", context);
         }
 
         // Falls back to the remote address if X-Real-IP is missing or invalid
@@ -75,11 +79,25 @@ public final class RequestUtil {
         // If the remote address is also invalid, treat the IP as "unknown" for rate limiting
         if (realIp == null) {
             realIp = "unknown";
-            log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", providerName);
+            log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", context);
         }
+        return HashUtil.hashIp(realIp);
+    }
 
-        // Hashes the IP for rate limiting
-        String hashedIp = HashUtil.hashIp(realIp);
+    /**
+     * Validates and rate-limits a request's IP address, and returns a hashed IP.
+     *
+     * @param request      The request to validate.
+     * @param provider     The provider to lookup rate limits against.
+     * @param providerName The name of the provider.
+     * @return A hashed representation of the client's IP address for rate limiting purposes.
+     * @throws StatusCodeException If the IP address is found to be invalid/blocked.
+     */
+    public static @NonNull String validateIP(@NonNull HttpServletRequest request,
+                                             @NonNull Provider provider,
+                                             String providerName) {
+        // Resolves and hashes the client IP without consuming any rate-limit tokens
+        String hashedIp = hashClientIp(request, providerName);
 
         // Invalid-request block lookup (no token consumed here)
         if (provider.isInvalidRequestBlocked(hashedIp)) {
