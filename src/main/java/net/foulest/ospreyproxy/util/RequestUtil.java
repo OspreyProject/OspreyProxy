@@ -34,6 +34,7 @@ import tools.jackson.core.JsonToken;
 import java.net.*;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Utility class for validating incoming requests to the proxy.
@@ -46,6 +47,7 @@ public final class RequestUtil {
     private static final int MAX_IP_LITERAL_LENGTH = 45;
     private static final int MAX_HOST_LENGTH = 253;
     private static final int MAX_DNS_LABEL_LENGTH = 63;
+    private static final Pattern PATTERN = Pattern.compile("/+$");
 
     /**
      * Validates and rate-limits a request's IP address, and returns a hashed IP.
@@ -592,8 +594,13 @@ public final class RequestUtil {
             // Brackets IPv6 literal hosts so the authority is valid
             String authorityHost = host.indexOf(':') >= 0 ? ("[" + host + "]") : host;
             String authority = port == -1 ? authorityHost : (authorityHost + ":" + port);
+
             String rawPath = parsedUri.getRawPath();
-            String rawQuery = parsedUri.getRawQuery();
+
+            // Removes trailing slashes from the path
+            if (rawPath != null) {
+                rawPath = PATTERN.matcher(rawPath).replaceAll("");
+            }
 
             // Build from already-encoded (raw) components and parse with the single-arg
             // URI constructor, which preserves percent-escapes verbatim
@@ -602,10 +609,6 @@ public final class RequestUtil {
 
             if (rawPath != null) {
                 rebuilt.append(rawPath);
-            }
-
-            if (rawQuery != null) {
-                rebuilt.append('?').append(rawQuery);
             }
             return new URI(rebuilt.toString());
         } catch (StatusCodeException e) {
