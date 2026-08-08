@@ -431,8 +431,9 @@ public class CheckHandler {
      * <p>
      * The normalization mirrors the extension's own URL handling: a scheme is assumed when missing,
      * the host is lowercased and IDN-encoded with any leading {@code www.} removed, the path keeps no
-     * trailing slash, and the query and fragment are dropped. Private, internal, and malformed hosts
-     * are rejected.
+     * trailing slash, and the query and fragment are dropped. A few hosts are exceptions whose
+     * query parameters identify the resource and are retained (see {@link RequestUtil#retainedQuery}).
+     * Private, internal, and malformed hosts are rejected.
      *
      * @param rawUrl The raw URL string from the request.
      * @return The prepared URL, or {@code null} if the input is not a valid public http(s) URL.
@@ -528,7 +529,7 @@ public class CheckHandler {
             path = "";
         }
 
-        String canonicalUrl = "https://" + host + path;
+        String canonicalUrl = "https://" + host + path + RequestUtil.retainedQuery(host, path, uri.getRawQuery());
         String bareHost = RequestUtil.getBareHost(host);
         boolean hasRegistrable = RequestUtil.hasRegistrableDomain(host);
         return new PreparedUrl(host, bareHost, canonicalUrl, hasRegistrable);

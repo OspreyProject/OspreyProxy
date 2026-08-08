@@ -32,6 +32,7 @@ import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
 import java.net.*;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -48,6 +49,14 @@ public final class RequestUtil {
     private static final int MAX_HOST_LENGTH = 253;
     private static final int MAX_DNS_LABEL_LENGTH = 63;
     private static final Pattern PATTERN = Pattern.compile("/+$");
+    private static final Pattern QUERY_SPLIT = Pattern.compile("&");
+
+    // Each rule is {host, path, key1, key2, ...}; retained keys are emitted in listed order
+    private static final String[][] QUERY_RETENTION_RULES = {
+            {"drive.google.com", "/uc", "export", "id"},
+            {"drive.usercontent.google.com", "/download", "id", "export"},
+            {"google.com", "/share.google", "q"},
+    };
 
     /**
      * Resolves the client IP from the request and returns its salted hash, with no rate-limit side
@@ -583,6 +592,69 @@ public final class RequestUtil {
     }
 
     /**
+     * Hard-coded exceptions to the query-stripping normalization for links whose query parameters
+     * identify the specific resource being fetched. Each rule pins an exact host and path to an
+     * ordered list of parameter keys to retain; every other parameter is dropped, and the retained
+     * ones are emitted in the rule's key order so the canonical form stays stable regardless of the
+     * input ordering.
+     *
+     * @param host     The normalized (lowercased, {@code www.}-stripped) host.
+     * @param path     The normalized path with any trailing slash already removed.
+     * @param rawQuery The raw (still percent-encoded) query string, or {@code null}.
+     * @return The retained query suffix beginning with {@code ?} (e.g. {@code ?export=download&id=...}),
+     * or an empty string when no rule applies or none of the rule's parameters are present.
+     */
+    public static @NonNull String retainedQuery(@NonNull String host, @NonNull String path,
+                                                @Nullable String rawQuery) {
+        if (rawQuery == null || rawQuery.isEmpty()) {
+            return "";
+        }
+
+        String[] keys = null;
+
+        for (String[] rule : QUERY_RETENTION_RULES) {
+            if (rule[0].equals(host) && rule[1].equals(path)) {
+                keys = rule;
+                break;
+            }
+        }
+
+        if (keys == null) {
+            return "";
+        }
+
+        Map<String, String> pairs = new HashMap<>();
+
+        for (String pair : QUERY_SPLIT.split(rawQuery)) {
+            if (pair.isEmpty()) {
+                continue;
+            }
+
+            int eq = pair.indexOf('=');
+            String key = eq < 0 ? pair : pair.substring(0, eq);
+            pairs.putIfAbsent(key, pair);
+        }
+
+        StringBuilder result = new StringBuilder(rawQuery.length() + 1).append('?');
+        boolean any = false;
+
+        // Index 0 is the host and index 1 is the path; retained keys start at index 2.
+        for (int i = 2; i < keys.length; i++) {
+            String pair = pairs.get(keys[i]);
+
+            if (pair != null) {
+                if (any) {
+                    result.append('&');
+                }
+
+                result.append(pair);
+                any = true;
+            }
+        }
+        return any ? result.toString() : "";
+    }
+
+    /**
      * Reconstructs a URI with the normalized host and scheme.
      *
      * @param parsedUri    The parsed URI to reconstruct from.
@@ -628,6 +700,8 @@ public final class RequestUtil {
             if (rawPath != null) {
                 rebuilt.append(rawPath);
             }
+
+            rebuilt.append(retainedQuery(host, rawPath == null ? "" : rawPath, parsedUri.getRawQuery()));
             return new URI(rebuilt.toString());
         } catch (StatusCodeException e) {
             throw e;
