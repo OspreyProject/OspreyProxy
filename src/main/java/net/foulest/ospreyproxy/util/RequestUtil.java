@@ -54,6 +54,7 @@ public final class RequestUtil {
     // Each rule is {host, path, key1, key2, ...}; retained keys are emitted in listed order
     private static final String[][] QUERY_RETENTION_RULES = {
             {"drive.google.com", "/uc", "export", "id"},
+            {"adclick.g.doubleclick.net", "/pcs/click", "adurl"},
             {"drive.usercontent.google.com", "/download", "id", "export"},
             {"google.com", "/share.google", "q"},
     };
