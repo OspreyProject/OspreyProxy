@@ -298,7 +298,7 @@ public class ProxyHandler {
                     // Log the domain if the result is MALICIOUS or PHISHING for false-positive monitoring.
                     // This is never logged for benign results, and logs aren't stored to disk or sent to external systems.
                     if (verdict.primary() == LookupResult.MALICIOUS || verdict.primary() == LookupResult.PHISHING) {
-                        log.warn("[{}] Result for '{}': {}", descriptor.getShortName(), host, verdict.primary().getValue());
+                        log.warn("[{}] Result for '{}': {}", descriptor.getShortName(), lookupKey, verdict.primary().getValue());
                     }
                     return resultResponse(verdict, providerName);
                 });
