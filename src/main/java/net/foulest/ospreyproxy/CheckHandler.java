@@ -118,8 +118,6 @@ public class CheckHandler {
      * @param burstWindowSeconds Per-IP burst refill window, in seconds.
      * @param sustainedCapacity Per-IP sustained token capacity.
      * @param sustainedWindowSeconds Per-IP sustained refill window, in seconds.
-     * @param globalCapacity Global token capacity across all callers.
-     * @param globalWindowSeconds Global refill window, in seconds.
      * @param deadlineSeconds Hard per-scan deadline, in seconds.
      */
     public CheckHandler(@NonNull ProxyHandler proxyHandler,
@@ -132,8 +130,6 @@ public class CheckHandler {
                         @Value("${osprey.check.rate.burst-window-seconds:20}") long burstWindowSeconds,
                         @Value("${osprey.check.rate.sustained-capacity:40}") long sustainedCapacity,
                         @Value("${osprey.check.rate.sustained-window-seconds:3600}") long sustainedWindowSeconds,
-                        @Value("${osprey.check.rate.global-capacity:240}") long globalCapacity,
-                        @Value("${osprey.check.rate.global-window-seconds:60}") long globalWindowSeconds,
                         @Value("${osprey.check.deadline-seconds:12}") long deadlineSeconds) {
         this.proxyHandler = proxyHandler;
         this.providers = List.copyOf(providers);
@@ -154,13 +150,6 @@ public class CheckHandler {
         sustainedBandwidth = Bandwidth.builder()
                 .capacity(sustainedCapacity)
                 .refillGreedy(sustainedCapacity, Duration.ofSeconds(sustainedWindowSeconds))
-                .build();
-
-        globalBucket = Bucket.builder()
-                .addLimit(Bandwidth.builder()
-                        .capacity(globalCapacity)
-                        .refillGreedy(globalCapacity, Duration.ofSeconds(globalWindowSeconds))
-                        .build())
                 .build();
 
         deadlineMillis = Duration.ofSeconds(deadlineSeconds).toMillis();
@@ -185,9 +174,8 @@ public class CheckHandler {
                                                        @NonNull HttpServletRequest request) {
         String hashedIp = RequestUtil.hashClientIp(request, CONTEXT);
 
-        // Global limiter first, then per-IP burst and sustained limiters
-        if (!globalBucket.tryConsume(1)
-                || !bucket(burstBuckets, hashedIp, burstBandwidth).tryConsume(1)
+        // Per-IP burst and sustained limiters
+        if (!bucket(burstBuckets, hashedIp, burstBandwidth).tryConsume(1)
                 || !bucket(sustainedBuckets, hashedIp, sustainedBandwidth).tryConsume(1)) {
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
