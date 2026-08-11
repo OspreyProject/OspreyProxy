@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
+import net.foulest.ospreyproxy.util.RequestUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpRequest;
@@ -222,7 +223,16 @@ public final class LocalListUtil {
                 path = path.substring(0, path.length() - 1);
             }
 
-            if (isUrlInSet(domainSet, host + path)) {
+            // Honor the query-retention exclusions: for host/path combos whose query identifies the
+            // resource, the retained parameters are part of the stored key, so match the exact
+            // host+path+query and skip the parent-path walk, which would split on slashes inside the query
+            String retained = RequestUtil.retainedQuery(host, path, uri.getRawQuery());
+
+            if (!retained.isEmpty()) {
+                if (domainSet.contains(host + path + retained)) {
+                    return descriptor.getResultType();
+                }
+            } else if (isUrlInSet(domainSet, host + path)) {
                 return descriptor.getResultType();
             }
         }
@@ -988,7 +998,10 @@ public final class LocalListUtil {
             path = path.substring(0, path.length() - 1);
         }
 
-        String result = host + path;
+        // Preserve the query for host/path combos in the retention exclusions so a list entry keyed
+        // by its query (e.g. an adurl redirect) is stored as host+path+query rather than collapsing
+        // to the bare path, which would over-block every benign request sharing that path
+        String result = host + path + RequestUtil.retainedQuery(host, path, uri.getRawQuery());
         return result.contains(" ") || result.contains("\\") ? null : result;
     }
 
