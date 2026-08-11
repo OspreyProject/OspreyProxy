@@ -55,8 +55,17 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("POST", "OPTIONS"));
         config.setMaxAge(600L);
 
+        // The read-only result lookup is a browser GET from the same single origin. The internal
+        // index feed is deliberately not registered here, so it stays same-origin only.
+        CorsConfiguration resultConfig = new CorsConfiguration();
+        resultConfig.setAllowedOrigins(List.of(checkAllowedOrigin));
+        resultConfig.setAllowedHeaders(List.of("Content-Type", "Accept"));
+        resultConfig.setAllowedMethods(List.of("GET", "OPTIONS"));
+        resultConfig.setMaxAge(600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/check", config);
+        source.registerCorsConfiguration("/result", resultConfig);
 
         FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
         registration.setOrder(0);

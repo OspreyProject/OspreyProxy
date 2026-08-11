@@ -26,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.result.LookupVerdict;
+import net.foulest.ospreyproxy.store.ScanAggregator;
+import net.foulest.ospreyproxy.store.ScanRecord;
+import net.foulest.ospreyproxy.store.ScanStore;
 import net.foulest.ospreyproxy.util.ErrorUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import net.foulest.ospreyproxy.util.NetworkUtil;
@@ -35,6 +38,7 @@ import net.foulest.ospreyproxy.util.check.IndexedVerdict;
 import net.foulest.ospreyproxy.util.check.PreparedUrl;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -60,7 +64,7 @@ import java.util.regex.Pattern;
  * Public URL-checking aggregator behind {@code osprey.ac/check}.
  * <p>
  * A single POST fans out to every enabled provider and streams one NDJSON line per verdict as it
- * lands, so the page fills in progressively like a multi-vendor scanner. This endpoint is the only
+ * lands, so the page fills in progressively like a multivendor scanner. This endpoint is the only
  * browser-facing surface: the per-provider endpoints stay reachable only by the extension. Because
  * one call touches every provider, the endpoint is gated by its own captcha and its own stricter
  * per-IP and global rate limits, and it delegates the actual per-provider work to
@@ -81,6 +85,13 @@ public class CheckHandler {
     private final ProxyHandler proxyHandler;
     private final List<Provider> providers;
 
+    // Durable aggregate store; null when the store feature is disabled, in which case every scan is
+    // live and nothing is persisted, exactly as before the store existed
+    private final @Nullable ScanStore store;
+
+    // How long a stored scan is served before a fresh scan is forced
+    private final long freshnessMillis;
+
     // Turnstile config
     private final boolean turnstileEnabled;
     private final String turnstileSecret;
@@ -90,7 +101,6 @@ public class CheckHandler {
     // Per-IP rate-limit definitions and a global limiter shared across all callers
     private final Bandwidth burstBandwidth;
     private final Bandwidth sustainedBandwidth;
-    private final Bucket globalBucket;
 
     // Per-IP token buckets, evicted after an hour of inactivity
     private final Cache<String, Bucket> burstBuckets = Caffeine.newBuilder()
@@ -110,6 +120,8 @@ public class CheckHandler {
      *
      * @param proxyHandler The shared per-provider resolution logic.
      * @param providers All registered providers, injected by Spring.
+     * @param storeProvider The provider for the scan store.
+     * @param freshnessSeconds How long a stored scan is served before a fresh scan is forced.
      * @param turnstileEnabled Whether captcha verification is enforced.
      * @param turnstileSecret The Cloudflare Turnstile secret key.
      * @param turnstileVerifyUrl The Turnstile siteverify URL.
@@ -122,6 +134,8 @@ public class CheckHandler {
      */
     public CheckHandler(@NonNull ProxyHandler proxyHandler,
                         @NonNull List<Provider> providers,
+                        @NonNull ObjectProvider<ScanStore> storeProvider,
+                        @Value("${osprey.store.freshness-seconds:86400}") long freshnessSeconds,
                         @Value("${osprey.check.turnstile.enabled:false}") boolean turnstileEnabled,
                         @Value("${osprey.check.turnstile.secret:}") String turnstileSecret,
                         @Value("${osprey.check.turnstile.verify-url:https://challenges.cloudflare.com/turnstile/v0/siteverify}") String turnstileVerifyUrl,
@@ -133,6 +147,8 @@ public class CheckHandler {
                         @Value("${osprey.check.deadline-seconds:12}") long deadlineSeconds) {
         this.proxyHandler = proxyHandler;
         this.providers = List.copyOf(providers);
+        store = storeProvider.getIfAvailable();
+        freshnessMillis = Duration.ofSeconds(freshnessSeconds).toMillis();
 
         this.turnstileEnabled = turnstileEnabled;
         this.turnstileSecret = turnstileSecret;
@@ -194,6 +210,23 @@ public class CheckHandler {
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }
 
+        boolean force = body.force();
+
+        // Read-through: serve a fresh stored verdict without touching any provider, unless the caller
+        // forced a re-scan. A stale or missing record falls through to a live scan below
+        if (store != null && !force) {
+            ScanRecord cached = store.get(prepared.canonicalUrl());
+
+            if (cached != null && System.currentTimeMillis() - cached.lastScannedAt() < freshnessMillis) {
+                StreamingResponseBody stored = out -> streamStored(out, cached);
+
+                return ResponseEntity.ok()
+                        .contentType(NDJSON)
+                        .header("X-Accel-Buffering", "no")
+                        .body(stored);
+            }
+        }
+
         List<Provider> active = new ArrayList<>(providers.size());
 
         for (Provider provider : providers) {
@@ -221,6 +254,9 @@ public class CheckHandler {
                                @NonNull List<Provider> active,
                                @NonNull PreparedUrl prepared) {
         boolean[] reported = new boolean[active.size()];
+
+        // Every provider's verdict is collected here so the whole scan can be persisted once it ends
+        Map<String, LookupVerdict> collected = LinkedHashMap.newLinkedHashMap(active.size());
 
         List<String> endpointNames = new ArrayList<>(active.size());
 
@@ -277,6 +313,7 @@ public class CheckHandler {
                     flagged++;
                 }
 
+                collected.put(provider.getEndpointName(), verdict);
                 writeResult(out, provider.getEndpointName(), verdict);
             }
         } catch (InterruptedException e) {
@@ -286,6 +323,7 @@ public class CheckHandler {
         // Any provider that did not report before the deadline is shown as failed
         for (int i = 0; i < active.size(); i++) {
             if (!reported[i]) {
+                collected.put(active.get(i).getEndpointName(), LookupVerdict.FAILED);
                 writeResult(out, active.get(i).getEndpointName(), LookupVerdict.FAILED);
             }
         }
@@ -294,6 +332,70 @@ public class CheckHandler {
         doneLine.put("type", "done");
         doneLine.put("total", active.size());
         doneLine.put("flagged", flagged);
+        writeLine(out, doneLine);
+
+        // Persist the aggregate once the client has its full result. The aggregator returns null for
+        // a degraded scan (most providers failed), so an outage never creates or overwrites a record
+        persist(prepared, collected);
+    }
+
+    /**
+     * Persists a completed scan to the durable store, if the store is enabled.
+     *
+     * @param prepared The scanned URL.
+     * @param collected Every provider's verdict for this scan.
+     */
+    private void persist(@NonNull PreparedUrl prepared, @NonNull Map<String, LookupVerdict> collected) {
+        if (store == null) {
+            return;
+        }
+
+        try {
+            ScanRecord scanRecord = ScanAggregator.build(prepared, collected, System.currentTimeMillis());
+
+            if (scanRecord != null) {
+                store.upsert(scanRecord);
+            }
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            log.warn("[check] Failed to persist scan for {}: {}",
+                    prepared.canonicalUrl(), e.getClass().getName());
+        }
+    }
+
+    /**
+     * Streams a stored scan back to the client in the exact NDJSON shape a live scan produces, so the
+     * page renders a cached verdict with no code path of its own.
+     *
+     * @param out The response output stream.
+     * @param scanRecord The stored record to replay.
+     */
+    private static void streamStored(@NonNull OutputStream out, @NonNull ScanRecord scanRecord) {
+        Map<String, List<String>> results = scanRecord.results();
+
+        Map<String, Object> meta = LinkedHashMap.newLinkedHashMap(4);
+        meta.put("type", "meta");
+        meta.put("url", scanRecord.canonicalUrl());
+        meta.put("count", results.size());
+        meta.put("providers", new ArrayList<>(results.keySet()));
+        writeLine(out, meta);
+
+        for (Map.Entry<String, List<String>> entry : results.entrySet()) {
+            List<String> values = entry.getValue();
+            String primary = values.isEmpty() ? LookupVerdict.FAILED.primary().getValue() : values.getFirst();
+
+            Map<String, Object> line = LinkedHashMap.newLinkedHashMap(4);
+            line.put("type", "result");
+            line.put("provider", entry.getKey());
+            line.put("result", primary);
+            line.put("results", values);
+            writeLine(out, line);
+        }
+
+        Map<String, Object> doneLine = LinkedHashMap.newLinkedHashMap(4);
+        doneLine.put("type", "done");
+        doneLine.put("total", scanRecord.totalCount());
+        doneLine.put("flagged", scanRecord.flaggedCount());
+        doneLine.put("cached", true);
         writeLine(out, doneLine);
     }
 
@@ -385,8 +487,12 @@ public class CheckHandler {
 
             String remoteIp = request.getHeader("X-Real-IP");
 
-            if (remoteIp != null && !remoteIp.isBlank() && remoteIp.length() <= 45) {
-                form.append("&remoteip=").append(URLEncoder.encode(remoteIp.strip(), StandardCharsets.UTF_8));
+            if (remoteIp != null && remoteIp.length() <= 45) {
+                String stripped = remoteIp.strip();
+
+                if (isIpLiteral(stripped)) {
+                    form.append("&remoteip=").append(URLEncoder.encode(stripped, StandardCharsets.UTF_8));
+                }
             }
 
             HttpRequest httpRequest = HttpRequest.newBuilder()
@@ -412,6 +518,44 @@ public class CheckHandler {
             log.warn("[check] Turnstile verification error: {}", e.getClass().getName());
             return false;
         }
+    }
+
+    /**
+     * Whether the value contains only characters valid in an IPv4 or IPv6 literal. A cheap shape
+     * check, not a full parse; it never resolves anything, and is used only to decide whether the
+     * client hint is worth forwarding to Turnstile.
+     *
+     * @param value The candidate value.
+     * @return {@code true} if every character is a hex digit, dot, or colon.
+     */
+    private static boolean isIpLiteral(@NonNull String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            boolean ok = (c >= '0' && c <= '9')
+                    || (c >= 'a' && c <= 'f')
+                    || (c >= 'A' && c <= 'F')
+                    || c == '.' || c == ':';
+
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Parses, validates, and normalizes a URL into the same canonical form used for a scan, so
+     * read-only callers (for example {@link ResultHandler}) key the store identically.
+     *
+     * @param rawUrl The raw URL string.
+     * @return The prepared URL, or {@code null} if the input is not a valid public http(s) URL.
+     */
+    public static @Nullable PreparedUrl prepare(@Nullable String rawUrl) {
+        return prepareUrl(rawUrl);
     }
 
     /**

@@ -32,6 +32,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web:4.1.0'
     implementation 'com.google.guava:guava:33.6.0-jre'
 
+    // Spring JDBC + SQLite - durable aggregate scan store (single local WAL database file)
+    // https://docs.spring.io/spring-boot/reference/data/sql.html
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc:4.1.0'
+    implementation 'org.xerial:sqlite-jdbc:3.53.2.1'
+
     // Actuator + Micrometer - for metrics and health endpoints
     // https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
     implementation 'org.springframework.boot:spring-boot-starter-actuator:4.1.0'

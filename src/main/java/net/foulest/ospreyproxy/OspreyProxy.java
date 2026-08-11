@@ -19,11 +19,19 @@ package net.foulest.ospreyproxy;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Main application class for OspreyProxy.
+ * <p>
+ * The default JDBC auto-configuration is excluded so the app starts cleanly whether or not the scan
+ * store is enabled. When {@code osprey.store.enabled=true}, the store's own configuration supplies a
+ * single SQLite data source and JdbcTemplate; when it is off, no database beans exist at all.
  */
-@SpringBootApplication
+@EnableScheduling
+@SpringBootApplication(exclude = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class})
 public class OspreyProxy {
 
     /**
