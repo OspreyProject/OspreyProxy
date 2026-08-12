@@ -95,35 +95,64 @@ public final class RequestUtil {
     }
 
     /**
-     * Validates and rate-limits a request's IP address, and returns a hashed IP.
+     * Validates and rate-limits a request against a single hashed-IP bucket, with no tenant dimension.
      *
      * @param request      The request to validate.
      * @param provider     The provider to lookup rate limits against.
      * @param providerName The name of the provider.
-     * @return A hashed representation of the client's IP address for rate limiting purposes.
+     * @return The rate-limit key (here, the hashed client IP).
      * @throws StatusCodeException If the IP address is found to be invalid/blocked.
      */
     public static @NonNull String validateIP(@NonNull HttpServletRequest request,
                                              @NonNull Provider provider,
                                              String providerName) {
+        return validateIP(request, provider, providerName, null);
+    }
+
+    /**
+     * Validates and rate-limits a request, returning the rate-limit key used for all subsequent bucket
+     * operations on this request.
+     * <p>
+     * When a {@code tenant} is present the key is namespaced as {@code tenant + '\0' + hashedIp}, so each
+     * tenant gets a disjoint bucket space per provider and one tenant's traffic cannot consume another's
+     * budget. When {@code tenant} is {@code null} or blank (the anonymous public deployment) the key is
+     * the hashed IP alone, preserving the original behaviour exactly. The returned key is what callers
+     * pass to every later {@link RateLimitUtil#rejectInvalidRequest} call, so the invalid-request buckets
+     * are namespaced by tenant too.
+     *
+     * @param request      The request to validate.
+     * @param provider     The provider to lookup rate limits against.
+     * @param providerName The name of the provider.
+     * @param tenant       The resolved tenant id, or {@code null}/blank for the anonymous deployment.
+     * @return The rate-limit key for this request (tenant-namespaced when a tenant is present).
+     * @throws StatusCodeException If the IP address is found to be invalid/blocked.
+     */
+    public static @NonNull String validateIP(@NonNull HttpServletRequest request,
+                                             @NonNull Provider provider,
+                                             String providerName,
+                                             @Nullable String tenant) {
         // Resolves and hashes the client IP without consuming any rate-limit tokens
         String hashedIp = hashClientIp(request, providerName);
 
+        // Namespace the bucket key by tenant when one is present. The NUL separator cannot appear in a
+        // tenant id or a hex IP hash, so the two parts stay unambiguous.
+        String rateKey = (tenant == null || tenant.isBlank()) ? hashedIp : (tenant + '\u0000' + hashedIp);
+
         // Invalid-request block lookup (no token consumed here)
-        if (provider.isInvalidRequestBlocked(hashedIp)) {
+        if (provider.isInvalidRequestBlocked(rateKey)) {
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
 
         // Burst rate limit lookup (consumes one token)
-        if (RateLimitUtil.isBurstBlocked(provider, hashedIp, providerName)) {
+        if (RateLimitUtil.isBurstBlocked(provider, rateKey, providerName)) {
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
 
         // Sustained rate limit lookup (consumes one token)
-        if (RateLimitUtil.isSustainedBlocked(provider, hashedIp, providerName)) {
+        if (RateLimitUtil.isSustainedBlocked(provider, rateKey, providerName)) {
             throw new StatusCodeException(ErrorUtil.RESP_429);
         }
-        return hashedIp;
+        return rateKey;
     }
 
     /**

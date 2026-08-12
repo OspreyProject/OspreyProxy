@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.security;
 
+import net.foulest.ospreyproxy.services.TenantService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -75,14 +76,16 @@ public class SecurityConfig {
 
     /**
      * Registers the security filter at order 1.
-     * All requests pass through this filter after CORS handling has completed.
+     * All requests pass through this filter after CORS handling has completed. The filter also enforces
+     * per-tenant authentication on the extension-facing provider endpoints when it is enabled.
      *
+     * @param tenantService The tenant registry the filter authenticates and meters requests against.
      * @return A FilterRegistrationBean that registers the SecurityFilter for all URL patterns.
      */
     @Bean
-    public FilterRegistrationBean<SecurityFilter> securityFilterRegistration() {
+    public FilterRegistrationBean<SecurityFilter> securityFilterRegistration(TenantService tenantService) {
         FilterRegistrationBean<SecurityFilter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new SecurityFilter());
+        registration.setFilter(new SecurityFilter(tenantService));
         registration.addUrlPatterns("/*");
         registration.setOrder(1);
         registration.setName("securityFilter");

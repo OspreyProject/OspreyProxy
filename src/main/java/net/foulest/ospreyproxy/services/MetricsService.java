@@ -17,7 +17,6 @@
  */
 package net.foulest.ospreyproxy.services;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import lombok.RequiredArgsConstructor;
@@ -34,15 +33,31 @@ public class MetricsService {
     // Micrometer registry injected by Spring Boot autoconfiguration
     private final MeterRegistry registry;
 
+    // Label value used for requests that carry no tenant (the anonymous public deployment)
+    private static final String NO_TENANT = "anonymous";
+
     /**
-     * Records a request for the given provider, updating both the total count and the current second's bucket
-     * for rate calculations.
+     * Records a request for the given provider with no tenant dimension. Retained for callers that have
+     * no tenant context; tags the request as {@code anonymous}.
      *
      * @param providerName The name of the provider handling the request,
      *                     used for tagging metrics and tracking per-provider stats.
      */
     public void recordRequest(@NonNull String providerName) {
-        requestCounter(providerName).increment();
+        recordRequest(providerName, NO_TENANT);
+    }
+
+    /**
+     * Records a request for the given provider and tenant. The tenant is an operator-controlled opaque
+     * id (or {@code public}/{@code anonymous}), never end-user input, so its cardinality is bounded and
+     * safe as a Prometheus label. This is what makes per-client usage visible in Prometheus.
+     *
+     * @param providerName The name of the provider handling the request.
+     * @param tenant The resolved tenant id, or {@code public}/{@code anonymous} when there is none.
+     */
+    public void recordRequest(@NonNull String providerName, @NonNull String tenant) {
+        registry.counter("osprey.requests.total",
+                Tags.of("provider", providerName, "tenant", tenant)).increment();
     }
 
     /**
@@ -62,18 +77,26 @@ public class MetricsService {
     }
 
     /**
-     * Records a blocked request (any non-2xx response) for the given provider and HTTP status code.
-     * Tagged by both provider and status so Grafana can break down block reasons.
+     * Records a blocked request (any non-2xx response) for the given provider and HTTP status code with
+     * no tenant dimension; tags it as {@code anonymous}.
      *
      * @param providerName The name of the provider that rejected the request.
      * @param statusCode   The HTTP status code returned to the client (e.g., 400, 429, 502).
      */
     public void recordBlocked(@NonNull String providerName, int statusCode) {
-        registry.counter("osprey.requests.blocked",
-                Tags.of("provider", providerName, "status", String.valueOf(statusCode))).increment();
+        recordBlocked(providerName, statusCode, NO_TENANT);
     }
 
-    private @NonNull Counter requestCounter(@NonNull String providerName) {
-        return registry.counter("osprey.requests.total", Tags.of("provider", providerName));
+    /**
+     * Records a blocked request for the given provider, status, and tenant.
+     * Tagged by provider, status, and tenant so Grafana can break down block reasons per client.
+     *
+     * @param providerName The name of the provider that rejected the request.
+     * @param statusCode   The HTTP status code returned to the client (e.g., 400, 429, 502).
+     * @param tenant       The resolved tenant id, or {@code public}/{@code anonymous} when there is none.
+     */
+    public void recordBlocked(@NonNull String providerName, int statusCode, @NonNull String tenant) {
+        registry.counter("osprey.requests.blocked",
+                Tags.of("provider", providerName, "status", String.valueOf(statusCode), "tenant", tenant)).increment();
     }
 }

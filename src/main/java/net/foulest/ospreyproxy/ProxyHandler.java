@@ -28,6 +28,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
+import net.foulest.ospreyproxy.services.TenantService;
 import net.foulest.ospreyproxy.util.*;
 import net.foulest.ospreyproxy.util.check.PreparedUrl;
 import net.foulest.ospreyproxy.util.list.Descriptor;
@@ -182,13 +183,15 @@ public class ProxyHandler {
     public ResponseEntity<String> handleProvider(@PathVariable String providerName,
                                                  @RequestBody(required = false) byte[] body,
                                                  @NonNull HttpServletRequest request) {
+        // Tenant was resolved by the SecurityFilter (or "anonymous" when tenant auth is off)
+        String tenant = TenantService.tenantOf(request);
         Provider provider = providersByEndpointName.get(providerName);
 
         if (provider == null) {
-            metrics.recordBlocked("unknown", 404);
+            metrics.recordBlocked("unknown", 404, tenant);
             return ErrorUtil.RESP_404;
         }
-        return proxyRequest(body, request, provider);
+        return proxyRequest(body, request, provider, tenant);
     }
 
     /**
@@ -205,21 +208,27 @@ public class ProxyHandler {
      * @param bodyBytes Raw request body bytes delivered by Spring MVC.
      * @param request   The incoming servlet request (used for IP extraction).
      * @param provider  The upstream provider to forward to.
+     * @param tenant    The resolved tenant id, or {@code anonymous} when tenant auth is off.
      * @return A {@link ResponseEntity} to return to the client.
      */
     private ResponseEntity<String> proxyRequest(byte[] bodyBytes,
                                                 @NonNull HttpServletRequest request,
-                                                @NonNull Provider provider) {
+                                                @NonNull Provider provider,
+                                                @NonNull String tenant) {
         String providerName = provider.getDisplayName();
         String endpointName = provider.getEndpointName();
 
+        // Namespace rate-limit buckets by tenant, but never by the anonymous placeholder, so the public
+        // deployment keeps its original hashed-IP-only bucketing.
+        String rateTenant = TenantService.ANONYMOUS.equals(tenant) ? null : tenant;
+
         try {
             if (!provider.isEnabled()) {
-                metrics.recordBlocked(providerName, 503);
+                metrics.recordBlocked(providerName, 503, tenant);
                 return ErrorUtil.RESP_503;
             }
 
-            String hashedIp = RequestUtil.validateIP(request, provider, providerName);
+            String hashedIp = RequestUtil.validateIP(request, provider, providerName, rateTenant);
             Map<String, String> incoming = RequestUtil.validateBody(bodyBytes, provider, providerName, hashedIp);
             String url = Objects.toString(incoming.get("url"), "").strip();
             URI parsedUri = RequestUtil.validateURI(url, provider, providerName, hashedIp);
@@ -233,7 +242,7 @@ public class ProxyHandler {
             String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
 
             if (stripToBareHost && !RequestUtil.hasRegistrableDomain(host)) {
-                metrics.recordRequest(providerName);
+                metrics.recordRequest(providerName, tenant);
 
                 if (provider instanceof AbstractProvider ap) {
                     ap.putCachedResult(hostKey, LookupVerdict.ALLOWED);
@@ -254,7 +263,7 @@ public class ProxyHandler {
                 LookupVerdict cached = ap.getCachedResult(lookupKey);
 
                 if (cached != null) {
-                    metrics.recordRequest(providerName);
+                    metrics.recordRequest(providerName, tenant);
                     metrics.recordCacheHit();
                     return resultResponse(cached, providerName);
                 }
@@ -267,7 +276,7 @@ public class ProxyHandler {
                 return ErrorUtil.RESP_400;
             }
 
-            metrics.recordRequest(providerName);
+            metrics.recordRequest(providerName, tenant);
 
             // One key per (provider, lookup target). Concurrent duplicates share a single execution;
             // the NUL separator can't appear in an endpoint name or normalized host/URL, so it's an
@@ -307,7 +316,7 @@ public class ProxyHandler {
         } catch (StatusCodeException e) {
             ResponseEntity<String> status = e.getStatus();
             int code = status.getStatusCode().value();
-            metrics.recordBlocked(providerName, code);
+            metrics.recordBlocked(providerName, code, tenant);
             return status;
         }
     }
@@ -493,7 +502,7 @@ public class ProxyHandler {
             // A host with no registrable domain (a bare public suffix or an IP literal) cannot be
             // looked up by bare-host providers, so it is treated as allowed, mirroring proxyRequest
             if (!prepared.hasRegistrableDomain()) {
-                metrics.recordRequest(providerName);
+                metrics.recordRequest(providerName, TenantService.PUBLIC);
 
                 if (provider instanceof AbstractProvider ap) {
                     ap.putCachedResult(prepared.bareHost(), LookupVerdict.ALLOWED);
@@ -513,7 +522,7 @@ public class ProxyHandler {
             LookupVerdict cached = ap.getCachedResult(lookupKey);
 
             if (cached != null) {
-                metrics.recordRequest(providerName);
+                metrics.recordRequest(providerName, TenantService.PUBLIC);
                 metrics.recordCacheHit();
                 return cached;
             }
@@ -521,7 +530,7 @@ public class ProxyHandler {
             metrics.recordCacheMiss();
         }
 
-        metrics.recordRequest(providerName);
+        metrics.recordRequest(providerName, TenantService.PUBLIC);
 
         String coalesceKey = endpointName + '\u0000' + lookupKey;
         String key = lookupKey;

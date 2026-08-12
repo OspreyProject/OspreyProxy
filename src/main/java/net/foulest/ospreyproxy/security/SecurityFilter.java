@@ -4,6 +4,8 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import net.foulest.ospreyproxy.services.TenantService;
+import net.foulest.ospreyproxy.tenant.Tenant;
 import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
@@ -19,12 +21,34 @@ import java.util.Set;
 /**
  * A servlet filter that applies security headers to all responses and enforces
  * strict Content-Type and body size checks on incoming requests before they reach any controller.
+ * <p>
+ * When per-tenant authentication is enabled (self-hosted, multi-tenant deployments), this filter also
+ * requires and resolves a per-tenant API key on the extension-facing {@code POST /{providerName}}
+ * endpoints and enforces each tenant's aggregate rate budget. The public {@code /check} and
+ * {@code /result} endpoints keep their own CORS and Cloudflare Turnstile protection and never require a
+ * tenant key.
  */
 @Slf4j
 public class SecurityFilter implements Filter {
 
     // Maximum allowed body size (10 KB)
     private static final int MAX_BODY_SIZE = 10_240;
+
+    // Single-segment paths that are NOT extension-facing provider endpoints and therefore never require
+    // a tenant key. Everything else that is a single-segment POST is a provider endpoint.
+    private static final Set<String> RESERVED_PATHS = Set.of(
+            "check", "result", "internal", "actuator", "error", "favicon.ico"
+    );
+
+    // Resolves and rate-limits tenants on extension-facing endpoints
+    private final TenantService tenantService;
+
+    /**
+     * @param tenantService The tenant registry used to authenticate and meter extension-facing requests.
+     */
+    public SecurityFilter(@NonNull TenantService tenantService) {
+        this.tenantService = tenantService;
+    }
 
     // HTTP methods that are allowed to be processed
     private static final Set<String> ALLOWED_METHODS = Set.of(
@@ -54,6 +78,14 @@ public class SecurityFilter implements Filter {
         if (!ALLOWED_METHODS.contains(method)) {
             log.warn("Rejected request with disallowed HTTP method: {}", method);
             sendError(httpResponse, HttpServletResponse.SC_METHOD_NOT_ALLOWED, ErrorUtil.BODY_405);
+            return;
+        }
+
+        // Authenticate and meter the tenant on extension-facing provider POSTs. /check and /result are
+        // excluded and keep their existing public protection. Preflight and bodyless methods carry no
+        // key, so only POST is gated here.
+        if (HttpMethod.POST.name().equals(method) && isProviderEndpoint(httpRequest)
+                && !enforceTenant(httpRequest, httpResponse)) {
             return;
         }
 
@@ -91,6 +123,77 @@ public class SecurityFilter implements Filter {
         }
 
         chain.doFilter(httpRequest, httpResponse);
+    }
+
+    /**
+     * Authenticates and meters the tenant for an extension-facing provider request. When tenant
+     * authentication is disabled the request is tagged anonymous and passes through unchanged; when it
+     * is enabled a missing or unknown key is rejected with 401 and a tenant over its aggregate budget
+     * is rejected with 429. On success the resolved tenant id is stashed as a request attribute so the
+     * handler can namespace rate limits and label metrics by tenant.
+     *
+     * @param request The incoming provider request.
+     * @param response The response to write an error to on rejection.
+     * @return {@code true} if the request may proceed, {@code false} if an error response was written.
+     */
+    private boolean enforceTenant(@NonNull HttpServletRequest request,
+                                  @NonNull HttpServletResponse response) throws IOException {
+        // Anonymous public deployment: nothing to authenticate, tag it and move on.
+        if (!tenantService.isEnabled()) {
+            request.setAttribute(TenantService.TENANT_ATTRIBUTE, TenantService.ANONYMOUS);
+            return true;
+        }
+
+        String key = request.getHeader(tenantService.getHeaderName());
+        Tenant tenant = tenantService.resolve(key);
+
+        // Reject a missing or unknown key without revealing which of the two it was.
+        if (tenant == null) {
+            log.warn("Rejected provider request with missing or invalid tenant key");
+            sendError(response, HttpServletResponse.SC_UNAUTHORIZED, ErrorUtil.BODY_401);
+            return false;
+        }
+
+        // Enforce the tenant's own aggregate budget so one client cannot exhaust another's allowance.
+        if (!tenant.tryConsume()) {
+            log.warn("[{}] Tenant rate budget exhausted", tenant.id());
+            sendError(response, 429, ErrorUtil.BODY_429);
+            return false;
+        }
+
+        request.setAttribute(TenantService.TENANT_ATTRIBUTE, tenant.id());
+        return true;
+    }
+
+    /**
+     * Whether the request targets an extension-facing provider endpoint, which is any single-segment
+     * path that is not one of the reserved public or internal paths.
+     *
+     * @param request The incoming request.
+     * @return {@code true} if the path is a provider endpoint requiring a tenant key.
+     */
+    private static boolean isProviderEndpoint(@NonNull HttpServletRequest request) {
+        String path = request.getServletPath();
+
+        if (path == null || path.isEmpty()) {
+            path = request.getRequestURI();
+        }
+
+        if (path == null) {
+            return false;
+        }
+
+        // Reduce to the first path segment
+        if (!path.isEmpty() && path.charAt(0) == '/') {
+            path = path.substring(1);
+        }
+
+        // A provider endpoint is exactly one segment; anything with a further slash (e.g.
+        // /internal/index-feed) or empty is not a provider endpoint.
+        if (path.isEmpty() || path.indexOf('/') >= 0) {
+            return false;
+        }
+        return !RESERVED_PATHS.contains(path);
     }
 
     /**
