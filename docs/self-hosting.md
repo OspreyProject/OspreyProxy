@@ -100,9 +100,10 @@ effect within about a second without a restart.
 The `ProxyBaseUrl` policy points an endpoint's extension at your self-hosted proxy. The tenant key rides along in the
 configured header. You have two supported ways to attach it, and you can pick per fleet:
 
-1. Configure the extension to send the header. The extension's proxy provider definition carries request headers, so the
-   header and its value can be pushed through the extension's managed configuration for that client. Every endpoint in
-   one tenant carries that tenant's key.
+1. Configure the extension to send the header. Set the extension's `ProxyApiKey` managed policy alongside `ProxyBaseUrl`
+   (through Group Policy, Intune, a plist, or a `ManagedConfigUrl` document). The extension then presents the key as
+   `X-Osprey-Tenant-Key` on every lookup it sends to your proxy, and never sends it to the public backend. Every
+   endpoint in one tenant carries that tenant's key.
 2. Inject the header at your reverse proxy. If a given client's endpoints all egress through an Nginx instance you
    control, have that Nginx add `X-Osprey-Tenant-Key` for that client and strip any inbound copy. This keeps the key off
    the endpoints entirely.
