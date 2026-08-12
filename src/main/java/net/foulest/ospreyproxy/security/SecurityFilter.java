@@ -34,10 +34,15 @@ public class SecurityFilter implements Filter {
     // Maximum allowed body size (10 KB)
     private static final int MAX_BODY_SIZE = 10_240;
 
+    // The reporting-test receiver accepts whole event batches from the extension, which can far
+    // exceed the 10 KB provider-lookup cap, so it gets its own larger ceiling (256 KB).
+    private static final int MAX_REPORTING_TEST_BODY_SIZE = 262_144;
+    private static final String REPORTING_TEST_PREFIX = "/reporting/test/";
+
     // Single-segment paths that are NOT extension-facing provider endpoints and therefore never require
     // a tenant key. Everything else that is a single-segment POST is a provider endpoint.
     private static final Set<String> RESERVED_PATHS = Set.of(
-            "check", "result", "internal", "actuator", "error", "favicon.ico", "updates"
+            "check", "result", "internal", "actuator", "error", "favicon.ico", "updates", "reporting"
     );
 
     // Resolves and rate-limits tenants on extension-facing endpoints
@@ -105,8 +110,12 @@ public class SecurityFilter implements Filter {
             return;
         }
 
+        // The reporting-test receiver takes whole event batches; every other endpoint keeps the
+        // strict provider-lookup cap.
+        int maxBodySize = isReportingTestPath(httpRequest) ? MAX_REPORTING_TEST_BODY_SIZE : MAX_BODY_SIZE;
+
         // Early rejection for requests declaring an oversized Content-Length
-        if (contentLength > MAX_BODY_SIZE) {
+        if (contentLength > maxBodySize) {
             log.warn("Rejected request with oversized Content-Length: {} bytes", contentLength);
             sendError(httpResponse, HttpServletResponse.SC_BAD_REQUEST, ErrorUtil.BODY_400);
             return;
@@ -163,6 +172,22 @@ public class SecurityFilter implements Filter {
 
         request.setAttribute(TenantService.TENANT_ATTRIBUTE, tenant.id());
         return true;
+    }
+
+    /**
+     * Whether the request targets the reporting-test receiver, which accepts larger JSON bodies
+     * than the provider-lookup endpoints.
+     *
+     * @param request The incoming request.
+     * @return {@code true} if the path is under {@code /reporting/test/}.
+     */
+    private static boolean isReportingTestPath(@NonNull HttpServletRequest request) {
+        String path = request.getServletPath();
+
+        if (path == null || path.isEmpty()) {
+            path = request.getRequestURI();
+        }
+        return path != null && path.startsWith(REPORTING_TEST_PREFIX);
     }
 
     /**
