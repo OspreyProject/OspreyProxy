@@ -1,0 +1,31 @@
+{
+  "//": "Example OspreyProxy update catalog. Copy this to <osprey.updates.path>/releases.json (default",
+  "//1": "/var/lib/osprey/updates/releases.json) and place each build's CRX beside it in the same directory.",
+  "//2": "This file is append-mostly: publishing a build adds one entry. The proxy hot-reloads it within a",
+  "//3": "second of any change, so no restart is needed. Keys beginning with // are ignored as comments.",
+  "app_id": "aaaabbbbccccddddeeeeffffgggghhhh",
+  "releases": [
+    {
+      "version": "2.0.6",
+      "crx": "osprey-2.0.6.crx",
+      "date": "2026-02-10T00:00:00Z",
+      "notes": "Managed allow/block lists, ProxyBaseUrl, remote config, outbound events.",
+      "min_browser_version": "120"
+    },
+    {
+      "version": "2.0.7",
+      "crx": "osprey-2.0.7.crx",
+      "date": "2026-03-04T00:00:00Z",
+      "notes": "Faster startup; provider timeout passthrough fix.",
+      "min_browser_version": "120"
+    },
+    {
+      "version": "2.0.8",
+      "crx": "osprey-2.0.8.crx",
+      "date": "2026-03-06T00:00:00Z",
+      "notes": "Rollback: republishes the 2.0.6 build under a higher version after a regression in 2.0.7.",
+      "min_browser_version": "120",
+      "rollback_of": "2.0.7"
+    }
+  ]
+}

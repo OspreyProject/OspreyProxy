@@ -37,7 +37,7 @@ public class SecurityFilter implements Filter {
     // Single-segment paths that are NOT extension-facing provider endpoints and therefore never require
     // a tenant key. Everything else that is a single-segment POST is a provider endpoint.
     private static final Set<String> RESERVED_PATHS = Set.of(
-            "check", "result", "internal", "actuator", "error", "favicon.ico"
+            "check", "result", "internal", "actuator", "error", "favicon.ico", "updates"
     );
 
     // Resolves and rate-limits tenants on extension-facing endpoints

@@ -152,6 +152,14 @@ a query to break usage down per client. A simple per-client request rate is:
 sum by (tenant) (rate(osprey_requests_total[5m]))
 ```
 
+## Controlling which version endpoints run
+
+A self-hoster can also control which build of the extension each client runs, stage an update to a small group first,
+and roll back a bad build, instead of letting the browser update from the public store on its own schedule. This is
+handled by the built-in CRX update server, which is off by default and turned on with `osprey.updates.enabled=true`. The
+full setup, the force-install policy snippets, and how channels, pins, and rollbacks work are covered in
+`docs/updates.md`.
+
 ## Minimal production checklist
 
 - Nginx in front, TLS terminated, `X-Real-IP` set from `$remote_addr`, inbound `X-Real-IP` and
@@ -160,3 +168,5 @@ sum by (tenant) (rate(osprey_requests_total[5m]))
 - Prometheus scraping `127.0.0.1:9090/actuator/prometheus` over the internal network only.
 - For MSP use: `osprey.tenant.auth.enabled=true`, a `0600` tenant store outside the repo, at least one tenant with a
   key, and each fleet configured to present its tenant key.
+- For version control: `osprey.updates.enabled=true`, a populated updates directory, `osprey.updates.base-url` set to
+  the public origin, and each fleet's force-install update URL pointed at its channel. See `docs/updates.md`.

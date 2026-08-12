@@ -1,0 +1,16 @@
+{
+  "//": "Example OspreyProxy channel configuration. Copy this to <osprey.updates.path>/channels.json.",
+  "//1": "Each channel maps to the version its endpoints receive. Point a group's force-install update_url",
+  "//2": "at that channel's manifest, e.g. https://updates.example.com/updates/beta.xml. The proxy hot-reloads",
+  "//3": "this file within a second, so flipping a pin stages or rolls back with no restart. Keys beginning",
+  "//4": "with // are ignored as comments. A channel value may be a bare version string or an object with a",
+  "//5": "version field; 'latest' tracks the highest release present.",
+  "channels": {
+    "stable": {
+      "version": "2.0.6"
+    },
+    "beta": {
+      "version": "latest"
+    }
+  }
+}

@@ -99,4 +99,18 @@ public class MetricsService {
         registry.counter("osprey.requests.blocked",
                 Tags.of("provider", providerName, "status", String.valueOf(statusCode), "tenant", tenant)).increment();
     }
+
+    /**
+     * Records that the self-hosted update server offered a build to a browser on a channel. Both labels
+     * are operator-controlled and bounded (a handful of channel names, a handful of live versions), so
+     * they are safe as Prometheus labels. This makes staged rollouts visible: a query grouped by
+     * {@code version} shows how a new build is spreading across a channel over time.
+     *
+     * @param channel The channel that served the offer (for example {@code stable} or {@code beta}).
+     * @param version The extension version offered.
+     */
+    public void recordUpdateServed(@NonNull String channel, @NonNull String version) {
+        registry.counter("osprey.updates.served",
+                Tags.of("channel", channel, "version", version)).increment();
+    }
 }
