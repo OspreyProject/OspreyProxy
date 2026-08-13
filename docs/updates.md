@@ -114,7 +114,7 @@ present one, and the multi-segment path is never treated as an extension-facing 
 - `GET /updates/releases.json` returns the machine-readable release feed described below.
 - `GET /updates/releases.xml` returns the same feed as RSS 2.0 for subscription in a feed reader.
 - `GET /updates/channels.json` returns just the current channel-to-version resolution, which is a convenient view for a
-  person or for the hosted console.
+  person or a monitoring script.
 
 ## Pointing browsers at the server
 
@@ -211,7 +211,7 @@ stop-gap for a genuinely harmful build, and prefer the rollback republish for no
 
 ## The release feed
 
-`GET /updates/releases.json` is the feed a change-management process or the hosted console subscribes to. Poll it and
+`GET /updates/releases.json` is the feed a change-management process subscribes to. Poll it and
 diff it against the last version you saw. Its shape is stable and self-describing.
 
 ```json
