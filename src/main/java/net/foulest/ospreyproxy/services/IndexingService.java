@@ -60,6 +60,7 @@ public class IndexingService {
     private final String key;
     private final String keyLocation;
     private final String submitUrl;
+    private final String testHost;
     private final int batchLimit;
     private final HttpClient client;
 
@@ -70,6 +71,7 @@ public class IndexingService {
      * @param key The IndexNow key, matching the key file hosted on the site.
      * @param keyLocation The public URL of the hosted key file.
      * @param submitUrl The IndexNow submission endpoint.
+     * @param testHost When non-blank, only records for this exact host are submitted (testing mode).
      * @param batchLimit The maximum number of URLs to submit per run.
      * @param timeoutSeconds The submission request timeout, in seconds.
      */
@@ -77,6 +79,7 @@ public class IndexingService {
                            @Value("${osprey.indexnow.key:}") String key,
                            @Value("${osprey.indexnow.key-location:}") String keyLocation,
                            @Value("${osprey.indexnow.submit-url:https://api.indexnow.org/indexnow}") String submitUrl,
+                           @Value("${osprey.indexnow.test-host:}") String testHost,
                            @Value("${osprey.indexnow.batch-limit:10000}") int batchLimit,
                            @Value("${osprey.indexnow.timeout-seconds:10}") long timeoutSeconds) {
         this.store = store;
@@ -85,7 +88,12 @@ public class IndexingService {
         // Default the key file location to the site-hosted key when not set explicitly.
         this.keyLocation = keyLocation.isBlank() ? ("https://" + HOST + "/" + key + ".txt") : keyLocation;
         this.submitUrl = submitUrl;
+        this.testHost = testHost.trim().toLowerCase();
         this.batchLimit = batchLimit;
+
+        if (!this.testHost.isBlank()) {
+            log.info("[indexing] Testing mode active: only submitting URLs for host {}", this.testHost);
+        }
 
         client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(timeoutSeconds))
@@ -112,8 +120,17 @@ public class IndexingService {
         List<String> canonicalUrls = new ArrayList<>(pending.size());
 
         for (ScanRecord scanRecord : pending) {
+            // Testing mode: skip everything except the test host; skipped records stay unpublished
+            if (!testHost.isBlank() && !testHost.equalsIgnoreCase(scanRecord.host())) {
+                continue;
+            }
+
             pageUrls.add(scanRecord.pageUrl());
             canonicalUrls.add(scanRecord.canonicalUrl());
+        }
+
+        if (pageUrls.isEmpty()) {
+            return;
         }
 
         if (submit(pageUrls)) {
