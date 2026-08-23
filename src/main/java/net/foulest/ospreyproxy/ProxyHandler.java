@@ -57,7 +57,6 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -403,7 +402,7 @@ public class ProxyHandler {
 
                     return switch (statusCode) {
                         case 400 -> {
-                            log.warn("[{}] Upstream returned 400 with body: {}", providerName, new String(responseBytes, StandardCharsets.UTF_8));
+                            log.warn("[{}] Upstream returned 400 ({} body bytes)", providerName, (responseBytes == null ? 0 : responseBytes.length));
                             yield ErrorUtil.RESP_400;
                         }
 
@@ -416,7 +415,7 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 422 -> {
-                            log.warn("[{}] Upstream returned 422 for {} with body: {}", providerName, forwardUrl, new String(responseBytes, StandardCharsets.UTF_8));
+                            log.warn("[{}] Upstream returned 422 ({} body bytes)", providerName, (responseBytes == null ? 0 : responseBytes.length));
                             yield ErrorUtil.RESP_422;
                         }
 

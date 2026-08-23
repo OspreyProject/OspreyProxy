@@ -92,7 +92,7 @@ public class GlobalExceptionHandler {
             return ErrorUtil.RESP_400;
         }
 
-        log.warn("Request body could not be read: {}", ex.getMessage());
+        log.warn("Request body could not be read: {}", ex.getClass().getName());
         return ErrorUtil.RESP_400;
     }
 

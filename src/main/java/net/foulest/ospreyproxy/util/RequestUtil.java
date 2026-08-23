@@ -176,7 +176,7 @@ public final class RequestUtil {
                 || ip.length() > MAX_IP_LITERAL_LENGTH
                 || ip.indexOf(',') >= 0
                 || !isValidIpLiteral(ip)) {
-            log.warn("Received invalid IP candidate: '{}'", candidate);
+            log.warn("Received invalid IP candidate ({} chars)", ip.length());
             return null;
         }
         return ip.toLowerCase(Locale.ROOT);
@@ -199,7 +199,7 @@ public final class RequestUtil {
                 || ip.indexOf('%') >= 0
                 || ip.indexOf('[') >= 0
                 || ip.indexOf(']') >= 0) {
-            log.warn("Rejected IP candidate with invalid characters or unsupported IPv6 zone identifier: '{}'", ip);
+            log.warn("Rejected IP candidate with invalid characters or unsupported IPv6 zone identifier ({} chars)", ip.length());
             return false;
         }
 
@@ -211,7 +211,7 @@ public final class RequestUtil {
                     && !(c >= '0' && c <= '9')
                     && !(c >= 'a' && c <= 'f')
                     && !(c >= 'A' && c <= 'F')) {
-                log.warn("Rejected IP candidate with invalid character '{}': '{}'", c, ip);
+                log.warn("Rejected IP candidate with invalid character at index {} ({} chars)", i, ip.length());
                 return false;
             }
         }
@@ -222,7 +222,7 @@ public final class RequestUtil {
             InetAddress address = InetAddress.getByName(ip);
             return address instanceof Inet6Address || (address instanceof Inet4Address && ip.indexOf(':') >= 0);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
-            log.warn("Rejected IP candidate that failed InetAddress parsing: '{}'", ip);
+            log.warn("Rejected IP candidate that failed InetAddress parsing ({} chars)", ip.length());
             return false;
         }
     }
