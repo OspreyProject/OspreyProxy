@@ -30,6 +30,7 @@ dependencies {
     implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0'
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.5.1' // KEEP ON 5.5.1
     implementation 'org.springframework.boot:spring-boot-starter-web:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-mail:4.1.0'
     implementation 'com.google.guava:guava:33.6.0-jre'
 
     // Spring JDBC + SQLite - durable aggregate scan store (single local WAL database file)

@@ -78,6 +78,14 @@ public class SecurityConfig {
         reportingTestConfig.setMaxAge(600L);
         source.registerCorsConfiguration("/reporting/test/**", reportingTestConfig);
 
+        // The website contact form posts submissions and verification tokens from the same origin.
+        CorsConfiguration contactConfig = new CorsConfiguration();
+        contactConfig.setAllowedOrigins(List.of(checkAllowedOrigin));
+        contactConfig.setAllowedHeaders(List.of("Content-Type", "Accept"));
+        contactConfig.setAllowedMethods(List.of("POST", "OPTIONS"));
+        contactConfig.setMaxAge(600L);
+        source.registerCorsConfiguration("/contact/**", contactConfig);
+
         FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
         registration.setOrder(0);
         registration.setName("corsFilter");
