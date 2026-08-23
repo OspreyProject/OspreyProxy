@@ -67,8 +67,7 @@ public class SecurityFilter implements Filter {
     private static final Set<String> BODYLESS_METHODS = Set.of(
             HttpMethod.GET.name(),
             HttpMethod.HEAD.name(),
-            HttpMethod.OPTIONS.name(),
-            HttpMethod.DELETE.name()
+            HttpMethod.OPTIONS.name()
     );
 
     @Override
