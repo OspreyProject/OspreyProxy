@@ -17,7 +17,7 @@
  */
 package net.foulest.ospreyproxy.security;
 
-import net.foulest.ospreyproxy.services.TenantService;
+import net.foulest.ospreyproxy.tenant.TenantService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;

@@ -28,7 +28,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.services.MetricsService;
-import net.foulest.ospreyproxy.services.TenantService;
+import net.foulest.ospreyproxy.tenant.TenantService;
 import net.foulest.ospreyproxy.util.*;
 import net.foulest.ospreyproxy.util.check.PreparedUrl;
 import net.foulest.ospreyproxy.util.list.Descriptor;

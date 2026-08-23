@@ -15,15 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy.services;
+package net.foulest.ospreyproxy.tenant;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.ServletRequest;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.security.SecurityFilter;
-import net.foulest.ospreyproxy.tenant.RateSettings;
-import net.foulest.ospreyproxy.tenant.Tenant;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -371,6 +369,27 @@ public class TenantService {
             if (rebuilt.containsKey(entry.getValue())) {
                 keys.put(entry.getKey(), entry.getValue());
             }
+        }
+
+        // Change-management trail: record which tenants were granted or revoked access on this
+        // reload. Tenant ids only; key material is never logged.
+        List<String> added = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+
+        for (String tenantId : rebuilt.keySet()) {
+            if (!existing.containsKey(tenantId)) {
+                added.add(tenantId);
+            }
+        }
+
+        for (String tenantId : existing.keySet()) {
+            if (!rebuilt.containsKey(tenantId)) {
+                removed.add(tenantId);
+            }
+        }
+
+        if (!added.isEmpty() || !removed.isEmpty()) {
+            log.info("[tenant] Store reload changed tenants; added {} removed {}", added, removed);
         }
 
         tenantsById = Map.copyOf(rebuilt);
