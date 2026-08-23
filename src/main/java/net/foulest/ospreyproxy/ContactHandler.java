@@ -21,6 +21,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
+import jakarta.annotation.PreDestroy;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -54,8 +55,9 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -122,17 +124,26 @@ public class ContactHandler {
     private final HttpClient turnstileClient;
 
     private final Bandwidth submitBandwidth;
+    private final Bandwidth verifyBandwidth;
 
     private final Cache<String, Bucket> submitBuckets = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(20_000)
             .build();
 
-    private final ExecutorService mailExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "contact-mail");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final Cache<String, Bucket> verifyBuckets = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
+            .maximumSize(20_000)
+            .build();
+
+    // Bounded so an abuse burst can never grow an unbounded mail queue; a rejected task is logged
+    // and dropped, and the sender can simply resubmit. Non-daemon so shutdown can drain the queue.
+    private final ThreadPoolExecutor mailExecutor = new ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(200),
+            r -> new Thread(r, "contact-mail"),
+            (r, executor) -> log.warn("[contact] Mail queue full; dropping a delivery task")
+    );
 
     /**
      * Constructs the handler, creating its table in the scan store database.
@@ -177,6 +188,15 @@ public class ContactHandler {
         submitBandwidth = Bandwidth.builder()
                 .capacity(submitCapacity)
                 .refillGreedy(submitCapacity, Duration.ofSeconds(submitWindowSeconds))
+                .build();
+
+        // The verify endpoint is cheaper than submit (one indexed lookup, no captcha), so it gets a
+        // looser budget over the same window: enough for real link clicks, throttled against probing.
+        long verifyCapacity = Math.max(submitCapacity * 4L, 20L);
+
+        verifyBandwidth = Bandwidth.builder()
+                .capacity(verifyCapacity)
+                .refillGreedy(verifyCapacity, Duration.ofSeconds(submitWindowSeconds))
                 .build();
 
         jdbc.execute("""
@@ -261,11 +281,20 @@ public class ContactHandler {
      * inbox. A token that is unknown, expired, or already used returns the same error.
      *
      * @param body The JSON body: token.
+     * @param request The incoming servlet request, used for per-IP rate limiting.
      * @return {@code {"ok": true}} or an error with a message.
      */
     @PostMapping(value = "/contact/verify", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> verify(@RequestBody(required = false) @Nullable Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> verify(@RequestBody(required = false) @Nullable Map<String, Object> body,
+                                                      @NonNull HttpServletRequest request) {
+        String hashedIp = RequestUtil.hashClientIp(request, CONTEXT);
+        Bucket verifyBucket = verifyBuckets.get(hashedIp, ignored -> Bucket.builder().addLimit(verifyBandwidth).build());
+
+        if (!verifyBucket.tryConsume(1)) {
+            return error(429, "Too many attempts from your network right now. Please try again later.");
+        }
+
         String token = cleanLine(body == null ? null : body.get("token"), 64);
         String invalid = "This verification link is invalid or has expired. Please send your message again.";
 
@@ -324,6 +353,25 @@ public class ContactHandler {
 
         if (expired + forwarded > 0) {
             log.info("[contact] Pruned {} expired and {} forwarded submissions", expired, forwarded);
+        }
+    }
+
+    /**
+     * Drains queued mail on shutdown so an in-flight verification or forward is not lost, waiting
+     * briefly before giving up.
+     */
+    @PreDestroy
+    public void shutdown() {
+        mailExecutor.shutdown();
+
+        try {
+            if (!mailExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                int dropped = mailExecutor.shutdownNow().size();
+                log.warn("[contact] Shutdown timed out; {} queued mail task(s) dropped", dropped);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            mailExecutor.shutdownNow();
         }
     }
 
