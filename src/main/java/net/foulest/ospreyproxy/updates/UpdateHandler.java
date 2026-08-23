@@ -96,7 +96,7 @@ public class UpdateHandler {
      * @param request The incoming request, used to derive a base URL and the requested application id.
      * @return An XML update manifest.
      */
-    @GetMapping(value = "/updates/{channel}.xml")
+    @GetMapping("/updates/{channel}.xml")
     public @NonNull ResponseEntity<String> manifest(@PathVariable @NonNull String channel,
                                                     @NonNull HttpServletRequest request) {
         UpdateCatalog catalog = updateService.catalog();
@@ -132,7 +132,7 @@ public class UpdateHandler {
      * @param file The CRX filename from the path.
      * @return The CRX bytes, or a 404 when the name is not a catalogued release.
      */
-    @GetMapping(value = "/updates/download/{file}")
+    @GetMapping("/updates/download/{file}")
     public @NonNull ResponseEntity<Resource> download(@PathVariable @NonNull String file) {
         if (!CRX_NAME.matcher(file).matches() || updateService.catalog().byCrx(file) == null) {
             throw new StatusCodeException(ErrorUtil.RESP_404);

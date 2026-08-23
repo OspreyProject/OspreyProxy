@@ -2,7 +2,6 @@ package net.foulest.ospreyproxy.tenant;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import net.foulest.ospreyproxy.services.TenantService;
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
