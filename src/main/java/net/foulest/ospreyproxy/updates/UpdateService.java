@@ -131,7 +131,7 @@ public class UpdateService {
             log.warn("[updates] Update server enabled but no releases loaded from {}; "
                     + "update checks will offer nothing until releases.json is populated", releasesPath);
         } else {
-            log.info("[updates] Loaded {} release(s) and {} channel(s) from {}",
+            log.warn("[updates] Loaded {} release(s) and {} channel(s) from {}",
                     current.releases().size(), current.channelPins().size(), updatesDir);
         }
     }

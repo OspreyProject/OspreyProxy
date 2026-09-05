@@ -149,13 +149,14 @@ public class TenantService {
     @PostConstruct
     public void init() {
         if (!enabled) {
-            log.info("[tenant] Tenant authentication disabled; extension endpoints serve anonymously");
+            log.warn("[tenant] Tenant authentication disabled; extension endpoints serve anonymously");
             return;
         }
 
         if (storePath == null) {
             log.warn("[tenant] Tenant authentication is enabled but no store path is set; "
-                    + "every extension request will be rejected. Set osprey.tenant.store.path.");
+                    + "every extension request will be rejected. Set osprey.tenant.store.path."
+            );
             return;
         }
 
@@ -165,9 +166,13 @@ public class TenantService {
 
         if (count == 0) {
             log.warn("[tenant] Tenant authentication is enabled but no tenants loaded from {}; "
-                    + "every extension request will be rejected until keys are added", storePath);
+                            + "every extension request will be rejected until keys are added",
+                    storePath
+            );
         } else {
-            log.info("[tenant] Loaded {} tenant(s) from {}", count, storePath);
+            log.warn("[tenant] Loaded {} tenant(s) from {}",
+                    count, storePath
+            );
         }
     }
 
@@ -231,7 +236,9 @@ public class TenantService {
         } catch (IOException e) {
             // A transient stat failure keeps the last-known-good tenant set in place rather than
             // dropping every tenant, mirroring the store's fail-safe posture elsewhere.
-            log.warn("[tenant] Could not stat tenant store {}: {}", storePath, e.getClass().getName());
+            log.warn("[tenant] Could not stat tenant store {}: {}",
+                    storePath, e.getClass().getName()
+            );
             return;
         }
 
@@ -259,7 +266,9 @@ public class TenantService {
         try (InputStream in = Files.newInputStream(storePath)) {
             properties.load(in);
         } catch (IOException e) {
-            log.warn("[tenant] Failed to read tenant store {}: {}", storePath, e.getClass().getName());
+            log.warn("[tenant] Failed to read tenant store {}: {}",
+                    storePath, e.getClass().getName()
+            );
             return;
         }
 
@@ -280,6 +289,16 @@ public class TenantService {
 
             String tenantId = remainder.substring(0, dot);
             String field = remainder.substring(dot + 1);
+
+            // An id written with a dot (for example "submit.feed.keys", read as id "submit" and field
+            // "feed.keys") would leave the intended tenant with no keys and a silent 401. Warn instead.
+            if (!"keys".equals(field) && !field.startsWith("rate.")) {
+                log.warn("[tenant] Ignoring store entry '{}' for tenant '{}': tenant ids may not contain dots",
+                        field, tenantId
+                );
+                continue;
+            }
+
             String value = properties.getProperty(name, "").strip();
             parseTenantField(tenantId, field, value, parsedKeys, parsedRates);
         }
@@ -289,7 +308,9 @@ public class TenantService {
         try {
             lastModifiedMillis = Files.getLastModifiedTime(storePath).toMillis();
         } catch (IOException e) {
-            log.debug("[tenant] Could not record tenant store mtime: {}", e.getClass().getName());
+            log.warn("[tenant] Could not record tenant store mtime: {}",
+                    e.getClass().getName()
+            );
         }
     }
 
@@ -323,7 +344,8 @@ public class TenantService {
 
                     if (previous != null && !previous.equals(tenantId)) {
                         log.warn("[tenant] Key collision between tenants '{}' and '{}'; ignoring the later one",
-                                previous, tenantId);
+                                previous, tenantId
+                        );
                     }
                 }
             }
@@ -340,7 +362,9 @@ public class TenantService {
             case "rate.sustained-window-seconds" ->
                     parsedRates.put(tenantId, rate.withSustainedWindowSeconds(parseLong(value, rate.sustainedWindowSeconds())));
 
-            default -> log.debug("[tenant] Ignoring unknown tenant field '{}' for tenant '{}'", field, tenantId);
+            default -> log.warn("[tenant] Ignoring unknown tenant field '{}' for tenant '{}'",
+                    field, tenantId
+            );
         }
     }
 
@@ -397,7 +421,9 @@ public class TenantService {
         }
 
         if (!added.isEmpty() || !removed.isEmpty()) {
-            log.info("[tenant] Store reload changed tenants; added {} removed {}", added, removed);
+            log.warn("[tenant] Store reload changed tenants; added {} removed {}",
+                    added, removed
+            );
         }
 
         tenantsById = Map.copyOf(rebuilt);
@@ -408,8 +434,12 @@ public class TenantService {
      * @return A {@link RateSettings} built from the configured defaults.
      */
     private @NonNull RateSettings defaultRateSettings() {
-        return new RateSettings(defaultBurstCapacity, defaultBurstWindowSeconds,
-                defaultSustainedCapacity, defaultSustainedWindowSeconds);
+        return new RateSettings(
+                defaultBurstCapacity,
+                defaultBurstWindowSeconds,
+                defaultSustainedCapacity,
+                defaultSustainedWindowSeconds
+        );
     }
 
     /**

@@ -569,7 +569,7 @@ public final class RequestUtil {
             // therefore getBareHost()) can produce a registrable domain
             return InternetDomainName.from(host).isUnderPublicSuffix();
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.debug("Unable to determine registrable domain for host '{}': {}", host, e.getMessage());
+            log.warn("Unable to determine registrable domain for host '{}': {}", host, e.getMessage());
             return false;
         }
     }
@@ -600,7 +600,7 @@ public final class RequestUtil {
                 return domain.topPrivateDomain().toString();
             }
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.debug("Unable to reduce host '{}' to a bare host: {}", host, e.getMessage());
+            log.warn("Unable to reduce host '{}' to a bare host: {}", host, e.getMessage());
         }
         return host;
     }

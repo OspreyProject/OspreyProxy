@@ -352,7 +352,7 @@ public class ContactHandler {
         );
 
         if (expired + forwarded > 0) {
-            log.info("[contact] Pruned {} expired and {} forwarded submissions", expired, forwarded);
+            log.warn("[contact] Pruned {} expired and {} forwarded submissions", expired, forwarded);
         }
     }
 

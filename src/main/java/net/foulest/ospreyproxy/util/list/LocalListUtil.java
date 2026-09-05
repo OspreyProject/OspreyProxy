@@ -187,7 +187,8 @@ public final class LocalListUtil {
             // configured), skip scheduling and leave the state slot at EMPTY (fail-open for lookups).
             if (descriptor.getResolvedUrls().isEmpty()) {
                 log.warn("[{}] Skipping list feed: no usable source URLs ({} environment variable is not set)",
-                        descriptor.getShortName(), descriptor.getApiKeyEnvVar());
+                        descriptor.getShortName(), descriptor.getApiKeyEnvVar()
+                );
                 continue;
             }
 
@@ -211,7 +212,9 @@ public final class LocalListUtil {
         try {
             FETCH_CLIENT.close();
         } catch (IOException e) {
-            log.warn("Failed to close local-list HTTP client: {} ({})", e.getMessage(), e.getClass().getName());
+            log.warn("Failed to close local-list HTTP client: {} ({})",
+                    e.getMessage(), e.getClass().getName()
+            );
         }
     }
 

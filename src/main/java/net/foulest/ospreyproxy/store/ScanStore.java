@@ -130,7 +130,7 @@ public class ScanStore {
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_scan_publish "
                 + "ON scan_result (indexable, published_at)");
 
-        log.info("[store] Schema ready");
+        log.warn("[store] Schema ready");
     }
 
     /**
@@ -264,7 +264,7 @@ public class ScanStore {
         int deleted = pruneStale(System.currentTimeMillis() - retentionMillis, pruneLimit);
 
         if (deleted > 0) {
-            log.info("[store] Pruned {} stale record(s)", deleted);
+            log.warn("[store] Pruned {} stale record(s)", deleted);
         }
     }
 

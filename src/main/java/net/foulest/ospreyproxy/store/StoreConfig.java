@@ -63,7 +63,7 @@ public class StoreConfig {
 
         SQLiteDataSource dataSource = new SQLiteDataSource(config);
         dataSource.setUrl("jdbc:sqlite:" + path);
-        log.info("[store] Scan store enabled at {}", path);
+        log.warn("[store] Scan store enabled at {}", path);
         return dataSource;
     }
 

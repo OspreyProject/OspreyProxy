@@ -449,7 +449,7 @@ public class CheckHandler {
             out.flush();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             // The client likely disconnected mid-stream; nothing more can be written
-            log.debug("[check] Failed to write stream line: {}", e.getClass().getName());
+            log.warn("[check] Failed to write stream line: {}", e.getClass().getName());
         }
     }
 

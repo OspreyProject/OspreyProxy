@@ -92,7 +92,7 @@ public class IndexingService {
         this.batchLimit = batchLimit;
 
         if (!this.testHost.isBlank()) {
-            log.info("[indexing] Testing mode active: only submitting URLs for host {}", this.testHost);
+            log.warn("[indexing] Testing mode active: only submitting URLs for host {}", this.testHost);
         }
 
         client = HttpClient.newBuilder()
@@ -135,7 +135,7 @@ public class IndexingService {
 
         if (submit(pageUrls)) {
             store.markPublished(canonicalUrls, System.currentTimeMillis());
-            log.info("[indexing] Announced {} URL(s) to IndexNow", pageUrls.size());
+            log.warn("[indexing] Announced {} URL(s) to IndexNow", pageUrls.size());
         }
     }
 
