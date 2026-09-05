@@ -68,16 +68,6 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/check", config);
         source.registerCorsConfiguration("/result", resultConfig);
 
-        // The reporting-check page on the website polls its test session cross-origin. The extension's
-        // own POSTs arrive with host permissions and need no CORS, but POST is allowed here too so the
-        // page's "send a sample payload" self-test works from the browser.
-        CorsConfiguration reportingTestConfig = new CorsConfiguration();
-        reportingTestConfig.setAllowedOrigins(List.of(checkAllowedOrigin));
-        reportingTestConfig.setAllowedHeaders(List.of("Content-Type", "Accept", "Authorization"));
-        reportingTestConfig.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
-        reportingTestConfig.setMaxAge(600L);
-        source.registerCorsConfiguration("/reporting/test/**", reportingTestConfig);
-
         // The website contact form posts submissions and verification tokens from the same origin.
         CorsConfiguration contactConfig = new CorsConfiguration();
         contactConfig.setAllowedOrigins(List.of(checkAllowedOrigin));
