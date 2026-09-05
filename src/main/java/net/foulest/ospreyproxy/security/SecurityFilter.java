@@ -34,15 +34,16 @@ public class SecurityFilter implements Filter {
     // Maximum allowed body size (10 KB)
     private static final int MAX_BODY_SIZE = 10_240;
 
-    // The reporting-test receiver accepts whole event batches from the extension, which can far
-    // exceed the 10 KB provider-lookup cap, so it gets its own larger ceiling (256 KB).
-    private static final int MAX_REPORTING_TEST_BODY_SIZE = 262_144;
-    private static final String REPORTING_TEST_PREFIX = "/reporting/test/";
+    // Bulk link submissions from feed partners can far exceed the 10 KB provider-lookup cap,
+    // so they get their own larger ceiling (256 KB).
+    private static final int MAX_LARGE_BODY_SIZE = 262_144;
+    private static final String SUBMIT_PREFIX = "/submit/";
 
     // Single-segment paths that are NOT extension-facing provider endpoints and therefore never require
     // a tenant key. Everything else that is a single-segment POST is a provider endpoint.
     private static final Set<String> RESERVED_PATHS = Set.of(
-            "check", "result", "internal", "actuator", "error", "favicon.ico", "updates", "reporting", "contact"
+            "check", "result", "internal", "actuator", "error", "favicon.ico", "updates", "reporting", "contact",
+            "submit"
     );
 
     // Resolves and rate-limits tenants on extension-facing endpoints
@@ -109,9 +110,9 @@ public class SecurityFilter implements Filter {
             return;
         }
 
-        // The reporting-test receiver takes whole event batches; every other endpoint keeps the
-        // strict provider-lookup cap.
-        int maxBodySize = isReportingTestPath(httpRequest) ? MAX_REPORTING_TEST_BODY_SIZE : MAX_BODY_SIZE;
+        // Bulk link submissions take large bodies; every other endpoint keeps the strict
+        // provider-lookup cap.
+        int maxBodySize = isLargeBodyPath(httpRequest) ? MAX_LARGE_BODY_SIZE : MAX_BODY_SIZE;
 
         // Early rejection for requests declaring an oversized Content-Length
         if (contentLength > maxBodySize) {
@@ -155,8 +156,9 @@ public class SecurityFilter implements Filter {
         String key = request.getHeader(tenantService.getHeaderName());
         Tenant tenant = tenantService.resolve(key);
 
-        // Reject a missing or unknown key without revealing which of the two it was.
-        if (tenant == null) {
+        // Reject a missing or unknown key without revealing which of the two it was. Submission-feed
+        // keys live in the same store but only ever authorize POST /submit/{feed}, never lookups.
+        if (tenant == null || tenant.id().startsWith(TenantService.SUBMIT_TENANT_PREFIX)) {
             log.warn("Rejected provider request with missing or invalid tenant key");
             sendError(response, HttpServletResponse.SC_UNAUTHORIZED, ErrorUtil.BODY_401);
             return false;
@@ -174,19 +176,19 @@ public class SecurityFilter implements Filter {
     }
 
     /**
-     * Whether the request targets the reporting-test receiver, which accepts larger JSON bodies
-     * than the provider-lookup endpoints.
+     * Whether the request targets the bulk submission endpoint, which accepts larger JSON
+     * bodies than the provider-lookup endpoints.
      *
      * @param request The incoming request.
-     * @return {@code true} if the path is under {@code /reporting/test/}.
+     * @return {@code true} if the path is under {@code /submit/}.
      */
-    private static boolean isReportingTestPath(@NonNull HttpServletRequest request) {
+    private static boolean isLargeBodyPath(@NonNull HttpServletRequest request) {
         String path = request.getServletPath();
 
         if (path == null || path.isEmpty()) {
             path = request.getRequestURI();
         }
-        return path != null && path.startsWith(REPORTING_TEST_PREFIX);
+        return path != null && path.startsWith(SUBMIT_PREFIX);
     }
 
     /**

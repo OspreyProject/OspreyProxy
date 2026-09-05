@@ -125,7 +125,67 @@ Because a tenant may list several keys at once and the store hot-reloads, rotati
 To revoke a compromised key immediately, delete it from the `keys` line and save. To disable a whole tenant, remove its
 lines from the store.
 
-## Per-tenant rate limiting
+## Partner link submissions
+
+A threat-intelligence partner with no feed of its own can push links straight into the proxy. Each partner gets its own
+file-backed feed: a `Descriptor` constant with no source URLs (see `ACOMICS`), a matching bean in
+`LocalListProviderConfig`, and one text file at `osprey.submissions.path/<endpointName>.txt`. The file is loaded at
+startup and served exactly like a fetched local list; every accepted submission is appended to it and published to
+memory at once, so entries survive restarts and are never written twice.
+
+Submitters call:
+
+```bash
+curl -X POST https://api.osprey.ac/submit/acomics \
+  -H "Authorization: Bearer $ACOMICS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"urls":["https://bad.example/login","evil.example"]}'
+```
+
+Tokens live in the tenant key store, which must have `osprey.tenant.store.path` set even on deployments that leave
+`osprey.tenant.auth.enabled=false`. Add one line per feed, using the tenant id `submit-<endpointName>` (tenant ids
+cannot contain dots, since the store parser reads everything after the first dot as the field name):
+
+```properties
+tenant.submit-acomics.keys=osp_sub_9f8a4c2be1d74f06a3c5e2b1d0f7a8c6
+tenant.submit-acomics.rate.sustained-capacity=60
+```
+
+The proxy holds these keys only as SHA-256 hashes, hot-reloads the file within a second, and supports zero-downtime
+rotation and instant revocation exactly as described for tenant keys above. A `submit-*` key is rejected on every
+extension lookup endpoint, and a lookup tenant's key is rejected on `/submit/`, so the two credential classes never
+cross. The token must resolve to the tenant whose id matches the provider id in the path, so a token only ever writes to
+the one feed it was issued for. Every authentication failure, including an unknown or non-submission feed, returns the
+same `401`, so nothing about which feeds exist is revealed without a valid token. A feed with no keys in the store
+refuses every write. The body is parsed only after the caller has passed the per-IP limit and authentication, so
+unauthenticated traffic never spends parser time.
+
+Containment for a stolen token, all configurable under `osprey.submissions.*`:
+
+- Per-IP throttling before authentication, so the token cannot be guessed.
+- The tenant's own burst and sustained request budget from the store.
+- A daily cap on accepted entries per feed (`daily-entries`), so mass poisoning is slow and visible.
+- Caps per body (`max-entries`, 256 KB), per entry (`max-entry-chars`), and per feed file (`max-file-bytes`).
+- A protected-domain list (`protected-hosts`): entries under those registrable domains are always rejected.
+- Entries with no registrable domain, and private or local hosts, are always rejected.
+- A strict character gate: after normalization an entry must be printable ASCII, the host must be well-formed DNS
+  labels, and any path may use only URL-safe characters. Control characters, quotes, backslashes, whitespace, and
+  non-ASCII are rejected, so the feed file is always one clean entry per line. Nothing on the submission path runs a
+  regular expression over submitter-controlled text, so there is no ReDoS surface.
+- Every submission is logged with feed, hashed source address, and counts. Tokens and URLs are never logged.
+
+On startup the file is re-checked line by line: an unterminated last line (a torn write from a crash or full disk)
+is ignored, since a truncated URL can name a different host, and any line that no longer passes the gate (for example a
+host added to `protected-hosts` since) is dropped rather than served. Appends are flushed to disk with
+`DSYNC` before the entry is published.
+
+Every written batch is preceded by a comment line in the file, for example
+`# 2026-08-27T19:04:11Z source=3fa9...`, carrying the arrival time and the hashed source address (the same hash that
+appears in the proxy log for that process lifetime). Comment lines are ignored when the file is loaded.
+
+If a token is compromised, delete it from the `keys` line and save; it stops working within a second. Then open
+`<endpointName>.txt`, find the batch headers that fall inside the compromise window, delete those headers and the lines
+beneath them, and restart the proxy; the file is the source of truth and is reloaded in full on startup.
 
 Two layers work together so no client can starve another.
 

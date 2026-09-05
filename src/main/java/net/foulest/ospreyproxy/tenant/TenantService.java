@@ -80,6 +80,14 @@ public class TenantService {
      */
     public static final String PUBLIC = "public";
 
+    /**
+     * Tenant id prefix reserved for submission-feed keys ({@code submit-<endpointName>}). Keys under
+     * this prefix authorize only {@code POST /submit/{endpointName}} and are rejected on lookups.
+     */
+    public static final String SUBMIT_TENANT_PREFIX = "submit-";
+
+    // Store keys are parsed as tenant.<id>.<field>, with the id ending at the first dot, so a tenant id
+    // can never contain a dot. The submission prefix therefore uses a hyphen.
     private static final String SHA_256 = "SHA-256";
     private static final String TENANT_PREFIX = "tenant.";
 

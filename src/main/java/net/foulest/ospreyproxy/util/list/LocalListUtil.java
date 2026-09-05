@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.HttpClientFactory;
 import net.foulest.ospreyproxy.util.JacksonUtil;
+import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.RequestUtil;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -36,13 +37,20 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -99,6 +107,18 @@ public final class LocalListUtil {
     // Descriptors keyed by endpoint name for O(1) routing in ProxyHandler
     private static final Map<String, Descriptor> descriptorsByEndpointName;
 
+    // Directory holding one <endpointName>.txt file per submission feed; set from configuration
+    private static volatile Path submissionsDir = Path.of("/var/lib/osprey/submissions");
+
+    // Blast-radius limits for submission feeds, so a stolen token cannot fill the disk or exhaust the
+    // 16 MB parse cap that would stop the file loading at all. Set from configuration.
+    private static volatile int maxSubmissionEntryChars = 2048;
+    private static volatile long maxSubmissionFileBytes = 8L * 1024L * 1024L;
+
+    // Registrable domains that a submission may never list, in bare-host or path form. A poisoned feed
+    // must not be able to block the platforms every user depends on. Set from configuration.
+    private static volatile Set<String> protectedHosts = Set.of();
+
     // Scheduler for periodic list refreshes
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor((Runnable r) -> {
         Thread thread = new Thread(r, "local-list-refresh");
@@ -117,6 +137,38 @@ public final class LocalListUtil {
     }
 
     /**
+     * Creates the component with the submission feed directory from configuration.
+     *
+     * @param submissionsPath Directory holding one text file per submission feed.
+     * @param maxEntryChars Maximum characters per submitted entry (host or host/path).
+     * @param maxFileBytes Maximum bytes per submission feed file.
+     * @param protectedHostList Comma-separated list of bare hosts that may not be submitted.
+     */
+    public LocalListUtil(@Value("${osprey.submissions.path:/var/lib/osprey/submissions}") String submissionsPath,
+                         @Value("${osprey.submissions.max-entry-chars:2048}") int maxEntryChars,
+                         @Value("${osprey.submissions.max-file-bytes:8388608}") long maxFileBytes,
+                         @Value("${osprey.submissions.protected-hosts:}") String protectedHostList) {
+        if (!submissionsPath.isBlank()) {
+            submissionsDir = Path.of(submissionsPath.strip());
+        }
+
+        maxSubmissionEntryChars = Math.clamp(maxEntryChars, 1, MAX_LINE_CHARS);
+        maxSubmissionFileBytes = Math.clamp(maxFileBytes, 1L, MAX_LIST_BYTES);
+
+        Set<String> hosts = new HashSet<>();
+
+        for (String raw : protectedHostList.split(",")) {
+            String host = normalizeHostnameEntry(raw);
+
+            if (host != null) {
+                hosts.add(RequestUtil.getBareHost(host));
+            }
+        }
+
+        protectedHosts = Set.copyOf(hosts);
+    }
+
+    /**
      * Initializes the state map and starts the periodic refresh tasks for each descriptor.
      */
     @PostConstruct
@@ -124,6 +176,12 @@ public final class LocalListUtil {
         for (Descriptor descriptor : Descriptor.values()) {
             stateMap.put(descriptor, new AtomicReference<>(ListSnapshot.EMPTY));
             perUrlCache.put(descriptor, new HashMap<>());
+
+            // Submission feeds have no upstream; load whatever has been persisted to disk so far
+            if (descriptor.isSubmissionFeed()) {
+                loadSubmissionFeed(descriptor);
+                continue;
+            }
 
             // If this descriptor has no usable source URLs (e.g. a required API key isn't
             // configured), skip scheduling and leave the state slot at EMPTY (fail-open for lookups).
@@ -237,6 +295,296 @@ public final class LocalListUtil {
             }
         }
         return LookupResult.ALLOWED;
+    }
+
+    /**
+     * Loads a submission feed's persisted text file into the live set. A missing file leaves the
+     * feed empty, which is the normal state before the first submission.
+     *
+     * @param descriptor The submission feed descriptor to load.
+     */
+    private static void loadSubmissionFeed(@NonNull Descriptor descriptor) {
+        Path file = submissionsDir.resolve(descriptor.getEndpointName() + ".txt");
+        AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+
+        // An empty feed is a loaded feed. Publish an empty set rather than leaving the EMPTY sentinel,
+        // which would make every lookup report FAILED instead of ALLOWED until the first submission.
+        if (state != null) {
+            state.set(new ListSnapshot(Set.of()));
+        }
+
+        if (!Files.isRegularFile(file)) {
+            log.warn("[{}] No submission file at {}; feed starts empty",
+                    descriptor.getShortName(), file
+            );
+            return;
+        }
+
+        try {
+            long size = Files.size(file);
+
+            // The append path caps the file well below the parser's 16 MB ceiling, so a file past that
+            // ceiling was not produced by this code. Refuse to read it into memory at all rather than
+            // risk an out-of-memory at startup; the feed stays empty and the operator is told why.
+            if (size > MAX_LIST_BYTES) {
+                log.warn("[{}] Submission file {} is {} bytes, over the {} byte limit; not loading it",
+                        descriptor.getShortName(), file, size, MAX_LIST_BYTES
+                );
+                return;
+            }
+
+            byte[] bytes = Files.readAllBytes(file);
+            int length = bytes.length;
+
+            // Every accepted entry is written with a trailing newline. A file that does not end in one was
+            // torn by a crash or a full disk mid-write, and a truncated URL can name a different, benign
+            // host (for example "paypal.com.evil.example" cut to "paypal.com"). Drop the unterminated tail.
+            if (length > 0 && bytes[length - 1] != '\n') {
+                int lastNewline = length - 1;
+
+                while (lastNewline >= 0 && bytes[lastNewline] != '\n') {
+                    lastNewline--;
+                }
+
+                log.warn("[{}] Submission file {} has an unterminated last line; ignoring it",
+                        descriptor.getShortName(), file
+                );
+
+                length = lastNewline + 1;
+            }
+
+            Set<String> parsed;
+
+            try (InputStream in = new ByteArrayInputStream(bytes, 0, length)) {
+                parsed = parsePlainText(in);
+            }
+
+            // Re-run the submission gate so entries that no longer pass (a host added to the protected
+            // list since, or a line hand-edited into the file) are dropped rather than served.
+            Set<String> domains = new HashSet<>();
+
+            for (String entry : parsed) {
+                if (isAcceptableSubmission(entry)) {
+                    domains.add(entry);
+                }
+            }
+
+            if (domains.size() != parsed.size()) {
+                log.warn("[{}] Dropped {} persisted entries that fail the submission gate",
+                        descriptor.getShortName(), parsed.size() - domains.size()
+                );
+            }
+
+            if (!domains.isEmpty()) {
+                applyContent(descriptor, domains);
+            }
+
+            log.warn("[{}] Loaded {} submitted entries from {}",
+                    descriptor.getShortName(), domains.size(), file
+            );
+        } catch (IOException | RuntimeException e) {
+            log.warn("[{}] Failed to load submission file {}: {}",
+                    descriptor.getShortName(), file, e.getClass().getName(), e
+            );
+        }
+    }
+
+    /**
+     * Normalizes the given raw entries, appends every new one to the feed's text file, and
+     * republishes the live set. Entries already present in the live set are never written again,
+     * so the file stays de-duplicated. Entries that fail normalization, exceed the per-entry length,
+     * resolve to a private or local host, sit under a protected registrable domain, or would push the
+     * feed past {@link #MAX_DOMAINS} or the per-feed file size cap are rejected.
+     *
+     * Each written batch is preceded by a comment line recording the time and the hashed source
+     * address, so an operator can see exactly which lines arrived during a compromise window and cut
+     * them out. Comment lines are ignored by the parser, so the file stays a valid list.
+     *
+     * @param descriptor The submission feed descriptor (must satisfy {@link Descriptor#isSubmissionFeed()}).
+     * @param rawEntries The raw URLs or hostnames as submitted.
+     * @param source A non-secret, log-safe source identifier for the batch (a hashed client address).
+     * @return Counts under {@code accepted}, {@code duplicates}, and {@code rejected}.
+     * @throws IOException If the entries could not be persisted; the live set is left unchanged.
+     */
+    public static @NonNull Map<String, Integer> submit(@NonNull Descriptor descriptor,
+                                                       @NonNull Collection<String> rawEntries,
+                                                       @NonNull String source) throws IOException {
+        if (!descriptor.isSubmissionFeed()) {
+            throw new IllegalArgumentException("Not a submission feed: " + descriptor.getEndpointName());
+        }
+
+        AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
+
+        if (state == null) {
+            throw new IllegalStateException("No state slot exists for descriptor");
+        }
+
+        int accepted = 0;
+        int duplicates = 0;
+        int rejected = 0;
+
+        // Serialize writers per feed so the file append and the snapshot swap are one atomic step
+        synchronized (state) {
+            Set<String> existing = state.get().domainSet();
+            Set<String> current = existing == null ? Set.of() : existing;
+
+            // The live set is read in place and copied only when there is something to add, so a token
+            // holder replaying duplicates cannot force an O(n) copy of a large feed on every request.
+            Set<String> added = new LinkedHashSet<>();
+            Path file = submissionsDir.resolve(descriptor.getEndpointName() + ".txt");
+            long fileBytes = Files.isRegularFile(file) ? Files.size(file) : 0L;
+
+            // Provenance header written ahead of the batch. Only hex and digits from a trusted caller go
+            // in, and any control character is stripped anyway so it can never break the line format.
+            String cleanSource = source.replaceAll("[^0-9a-fA-F]", "");
+            String header = "# " + Instant.now() + " source=" + cleanSource + '\n';
+            long pendingBytes = header.length();
+
+            for (String raw : rawEntries) {
+                String normalized = raw == null || raw.length() > maxSubmissionEntryChars ? null : normalizeListEntry(raw);
+
+                if (normalized == null
+                        || normalized.length() > maxSubmissionEntryChars
+                        || !isAcceptableSubmission(normalized)) {
+                    rejected++;
+                    continue;
+                }
+
+                if (current.contains(normalized) || added.contains(normalized)) {
+                    duplicates++;
+                    continue;
+                }
+
+                long entryBytes = normalized.length() + 1L;
+
+                if (current.size() + added.size() >= MAX_DOMAINS
+                        || fileBytes + pendingBytes + entryBytes > maxSubmissionFileBytes) {
+                    rejected++;
+                    continue;
+                }
+
+                added.add(normalized);
+                pendingBytes += entryBytes;
+                accepted++;
+            }
+
+            if (!added.isEmpty()) {
+                Set<String> merged = new HashSet<>(current);
+                merged.addAll(added);
+                Files.createDirectories(submissionsDir);
+
+                StringBuilder block = new StringBuilder(header.length() + added.size() * 40);
+
+                // Keep the file line-oriented even if it was hand-edited without a trailing newline
+                if (Files.isRegularFile(file) && Files.size(file) > 0L) {
+                    try (SeekableByteChannel channel = Files.newByteChannel(file, StandardOpenOption.READ)) {
+                        ByteBuffer last = ByteBuffer.allocate(1);
+                        channel.position(channel.size() - 1L);
+                        channel.read(last);
+
+                        if (last.get(0) != '\n') {
+                            block.append('\n');
+                        }
+                    }
+                }
+
+                block.append(header);
+
+                for (String entry : added) {
+                    block.append(entry).append('\n');
+                }
+
+                Files.writeString(file, block, StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
+                        StandardOpenOption.DSYNC);
+
+                applyContent(descriptor, merged);
+            }
+        }
+
+        Map<String, Integer> counts = LinkedHashMap.newLinkedHashMap(3);
+        counts.put("accepted", accepted);
+        counts.put("duplicates", duplicates);
+        counts.put("rejected", rejected);
+        return counts;
+    }
+
+    /**
+     * Full acceptance gate for a normalized submission entry: well-formed characters, a public host
+     * with a registrable domain, and not under a protected domain. Shared by the submit path and the
+     * startup load so persisted entries are held to the same rule as fresh ones.
+     *
+     * @param entry The normalized entry ({@code host} or {@code host/path}).
+     * @return {@code true} if the entry may be served.
+     */
+    private static boolean isAcceptableSubmission(@NonNull String entry) {
+        int slash = entry.indexOf('/');
+        String host = slash < 0 ? entry : entry.substring(0, slash);
+
+        return isWellFormedSubmission(entry, slash)
+                && !NetworkUtil.isPrivateHost(host)
+                && RequestUtil.hasRegistrableDomain(host)
+                && !protectedHosts.contains(RequestUtil.getBareHost(host));
+    }
+
+    /**
+     * Strict character-level gate for submitted entries, applied after normalization. Fetched lists
+     * are trusted sources; submissions are not, so an entry must be printable ASCII with a hostname
+     * made of well-formed DNS labels and, if present, a path limited to URL-safe characters. This
+     * keeps control characters, Unicode look-alikes, quotes, and stray delimiters out of the feed
+     * file, and guarantees each entry is exactly one line. It uses no regular expressions.
+     *
+     * @param entry The normalized entry ({@code host} or {@code host/path}).
+     * @param slash Index of the first {@code /} in the entry, or -1 for a bare host.
+     * @return {@code true} if the entry is well-formed.
+     */
+    private static boolean isWellFormedSubmission(@NonNull String entry, int slash) {
+        int hostEnd = slash < 0 ? entry.length() : slash;
+
+        if (hostEnd == 0 || hostEnd > MAX_DOMAIN_CHARS) {
+            return false;
+        }
+
+        int labelStart = 0;
+
+        for (int i = 0; i <= hostEnd; i++) {
+            if (i == hostEnd || entry.charAt(i) == '.') {
+                int labelLength = i - labelStart;
+
+                if (labelLength < 1
+                        || labelLength > 63
+                        || entry.charAt(labelStart) == '-'
+                        || entry.charAt(i - 1) == '-') {
+                    return false;
+                }
+
+                labelStart = i + 1;
+                continue;
+            }
+
+            char c = entry.charAt(i);
+
+            boolean ok = (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9')
+                    || c == '-';
+
+            if (!ok) {
+                return false;
+            }
+        }
+
+        for (int i = hostEnd; i < entry.length(); i++) {
+            char c = entry.charAt(i);
+
+            boolean ok = (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9')
+                    || "-._~:/?#[]@!$&'()*+,;=%".indexOf(c) >= 0;
+
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

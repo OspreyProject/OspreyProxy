@@ -40,6 +40,17 @@ public class LocalListProviderConfig {
     }
 
     /**
+     * Defines a bean for the Acomics Anti-Spam feed, which uses the ACOMICS descriptor.
+     * This feed has no upstream URL; it is populated through the authenticated submission API.
+     *
+     * @return A LocalListProvider instance configured for the Acomics Anti-Spam feed.
+     */
+    @Bean
+    public LocalListProvider acomicsProvider() {
+        return new LocalListProvider(Descriptor.ACOMICS);
+    }
+
+    /**
      * Defines a bean for the Phishunt.io local list provider, which uses the PHISHUNT_IO descriptor.
      *
      * @return A LocalListProvider instance configured for the Phishunt.io list.

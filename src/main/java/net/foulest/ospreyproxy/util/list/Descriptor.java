@@ -54,6 +54,18 @@ public enum Descriptor {
     ),
 
     /**
+     * Acomics Anti-Spam (file-backed feed populated through {@code POST /submit/acomics}).
+     * Bearer tokens live in the tenant key store under {@code tenant.submit-acomics.keys}, so they are
+     * hashed in memory, hot-reloaded, and revocable without a restart. Duplicate this constant, one
+     * per submitting provider.
+     */
+    ACOMICS(
+            "Acomics Anti-Spam",
+            "acomics",
+            LookupResult.MALICIOUS
+    ),
+
+    /**
      * OpenPhish
      */
     OPEN_PHISH(
@@ -274,6 +286,26 @@ public enum Descriptor {
                @Nullable String apiKeyEnvVar, boolean githubApi) {
         this(urls, format, shortName, endpointName, resultType, refreshIntervalSeconds, apiKeyEnvVar,
                 false, null, null, githubApi);
+    }
+
+    /**
+     * Convenience constructor for a submission feed: no source URLs, plain-text format, accumulate
+     * semantics. Entries come from a local text file (loaded at startup) and from the authenticated
+     * {@code POST /submit/{endpointName}} endpoint, which appends to that file. Submitters authenticate
+     * against the tenant key store entry {@code tenant.submit-<endpointName>.keys}.
+     */
+    Descriptor(@NonNull String shortName, @NonNull String endpointName, @NonNull LookupResult resultType) {
+        this(List.of(), Format.TEXT, shortName, endpointName, resultType, 0L, null,
+                true, null, null, false);
+    }
+
+    /**
+     * Whether this descriptor is a file-backed submission feed rather than a fetched list.
+     *
+     * @return {@code true} if this feed has no source URLs and is populated by submissions.
+     */
+    public boolean isSubmissionFeed() {
+        return urls.isEmpty();
     }
 
     /**
