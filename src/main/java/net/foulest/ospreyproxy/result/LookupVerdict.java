@@ -39,6 +39,29 @@ public final class LookupVerdict {
             LookupResult.SUSPICIOUS,
             LookupResult.NEWLY_REGISTERED,
             LookupResult.DYNAMIC_DNS,
+            LookupResult.PARKED,
+            LookupResult.ADULT_CONTENT,
+            LookupResult.SEX_EDUCATION,
+            LookupResult.DATING,
+            LookupResult.GAMBLING,
+            LookupResult.DRUGS,
+            LookupResult.ALCOHOL_TOBACCO,
+            LookupResult.WEAPONS,
+            LookupResult.HATE_DISCRIMINATION,
+            LookupResult.VIOLENCE_GORE,
+            LookupResult.PIRACY,
+            LookupResult.HACKING,
+            LookupResult.SOCIAL_MEDIA,
+            LookupResult.STREAMING_MEDIA,
+            LookupResult.GAMES,
+            LookupResult.CHAT_MESSAGING,
+            LookupResult.FILE_SHARING,
+            LookupResult.SHOPPING_AUCTIONS,
+            LookupResult.JOB_SEARCH,
+            LookupResult.WEBMAIL,
+            LookupResult.REMOTE_ACCESS,
+            LookupResult.AI_APPLICATIONS,
+            LookupResult.CRYPTOCURRENCY,
             LookupResult.ALLOWED,
             LookupResult.RATE_LIMITED,
             LookupResult.FAILED
@@ -117,8 +140,23 @@ public final class LookupVerdict {
         }
 
         List<LookupResult> ordered = new ArrayList<>(unique);
-        ordered.sort((a, b) -> Integer.compare(SEVERITY_ORDER.indexOf(a), SEVERITY_ORDER.indexOf(b)));
+        ordered.sort((a, b) -> Integer.compare(severityRank(a), severityRank(b)));
         return new LookupVerdict(List.copyOf(ordered));
+    }
+
+    /**
+     * Returns a result's severity rank. A result absent from {@link #SEVERITY_ORDER} sorts
+     * last rather than first: {@code List.indexOf} answers -1 for an unlisted value, and
+     * ranking that ahead of PHISHING would let a newly added result silently outrank every
+     * real threat in {@link #primary()}.
+     *
+     * @param result The result to rank.
+     * @return The index in the severity order, or {@link Integer#MAX_VALUE} when unlisted.
+     */
+    @Contract(pure = true)
+    private static int severityRank(@NonNull LookupResult result) {
+        int index = SEVERITY_ORDER.indexOf(result);
+        return index < 0 ? Integer.MAX_VALUE : index;
     }
 
     /**
