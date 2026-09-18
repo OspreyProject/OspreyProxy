@@ -229,6 +229,6 @@ public final class LookupVerdict {
 
     @Override
     public @NonNull String toString() {
-        return "LookupVerdict" + results;
+        return "[LookupVerdict] " + results;
     }
 }
