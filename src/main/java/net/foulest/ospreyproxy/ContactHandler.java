@@ -236,7 +236,7 @@ public class ContactHandler {
 
         String category = cleanLine(fields.get("category"), 40);
         String name = cleanLine(fields.get("name"), MAX_NAME_LENGTH);
-        String email = cleanLine(fields.get("email"), MAX_EMAIL_LENGTH).toLowerCase();
+        String email = cleanLine(fields.get("email"), MAX_EMAIL_LENGTH).toLowerCase(Locale.ROOT);
         String company = cleanLine(fields.get("company"), MAX_COMPANY_LENGTH);
         String message = cleanBlock(fields.get("message"), MAX_MESSAGE_LENGTH);
         String captcha = cleanLine(fields.get("token"), MAX_CAPTCHA_LENGTH);

@@ -88,7 +88,7 @@ public class IndexingService {
         // Default the key file location to the site-hosted key when not set explicitly.
         this.keyLocation = keyLocation.isBlank() ? ("https://" + HOST + "/" + key + ".txt") : keyLocation;
         this.submitUrl = submitUrl;
-        this.testHost = testHost.trim().toLowerCase();
+        this.testHost = testHost.trim().toLowerCase(Locale.ROOT);
         this.batchLimit = batchLimit;
 
         if (!this.testHost.isBlank()) {
