@@ -17,6 +17,12 @@ public final class Tenant {
     private final Bucket burstBucket;
     private final Bucket sustainedBucket;
 
+    /**
+     * Constructs a new Tenant with the given id and rate settings.
+     *
+     * @param id   The opaque tenant id used to tag logs, metrics, and rate-limit keys.
+     * @param rate The rate settings for this tenant, including burst and sustained capacities and windows.
+     */
     public Tenant(@NonNull String id, @NonNull RateSettings rate) {
         this.id = id;
         this.rate = rate;
