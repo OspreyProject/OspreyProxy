@@ -27,21 +27,21 @@ configurations.configureEach {
 
 dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.2.4'
-    implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0'
+    implementation 'com.bucket4j:bucket4j_jdk17-core:8.20.0'
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.5.1' // KEEP ON 5.5.1
-    implementation 'org.springframework.boot:spring-boot-starter-web:4.1.0'
-    implementation 'org.springframework.boot:spring-boot-starter-mail:4.1.0'
-    implementation 'com.google.guava:guava:33.6.0-jre'
+    implementation 'org.springframework.boot:spring-boot-starter-web:4.1.1'
+    implementation 'org.springframework.boot:spring-boot-starter-mail:4.1.1'
+    implementation 'com.google.guava:guava:33.7.1-jre'
 
     // Spring JDBC + SQLite - durable aggregate scan store (single local WAL database file)
     // https://docs.spring.io/spring-boot/reference/data/sql.html
-    implementation 'org.springframework.boot:spring-boot-starter-jdbc:4.1.0'
-    implementation 'org.xerial:sqlite-jdbc:3.53.2.1'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc:4.1.1'
+    implementation 'org.xerial:sqlite-jdbc:3.53.4.0'
 
     // Actuator + Micrometer - for metrics and health endpoints
     // https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
-    implementation 'org.springframework.boot:spring-boot-starter-actuator:4.1.0'
-    implementation 'io.micrometer:micrometer-registry-prometheus:1.17.0'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:4.1.1'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.17.1'
 
     // Resilience4j - for circuit breaking on upstream API providers
     // https://resilience4j.readme.io/docs/getting-started
@@ -54,8 +54,8 @@ dependencies {
 
     // Lombok - for reducing boilerplate code
     // https://projectlombok.org
-    compileOnly 'org.projectlombok:lombok:1.18.46'
-    annotationProcessor 'org.projectlombok:lombok:1.18.46'
+    compileOnly 'org.projectlombok:lombok:1.18.48'
+    annotationProcessor 'org.projectlombok:lombok:1.18.48'
 }
 
 tasks {
