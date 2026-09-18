@@ -398,7 +398,7 @@ public final class LocalListUtil {
      * so the file stays de-duplicated. Entries that fail normalization, exceed the per-entry length,
      * resolve to a private or local host, sit under a protected registrable domain, or would push the
      * feed past {@link #MAX_DOMAINS} or the per-feed file size cap are rejected.
-     *
+     * <p>
      * Each written batch is preceded by a comment line recording the time and the hashed source
      * address, so an operator can see exactly which lines arrived during a compromise window and cut
      * them out. Comment lines are ignored by the parser, so the file stays a valid list.

@@ -103,9 +103,9 @@ public final class RequestUtil {
      * @return The rate-limit key (here, the hashed client IP).
      * @throws StatusCodeException If the IP address is found to be invalid/blocked.
      */
-    public static @NonNull String validateIP(@NonNull HttpServletRequest request,
-                                             @NonNull Provider provider,
-                                             String providerName) {
+    private static @NonNull String validateIP(@NonNull HttpServletRequest request,
+                                              @NonNull Provider provider,
+                                              String providerName) {
         return validateIP(request, provider, providerName, null);
     }
 
