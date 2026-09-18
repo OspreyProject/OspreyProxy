@@ -99,9 +99,7 @@ public class SubmitHandler {
                          @Value("${osprey.submissions.daily-entries:5000}") long dailyEntries,
                          @Value("${osprey.submissions.max-entries:1000}") int maxEntries) {
         this.tenantService = tenantService;
-
-        // A batch larger than the daily budget could never be accepted, so clamp to keep the two coherent.
-        this.maxEntries = (int) Math.max(1L, Math.min(maxEntries, dailyEntries));
+        this.maxEntries = (int) Math.clamp(maxEntries, 1L, dailyEntries);
 
         ipBandwidth = Bandwidth.builder()
                 .capacity(ipCapacity)
