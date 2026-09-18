@@ -109,18 +109,6 @@ public final class LookupVerdict {
 
     /**
      * Returns a verdict containing the given results, deduplicated and severity-ordered.
-     * An empty argument list collapses to {@link #FAILED}.
-     *
-     * @param results The results to include.
-     * @return A non-empty verdict.
-     */
-    @Contract(pure = true)
-    public static @NonNull LookupVerdict of(@NonNull LookupResult @NonNull ... results) {
-        return of(Arrays.asList(results));
-    }
-
-    /**
-     * Returns a verdict containing the given results, deduplicated and severity-ordered.
      * A {@code null} or empty collection collapses to {@link #FAILED}.
      *
      * @param results The results to include.
