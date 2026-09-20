@@ -25,6 +25,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
+import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.store.ScanAggregator;
 import net.foulest.ospreyproxy.store.ScanRecord;
@@ -36,6 +37,7 @@ import net.foulest.ospreyproxy.util.RequestUtil;
 import net.foulest.ospreyproxy.util.check.CheckRequest;
 import net.foulest.ospreyproxy.util.check.IndexedVerdict;
 import net.foulest.ospreyproxy.util.check.PreparedUrl;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -81,6 +83,19 @@ public class CheckHandler {
     // Context label used for IP-hash log correlation, mirroring the provider-name label elsewhere
     private static final String CONTEXT = "check";
     private static final Pattern HTTPS_PATTERN = Pattern.compile("(?i)^https?://.*");
+
+    private static final EnumSet<LookupResult> CHECK_RESULTS = EnumSet.of(
+            LookupResult.FAILED,
+            LookupResult.RATE_LIMITED,
+            LookupResult.ALLOWED,
+            LookupResult.PHISHING,
+            LookupResult.MALICIOUS,
+            LookupResult.SUSPICIOUS,
+            LookupResult.NEWLY_REGISTERED,
+            LookupResult.DYNAMIC_DNS
+    );
+
+    private static final Set<String> CHECK_RESULT_VALUES = checkResultValues();
 
     private final ProxyHandler proxyHandler;
     private final List<Provider> providers;
@@ -146,7 +161,7 @@ public class CheckHandler {
                         @Value("${osprey.check.rate.sustained-window-seconds:3600}") long sustainedWindowSeconds,
                         @Value("${osprey.check.deadline-seconds:12}") long deadlineSeconds) {
         this(proxyHandler, providers, storeProvider, freshnessSeconds, turnstileEnabled, turnstileSecret,
-                turnstileVerifyUrl, turnstileTimeoutSeconds, burstCapacity, burstWindowSeconds, sustainedCapacity,
+                turnstileVerifyUrl, burstCapacity, burstWindowSeconds, sustainedCapacity,
                 sustainedWindowSeconds, deadlineSeconds, HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(turnstileTimeoutSeconds))
                         .build());
@@ -159,7 +174,6 @@ public class CheckHandler {
                  boolean turnstileEnabled,
                  @NonNull String turnstileSecret,
                  @NonNull String turnstileVerifyUrl,
-                 long turnstileTimeoutSeconds,
                  long burstCapacity,
                  long burstWindowSeconds,
                  long sustainedCapacity,
@@ -398,7 +412,7 @@ public class CheckHandler {
         writeLine(out, meta);
 
         for (Map.Entry<String, List<String>> entry : results.entrySet()) {
-            List<String> values = entry.getValue();
+            List<String> values = filterForCheck(entry.getValue());
             String primary = values.isEmpty() ? LookupVerdict.FAILED.primary().getValue() : values.getFirst();
 
             Map<String, Object> line = LinkedHashMap.newLinkedHashMap(4);
@@ -428,11 +442,51 @@ public class CheckHandler {
     private @NonNull LookupVerdict safeResolve(@NonNull Provider provider,
                                                @NonNull PreparedUrl prepared) {
         try {
-            return proxyHandler.resolveForCheck(provider, prepared);
+            return filterForCheck(proxyHandler.resolveForCheck(provider, prepared));
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] /check resolution failed: {}", provider.getDisplayName(), e.getClass().getName());
             return LookupVerdict.FAILED;
         }
+    }
+
+    /**
+     * Removes extension-only content categories from a live verdict. The public checker reports
+     * security risk, so a content-only verdict is clean while mixed verdicts retain their threats.
+     *
+     * @param verdict The full provider verdict.
+     * @return A verdict containing only results understood by the public checker.
+     */
+    private static @NonNull LookupVerdict filterForCheck(@NonNull LookupVerdict verdict) {
+        List<LookupResult> filtered = verdict.results().stream()
+                .filter(CHECK_RESULTS::contains)
+                .toList();
+        return filtered.isEmpty() ? LookupVerdict.ALLOWED : LookupVerdict.of(filtered);
+    }
+
+    /**
+     * Removes extension-only content categories from a stored verdict before replaying it.
+     *
+     * @param values The stored wire values.
+     * @return Values understood by the public checker.
+     */
+    private static @NonNull List<String> filterForCheck(@NonNull List<String> values) {
+        if (values.isEmpty()) {
+            return values;
+        }
+
+        List<String> filtered = values.stream()
+                .filter(CHECK_RESULT_VALUES::contains)
+                .toList();
+        return filtered.isEmpty() ? LookupVerdict.ALLOWED.values() : filtered;
+    }
+
+    private static @NonNull @Unmodifiable Set<String> checkResultValues() {
+        Set<String> values = HashSet.newHashSet(CHECK_RESULTS.size());
+
+        for (LookupResult result : CHECK_RESULTS) {
+            values.add(result.getValue());
+        }
+        return Set.copyOf(values);
     }
 
     /**

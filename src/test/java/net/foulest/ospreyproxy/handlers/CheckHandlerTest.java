@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.store.ScanRecord;
 import net.foulest.ospreyproxy.store.ScanStore;
 import net.foulest.ospreyproxy.util.check.CheckRequest;
@@ -144,6 +145,40 @@ class CheckHandlerTest {
     }
 
     @Test
+    void checkHidesContentCategoriesWhilePreservingSecurityResults() throws Exception {
+        Provider contentOnly = provider("content-only");
+        Provider mixed = provider("mixed");
+        ProxyHandler proxy = mock(ProxyHandler.class);
+        when(proxy.resolveForCheck(contentOnly, CheckHandler.prepare("example.com")))
+                .thenReturn(LookupVerdict.of(List.of(LookupResult.SHOPPING_AUCTIONS, LookupResult.AI_APPLICATIONS)));
+        when(proxy.resolveForCheck(mixed, CheckHandler.prepare("example.com")))
+                .thenReturn(LookupVerdict.of(List.of(LookupResult.PHISHING, LookupResult.PARKED)));
+
+        CheckHandler live = handler(null, List.of(contentOnly, mixed), 10, proxy);
+        ByteArrayOutputStream liveOutput = new ByteArrayOutputStream();
+        live.check(new CheckRequest("example.com", null, false), request()).getBody().writeTo(liveOutput);
+
+        Assertions.assertThat(liveOutput.toString(StandardCharsets.UTF_8))
+                .contains("\"provider\":\"content-only\",\"result\":\"allowed\",\"results\":[\"allowed\"]")
+                .contains("\"provider\":\"mixed\",\"result\":\"phishing\",\"results\":[\"phishing\"]")
+                .doesNotContain("shopping_auctions", "ai_applications", "parked");
+
+        ScanStore store = mock(ScanStore.class);
+        when(store.get("https://example.com")).thenReturn(record(System.currentTimeMillis(), Map.of(
+                "content-only", List.of("shopping_auctions"),
+                "mixed", List.of("phishing", "parked")
+        )));
+        CheckHandler cached = handler(store, List.of(), 10);
+        ByteArrayOutputStream cachedOutput = new ByteArrayOutputStream();
+        cached.check(new CheckRequest("example.com", null, false), request()).getBody().writeTo(cachedOutput);
+
+        Assertions.assertThat(cachedOutput.toString(StandardCharsets.UTF_8))
+                .contains("\"provider\":\"content-only\",\"result\":\"allowed\",\"results\":[\"allowed\"]")
+                .contains("\"provider\":\"mixed\",\"result\":\"phishing\",\"results\":[\"phishing\"]")
+                .doesNotContain("shopping_auctions", "parked");
+    }
+
+    @Test
     void checkFailsClosedWhenTurnstileIsEnabledWithoutASecret() {
         ObjectProvider<ScanStore> storeProvider = mock(ObjectProvider.class);
         when(storeProvider.getIfAvailable()).thenReturn(null);
@@ -160,7 +195,7 @@ class CheckHandlerTest {
     void checkAppliesTheSustainedRateLimitAfterTheBurstLimitPasses() {
         ObjectProvider<ScanStore> storeProvider = storeProvider(null);
         CheckHandler handler = new CheckHandler(mock(ProxyHandler.class), List.of(), storeProvider, 60,
-                false, "", "http://unused", 1, 2, 3600, 1, 3600, 1, mock(HttpClient.class));
+                false, "", "http://unused", 2, 3600, 1, 3600, 1, mock(HttpClient.class));
         HttpServletRequest request = request();
         handler.check(new CheckRequest("example.com", null, false), request);
 
@@ -392,7 +427,7 @@ class CheckHandlerTest {
                                         boolean turnstileEnabled, String turnstileSecret, HttpClient client,
                                         long deadlineSeconds) {
         ObjectProvider<ScanStore> storeProvider = storeProvider(store);
-        return new CheckHandler(proxy, providers, storeProvider, 60, turnstileEnabled, turnstileSecret, "http://unused", 1,
+        return new CheckHandler(proxy, providers, storeProvider, 60, turnstileEnabled, turnstileSecret, "http://unused",
                 capacity, 3600, 100, 3600, deadlineSeconds, client);
     }
 
