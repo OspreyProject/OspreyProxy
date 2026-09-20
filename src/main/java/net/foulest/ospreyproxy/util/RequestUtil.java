@@ -556,19 +556,21 @@ public final class RequestUtil {
     }
 
     /**
-     * Rejects an invalid host and records the request against the invalid-request limiter.
+     * Records the invalid host against the abuse limiter and returns a 400 to throw.
+     * Note: rejectInvalidRequest may itself throw a 429 if the IP is over the limit.
      *
      * @param provider The provider to reject invalid requests with.
      * @param providerName The provider name.
      * @param hashedIp The hashed client IP.
      * @param message The rejection log message.
+     * @return A StatusCodeException with a 400 response code to throw.
      */
-    private static void rejectInvalidHost(@NonNull Provider provider,
-                                          String providerName,
-                                          String hashedIp,
-                                          String message) {
+    private static @NonNull StatusCodeException rejectInvalidHost(@NonNull Provider provider,
+                                                                  String providerName,
+                                                                  String hashedIp,
+                                                                  String message) {
         RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName, message);
-        throw new StatusCodeException(ErrorUtil.RESP_400);
+        return new StatusCodeException(ErrorUtil.RESP_400);
     }
 
     /**
