@@ -200,9 +200,9 @@ class AbstractDNSProviderTest {
             @Override
             public int read() throws IOException {
                 if (position < 2) {
+                    position++;
                     return 0x01;
                 }
-                position++;
                 throw new IOException("simulated mid-stream read failure");
             }
         };
