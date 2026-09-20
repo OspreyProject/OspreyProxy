@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util;
 
+import com.google.common.base.Splitter;
 import com.google.common.net.InternetDomainName;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
@@ -31,7 +32,9 @@ import org.jspecify.annotations.NonNull;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
-import java.net.*;
+import java.net.IDN;
+import java.net.InetAddress;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -47,9 +50,8 @@ public final class RequestUtil {
     // Constants for validation limits
     private static final int MAX_IP_LITERAL_LENGTH = 45;
     private static final int MAX_HOST_LENGTH = 253;
-    private static final int MAX_DNS_LABEL_LENGTH = 63;
     private static final Pattern PATTERN = Pattern.compile("/+$");
-    private static final Pattern QUERY_SPLIT = Pattern.compile("&");
+    private static final Splitter QUERY_SPLITTER = Splitter.on('&');
 
     // Each rule is {host, path, key1, key2, ...}; retained keys are emitted in listed order
     private static final String[][] QUERY_RETENTION_RULES = {
@@ -103,6 +105,7 @@ public final class RequestUtil {
      * @return The rate-limit key (here, the hashed client IP).
      * @throws StatusCodeException If the IP address is found to be invalid/blocked.
      */
+    @SuppressWarnings("UnusedMethod")
     private static @NonNull String validateIP(@NonNull HttpServletRequest request,
                                               @NonNull Provider provider,
                                               String providerName) {
@@ -607,7 +610,7 @@ public final class RequestUtil {
 
         Map<String, String> pairs = new HashMap<>();
 
-        for (String pair : QUERY_SPLIT.split(rawQuery)) {
+        for (String pair : QUERY_SPLITTER.split(rawQuery)) {
             if (pair.isEmpty()) {
                 continue;
             }
