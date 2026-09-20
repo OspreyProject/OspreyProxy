@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.tenant;
 
+import com.google.common.base.Splitter;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.ServletRequest;
 import lombok.Getter;
@@ -160,7 +161,7 @@ public class TenantService {
             return;
         }
 
-        reload();
+        reload(storePath);
 
         int count = tenantsById.size();
 
@@ -177,6 +178,8 @@ public class TenantService {
     }
 
     /**
+     * Returns the configured tenant-key header name.
+     *
      * @return The request header name the tenant key is read from.
      */
     public @NonNull String getHeaderName() {
@@ -218,7 +221,9 @@ public class TenantService {
      * second so a request burst never turns into a stat storm.
      */
     private void maybeReload() {
-        if (storePath == null) {
+        Path configuredStorePath = storePath;
+
+        if (configuredStorePath == null) {
             return;
         }
 
@@ -232,12 +237,12 @@ public class TenantService {
         long modified;
 
         try {
-            modified = Files.getLastModifiedTime(storePath).toMillis();
+            modified = Files.getLastModifiedTime(configuredStorePath).toMillis();
         } catch (IOException e) {
             // A transient stat failure keeps the last-known-good tenant set in place rather than
             // dropping every tenant, mirroring the store's fail-safe posture elsewhere.
             log.warn("[tenant] Could not stat tenant store {}: {}",
-                    storePath, e.getClass().getName()
+                    configuredStorePath, e.getClass().getName()
             );
             return;
         }
@@ -245,7 +250,7 @@ public class TenantService {
         if (modified != lastModifiedMillis) {
             synchronized (reloadLock) {
                 if (modified != lastModifiedMillis) {
-                    reload();
+                    reload(configuredStorePath);
                 }
             }
         }
@@ -255,19 +260,17 @@ public class TenantService {
      * Reads and parses the store file, atomically replacing the in-memory tenant maps. Tenants whose
      * rate settings are unchanged keep their existing budget buckets, so an unrelated edit (or a key
      * rotation) does not silently reset every tenant's allowance.
+     *
+     * @param configuredStorePath The configured, non-null tenant store path.
      */
-    private void reload() {
-        if (storePath == null) {
-            return;
-        }
-
+    private void reload(@NonNull Path configuredStorePath) {
         Properties properties = new Properties();
 
-        try (InputStream in = Files.newInputStream(storePath)) {
+        try (InputStream in = Files.newInputStream(configuredStorePath)) {
             properties.load(in);
         } catch (IOException e) {
             log.warn("[tenant] Failed to read tenant store {}: {}",
-                    storePath, e.getClass().getName()
+                    configuredStorePath, e.getClass().getName()
             );
             return;
         }
@@ -306,7 +309,7 @@ public class TenantService {
         applyParsed(parsedKeys, parsedRates);
 
         try {
-            lastModifiedMillis = Files.getLastModifiedTime(storePath).toMillis();
+            lastModifiedMillis = Files.getLastModifiedTime(configuredStorePath).toMillis();
         } catch (IOException e) {
             log.warn("[tenant] Could not record tenant store mtime: {}",
                     e.getClass().getName()
@@ -332,7 +335,7 @@ public class TenantService {
 
         switch (field) {
             case "keys" -> {
-                for (String rawKey : value.split(",")) {
+                for (String rawKey : Splitter.on(',').split(value)) {
                     String key = rawKey.strip();
 
                     if (key.isEmpty()) {
@@ -398,9 +401,7 @@ public class TenantService {
         Map<String, String> keys = HashMap.newHashMap(parsedKeys.size());
 
         for (Map.Entry<String, String> entry : parsedKeys.entrySet()) {
-            if (rebuilt.containsKey(entry.getValue())) {
-                keys.put(entry.getKey(), entry.getValue());
-            }
+            keys.put(entry.getKey(), entry.getValue());
         }
 
         // Change-management trail: record which tenants were granted or revoked access on this

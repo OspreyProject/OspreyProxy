@@ -138,12 +138,7 @@ public class ContactHandler {
 
     // Bounded so an abuse burst can never grow an unbounded mail queue; a rejected task is logged
     // and dropped, and the sender can simply resubmit. Non-daemon so shutdown can drain the queue.
-    private final ThreadPoolExecutor mailExecutor = new ThreadPoolExecutor(
-            1, 1, 0L, TimeUnit.MILLISECONDS,
-            new ArrayBlockingQueue<>(200),
-            r -> new Thread(r, "contact-mail"),
-            (r, executor) -> log.warn("[contact] Mail queue full; dropping a delivery task")
-    );
+    private final ThreadPoolExecutor mailExecutor;
 
     /**
      * Constructs the handler, creating its table in the scan store database.
@@ -171,6 +166,29 @@ public class ContactHandler {
                           @Value("${osprey.check.turnstile.timeout-seconds:5}") long turnstileTimeoutSeconds,
                           @Value("${osprey.contact.rate.capacity:5}") long submitCapacity,
                           @Value("${osprey.contact.rate.window-seconds:900}") long submitWindowSeconds) {
+        this(scanJdbcTemplate, senderProvider, fromAddress, supportAddress, siteOrigin, turnstileEnabled,
+                turnstileSecret, turnstileVerifyUrl, submitCapacity, submitWindowSeconds,
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(turnstileTimeoutSeconds)).build(),
+                new ThreadPoolExecutor(
+                        1, 1, 0L, TimeUnit.MILLISECONDS,
+                        new ArrayBlockingQueue<>(200),
+                        r -> new Thread(r, "contact-mail"),
+                        (r, executor) -> log.warn("[contact] Mail queue full; dropping a delivery task")
+                ));
+    }
+
+    ContactHandler(@NonNull JdbcTemplate scanJdbcTemplate,
+                   @NonNull ObjectProvider<JavaMailSender> senderProvider,
+                   @NonNull String fromAddress,
+                   @NonNull String supportAddress,
+                   @NonNull String siteOrigin,
+                   boolean turnstileEnabled,
+                   @NonNull String turnstileSecret,
+                   @NonNull String turnstileVerifyUrl,
+                   long submitCapacity,
+                   long submitWindowSeconds,
+                   @NonNull HttpClient turnstileClient,
+                   @NonNull ThreadPoolExecutor mailExecutor) {
         jdbc = scanJdbcTemplate;
         sender = senderProvider.getIfAvailable();
         this.fromAddress = fromAddress.strip();
@@ -180,10 +198,8 @@ public class ContactHandler {
         this.turnstileEnabled = turnstileEnabled;
         this.turnstileSecret = turnstileSecret;
         this.turnstileVerifyUrl = turnstileVerifyUrl;
-
-        turnstileClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(turnstileTimeoutSeconds))
-                .build();
+        this.turnstileClient = turnstileClient;
+        this.mailExecutor = mailExecutor;
 
         submitBandwidth = Bandwidth.builder()
                 .capacity(submitCapacity)
@@ -315,7 +331,7 @@ public class ContactHandler {
         }
 
         Map<String, Object> row = rows.getFirst();
-        long id = ((Number) row.get("id")).longValue();
+        long id = ((Number) Objects.requireNonNull(row.get("id"))).longValue();
 
         // The token hash is cleared with the verified stamp so the link can never be replayed.
         int updated = jdbc.update(

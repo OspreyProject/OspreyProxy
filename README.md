@@ -7,8 +7,8 @@ for [Osprey: Browser Protection](https://osprey.ac).
 
 - **Multi-provider proxy**: Routes URL-checking requests to multiple protection providers through a single API, hiding
   upstream credentials from clients.
-- **Per-IP, per-provider rate limiting**: Triple-layer burst + sustained + invalid-request token
-  buckets ([Bucket4j](https://github.com/bucket4j/bucket4j) + [Caffeine](https://github.com/ben-manes/caffeine))
+- **Per-IP, per-provider rate limiting**: Triple-layer burst + sustained + invalid-request token buckets
+  ([Bucket4j](https://github.com/bucket4j/bucket4j) + [Caffeine](https://github.com/ben-manes/caffeine))
   tracking up to 100K IPs per cache with HMAC-SHA256 hashing (random per-restart key). Repeated violations trigger
   exponential backoff blocking to mitigate abuse and DoS attempts.
 - **SSRF-hardened**: Custom Apache HttpClient DNS resolver blocks private and reserved IP ranges at connection time,

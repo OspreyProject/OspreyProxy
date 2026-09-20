@@ -38,6 +38,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -58,10 +59,16 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
 
     private static final AtomicBoolean SHARED_CLIENTS_CLOSED = new AtomicBoolean(false);
 
+    private static final Set<DNSFormat> NAME_PARAMETER_FORMATS =
+            Set.of(DNSFormat.NAME_MESSAGE, DNSFormat.NAME_JSON);
+
+    private static final Set<DNSFormat> MESSAGE_RESPONSE_FORMATS =
+            Set.of(DNSFormat.NAME_MESSAGE, DNSFormat.PATH_MESSAGE);
+
     // Injected by Spring into each concrete @Component subclass
     private final CircuitBreakerService circuitBreakerService;
 
-    private @NonNull CloseableHttpClient getDnsHttpClient() {
+    protected @NonNull CloseableHttpClient getDnsHttpClient() {
         return isUsingOldHTTP() ? LEGACY_FILTERING_CLIENT : FILTERING_CLIENT;
     }
 
@@ -125,30 +132,26 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
         DNSFormat format = getDnsFormat();
 
         try {
-            String encodedUrl = switch (format) {
-                case NAME_MESSAGE, NAME_JSON -> url + DNSUtil.encodeHostParam(host);
-                case PATH_MESSAGE, PATH_JSON -> url + DNSUtil.buildBase64Query(host);
-            };
+            boolean usesNameParameter = NAME_PARAMETER_FORMATS.contains(format);
+            String encodedUrl = url + (usesNameParameter
+                    ? DNSUtil.encodeHostParam(host)
+                    : DNSUtil.buildBase64Query(host));
 
-            return switch (format) {
-                case NAME_MESSAGE, PATH_MESSAGE -> {
-                    byte[] response = fetchDnsMessage(encodedUrl, displayName);
+            if (MESSAGE_RESPONSE_FORMATS.contains(format)) {
+                byte[] response = fetchDnsMessage(encodedUrl, displayName);
 
-                    if (response == null) {
-                        yield LookupResult.FAILED;
-                    }
-                    yield interpret(response, (Map<String, Object>) null);
+                if (response == null) {
+                    return LookupResult.FAILED;
                 }
+                return interpret(response, (Map<String, Object>) null);
+            }
 
-                case NAME_JSON, PATH_JSON -> {
-                    Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
+            Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
 
-                    if (response.isEmpty()) {
-                        yield LookupResult.FAILED;
-                    }
-                    yield interpret(null, response);
-                }
-            };
+            if (response.isEmpty()) {
+                return LookupResult.FAILED;
+            }
+            return interpret(null, response);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to perform lookup ({})", displayName, e.getClass().getName(), e);
             return LookupResult.FAILED;

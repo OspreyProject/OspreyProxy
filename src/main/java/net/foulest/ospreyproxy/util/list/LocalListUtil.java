@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
+import com.google.common.base.Splitter;
 import com.google.common.net.InternetDomainName;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -54,6 +55,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -144,6 +146,7 @@ public final class LocalListUtil {
      * @param maxFileBytes Maximum bytes per submission feed file.
      * @param protectedHostList Comma-separated list of bare hosts that may not be submitted.
      */
+    @SuppressWarnings("StaticAssignmentInConstructor")
     public LocalListUtil(@Value("${osprey.submissions.path:/var/lib/osprey/submissions}") String submissionsPath,
                          @Value("${osprey.submissions.max-entry-chars:2048}") int maxEntryChars,
                          @Value("${osprey.submissions.max-file-bytes:8388608}") long maxFileBytes,
@@ -157,7 +160,7 @@ public final class LocalListUtil {
 
         Set<String> hosts = new HashSet<>();
 
-        for (String raw : protectedHostList.split(",")) {
+        for (String raw : Splitter.on(',').split(protectedHostList)) {
             String host = normalizeHostnameEntry(raw);
 
             if (host != null) {
@@ -193,7 +196,7 @@ public final class LocalListUtil {
             }
 
             // Immediate fetch on startup, then repeat at this descriptor's configured interval
-            scheduler.scheduleWithFixedDelay(
+            ScheduledFuture<?> ignored = scheduler.scheduleWithFixedDelay(
                     () -> fetchAndUpdate(descriptor),
                     0L,
                     descriptor.getRefreshIntervalSeconds(),
@@ -244,7 +247,8 @@ public final class LocalListUtil {
             return LookupResult.FAILED;
         }
 
-        Set<String> domainSet = ref.get().domainSet();
+        ListSnapshot snapshot = Objects.requireNonNull(ref.get());
+        Set<String> domainSet = snapshot.domainSet();
 
         if (domainSet == null) {
             return LookupResult.FAILED;
@@ -260,7 +264,7 @@ public final class LocalListUtil {
 
         String host = uri.getHost();
 
-        if (host == null || host.isBlank()) {
+        if (host == null) {
             return LookupResult.ALLOWED;
         }
 
@@ -275,7 +279,7 @@ public final class LocalListUtil {
         }
 
         String rawPath = uri.getRawPath();
-        boolean hasPath = rawPath != null && !rawPath.isEmpty() && !"/".equals(rawPath);
+        boolean hasPath = !rawPath.isEmpty() && !"/".equals(rawPath);
 
         if (hasPath) {
             String path = rawPath.toLowerCase(Locale.ROOT);
@@ -428,7 +432,8 @@ public final class LocalListUtil {
 
         // Serialize writers per feed so the file append and the snapshot swap are one atomic step
         synchronized (state) {
-            Set<String> existing = state.get().domainSet();
+            ListSnapshot snapshot = Objects.requireNonNull(state.get());
+            Set<String> existing = snapshot.domainSet();
             Set<String> current = existing == null ? Set.of() : existing;
 
             // The live set is read in place and copied only when there is something to add, so a token
@@ -446,9 +451,7 @@ public final class LocalListUtil {
             for (String raw : rawEntries) {
                 String normalized = raw == null || raw.length() > maxSubmissionEntryChars ? null : normalizeListEntry(raw);
 
-                if (normalized == null
-                        || normalized.length() > maxSubmissionEntryChars
-                        || !isAcceptableSubmission(normalized)) {
+                if (normalized == null || !isAcceptableSubmission(normalized)) {
                     rejected++;
                     continue;
                 }
@@ -610,8 +613,12 @@ public final class LocalListUtil {
         try {
             InternetDomainName idn = InternetDomainName.from(normalized);
 
-            if (idn.hasRegistrySuffix() && idn.registrySuffix() != null) {
-                minLabels = idn.registrySuffix().parts().size() + 1;
+            if (idn.hasRegistrySuffix()) {
+                InternetDomainName suffix = idn.registrySuffix();
+
+                if (suffix != null) {
+                    minLabels = suffix.parts().size() + 1;
+                }
             }
         } catch (IllegalArgumentException ignored) {
             // ignored
@@ -716,7 +723,8 @@ public final class LocalListUtil {
             AtomicReference<ListSnapshot> state = stateMap.get(descriptor);
 
             if (state != null) {
-                Set<String> current = state.get().domainSet();
+                ListSnapshot snapshot = Objects.requireNonNull(state.get());
+                Set<String> current = snapshot.domainSet();
 
                 if (current != null) {
                     merged.addAll(current);
@@ -907,11 +915,15 @@ public final class LocalListUtil {
 
             // Parses directly from the response stream with caps to prevent OOM or DoS from large lists
             try (InputStream body = entity.getContent()) {
-                domains = switch (descriptor.getFormat()) {
-                    case TEXT -> parsePlainText(body);
-                    case CSV -> parseCsv(body);
-                    case JSON -> parseJson(body, descriptor.getJsonObjectField());
-                };
+                Format format = descriptor.getFormat();
+
+                if (format == Format.TEXT) {
+                    domains = parsePlainText(body);
+                } else if (format == Format.CSV) {
+                    domains = parseCsv(body);
+                } else {
+                    domains = parseJson(body, descriptor.getJsonObjectField());
+                }
             } catch (IOException | RuntimeException e) {
                 EntityUtils.consumeQuietly(entity);
                 throw new IOException("Failed to parse list content: " + e.getMessage(), e);
@@ -1072,10 +1084,6 @@ public final class LocalListUtil {
             }
 
             while ((token = parser.nextToken()) != JsonToken.END_ARRAY) {
-                if (token == null) {
-                    throw new IllegalArgumentException("Unexpected end of JSON array");
-                }
-
                 if (token == JsonToken.VALUE_NULL) {
                     continue;
                 }
@@ -1288,17 +1296,13 @@ public final class LocalListUtil {
             entry = entry.substring(0, commentIndex).strip();
         }
 
-        if (entry.isEmpty()) {
-            return null;
-        }
-
         int whitespaceIndex = firstWhitespaceIndex(entry);
 
         if (whitespaceIndex >= 0) {
             String first = entry.substring(0, whitespaceIndex);
             String remainder = entry.substring(whitespaceIndex).strip();
 
-            if (looksLikeHostsFileAddress(first) && !remainder.isEmpty()) {
+            if (looksLikeHostsFileAddress(first)) {
                 int nextWhitespace = firstWhitespaceIndex(remainder);
                 entry = nextWhitespace >= 0 ? remainder.substring(0, nextWhitespace) : remainder;
             } else {
@@ -1326,7 +1330,7 @@ public final class LocalListUtil {
 
         String host = uri.getHost();
 
-        if (host == null || host.isBlank()) {
+        if (host == null) {
             return null;
         }
 
@@ -1337,7 +1341,7 @@ public final class LocalListUtil {
         }
 
         String rawPath = uri.getRawPath();
-        boolean hasPath = rawPath != null && !rawPath.isEmpty() && !"/".equals(rawPath);
+        boolean hasPath = !rawPath.isEmpty() && !"/".equals(rawPath);
 
         if (!hasPath) {
             return normalizeHostnameEntry(host);
@@ -1352,8 +1356,7 @@ public final class LocalListUtil {
         // Preserve the query for host/path combos in the retention exclusions so a list entry keyed
         // by its query (e.g. an adurl redirect) is stored as host+path+query rather than collapsing
         // to the bare path, which would over-block every benign request sharing that path
-        String result = host + path + RequestUtil.retainedQuery(host, path, uri.getRawQuery());
-        return result.contains(" ") || result.contains("\\") ? null : result;
+        return host + path + RequestUtil.retainedQuery(host, path, uri.getRawQuery());
     }
 
     /**

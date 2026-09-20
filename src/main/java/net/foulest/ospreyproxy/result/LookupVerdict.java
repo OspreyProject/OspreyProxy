@@ -67,6 +67,8 @@ public final class LookupVerdict {
             LookupResult.FAILED
     );
 
+    private static final Map<LookupResult, Integer> SEVERITY_RANKS = severityRanks();
+
     /**
      * Shared singleton for a failed lookup.
      */
@@ -143,11 +145,21 @@ public final class LookupVerdict {
      */
     @Contract(pure = true)
     private static int severityRank(@NonNull LookupResult result) {
-        int index = SEVERITY_ORDER.indexOf(result);
-        return index < 0 ? Integer.MAX_VALUE : index;
+        return SEVERITY_RANKS.getOrDefault(result, Integer.MAX_VALUE);
+    }
+
+    private static @NonNull Map<LookupResult, Integer> severityRanks() {
+        Map<LookupResult, Integer> ranks = new EnumMap<>(LookupResult.class);
+
+        for (int index = 0; index < SEVERITY_ORDER.size(); index++) {
+            ranks.put(SEVERITY_ORDER.get(index), index);
+        }
+        return Map.copyOf(ranks);
     }
 
     /**
+     * Returns the verdict's normalized results.
+     *
      * @return The deduplicated, severity-ordered, immutable list of results. Never empty.
      */
     @Contract(pure = true)
@@ -156,6 +168,8 @@ public final class LookupVerdict {
     }
 
     /**
+     * Returns the serialized values of the normalized results.
+     *
      * @return The string values of {@link #results()}, in the same order. Suitable for
      *         serializing directly as the {@code "results"} JSON array.
      */
@@ -170,6 +184,8 @@ public final class LookupVerdict {
     }
 
     /**
+     * Returns the primary result.
+     *
      * @return The single most severe result, used for the backward-compatible {@code "result"} scalar.
      */
     @Contract(pure = true)
@@ -178,6 +194,8 @@ public final class LookupVerdict {
     }
 
     /**
+     * Checks whether this verdict represents a failed lookup.
+     *
      * @return {@code true} if this verdict is exactly {@link LookupResult#FAILED}.
      */
     @Contract(pure = true)
@@ -186,6 +204,8 @@ public final class LookupVerdict {
     }
 
     /**
+     * Checks whether this verdict represents a rate-limited lookup.
+     *
      * @return {@code true} if this verdict is exactly {@link LookupResult#RATE_LIMITED}.
      */
     @Contract(pure = true)
@@ -194,6 +214,8 @@ public final class LookupVerdict {
     }
 
     /**
+     * Checks whether this verdict contains only an allowed result.
+     *
      * @return {@code true} if this verdict is exactly {@link LookupResult#ALLOWED}, i.e. a clean
      *         result with no threat categories. Used to route cache writes to the long-TTL allow cache.
      */

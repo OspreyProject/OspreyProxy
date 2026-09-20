@@ -238,10 +238,8 @@ public final class DNSUtil {
     @Contract(pure = true)
     private static int skipName(byte @NonNull [] data, int off) {
         int i = off;
-        int steps = 0;
 
-        while (i < data.length && steps < data.length) {
-            steps++;
+        while (i < data.length) {
             int len = data[i] & 0xFF;
 
             if ((len & 0xC0) == 0xC0) {

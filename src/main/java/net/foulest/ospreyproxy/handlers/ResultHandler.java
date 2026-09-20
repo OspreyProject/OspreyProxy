@@ -69,7 +69,6 @@ public class ResultHandler {
     private static final String CONTEXT = "result";
 
     private final ScanStore store;
-    private final CheckHandler checkHandler;
     private final long freshnessMillis;
     private final String feedToken;
     private final int feedLimit;
@@ -85,7 +84,6 @@ public class ResultHandler {
      * Constructs the read-only handler.
      *
      * @param store The durable scan store.
-     * @param checkHandler The check handler, reused for its URL preparation.
      * @param freshnessSeconds How long a stored scan is considered fresh, in seconds.
      * @param feedToken The shared secret required to read the internal index feed.
      * @param feedLimit The maximum number of records returned by the index feed.
@@ -93,14 +91,12 @@ public class ResultHandler {
      * @param rateWindowSeconds Per-IP result-lookup refill window, in seconds.
      */
     public ResultHandler(@NonNull ScanStore store,
-                         @NonNull CheckHandler checkHandler,
                          @Value("${osprey.store.freshness-seconds:86400}") long freshnessSeconds,
                          @Value("${osprey.store.index-feed.token:}") String feedToken,
                          @Value("${osprey.store.index-feed.limit:5000}") int feedLimit,
                          @Value("${osprey.store.result.rate-capacity:30}") long rateCapacity,
                          @Value("${osprey.store.result.rate-window-seconds:60}") long rateWindowSeconds) {
         this.store = store;
-        this.checkHandler = checkHandler;
         freshnessMillis = Duration.ofSeconds(freshnessSeconds).toMillis();
         this.feedToken = feedToken;
         this.feedLimit = feedLimit;

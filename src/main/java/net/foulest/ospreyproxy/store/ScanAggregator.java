@@ -120,6 +120,7 @@ public final class ScanAggregator {
      * @return {@code true} if the verdict is neither allowed, failed, nor rate-limited.
      */
     private static boolean isFlagged(@NonNull LookupVerdict verdict) {
-        return !verdict.isAllowedOnly() && !verdict.isFailed() && !verdict.isRateLimited();
+        // build invokes this only after excluding failed and rate-limited verdicts.
+        return !verdict.isAllowedOnly();
     }
 }

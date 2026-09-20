@@ -18,6 +18,7 @@
 package net.foulest.ospreyproxy.store;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -54,9 +55,11 @@ public record ScanRecord(@NonNull String canonicalUrl,
                          long lastScannedAt,
                          int scanCount,
                          boolean indexable,
-                         Long publishedAt) {
+                         @Nullable Long publishedAt) {
 
     /**
+     * Builds the public page URL for this scan.
+     *
      * @return The public, crawlable page URL for this record on the marketing site,
      *         of the form {@code https://osprey.ac/check/<host><path>/}.
      */

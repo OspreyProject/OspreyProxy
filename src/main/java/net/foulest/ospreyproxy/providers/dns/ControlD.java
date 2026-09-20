@@ -22,7 +22,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
-import net.foulest.ospreyproxy.util.dns.Record;
+import net.foulest.ospreyproxy.util.dns.DNSRecord;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -80,7 +80,7 @@ public class ControlD extends AbstractDNSProvider {
         }
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
-            if (type == Record.A) {
+            if (type == DNSRecord.A) {
                 String ip = DNSUtil.parseIPv4(rdata);
                 return BLOCK_IP.equals(ip);
             }

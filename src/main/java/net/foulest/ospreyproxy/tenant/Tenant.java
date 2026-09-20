@@ -42,6 +42,8 @@ public final class Tenant {
     }
 
     /**
+     * Returns this tenant's opaque identifier.
+     *
      * @return The opaque tenant id used to tag logs, metrics, and rate-limit keys.
      */
     public @NonNull String id() {

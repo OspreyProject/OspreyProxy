@@ -22,7 +22,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.util.NetworkUtil;
 import net.foulest.ospreyproxy.util.dns.DNSUtil;
-import net.foulest.ospreyproxy.util.dns.Record;
+import net.foulest.ospreyproxy.util.dns.DNSRecord;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -74,7 +74,7 @@ public class SwitchCH extends AbstractDNSProvider {
         }
 
         boolean blocked = DNSUtil.walkAnswers(rawBytes, (int type, int rrClass, long ttl, byte[] rdata) -> {
-            if (type == Record.CNAME) {
+            if (type == DNSRecord.CNAME) {
                 String cname = DNSUtil.parseName(rdata);
                 return "landingpage.ph.rpz.switch.ch".equalsIgnoreCase(NetworkUtil.normalize(cname));
             }

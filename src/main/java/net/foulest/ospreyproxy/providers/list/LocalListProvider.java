@@ -18,6 +18,7 @@
 package net.foulest.ospreyproxy.providers.list;
 
 import lombok.RequiredArgsConstructor;
+import net.foulest.ospreyproxy.handlers.ProxyHandler;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import org.jspecify.annotations.NonNull;
@@ -27,7 +28,7 @@ import org.jspecify.annotations.NonNull;
  * <p>
  * Allows local lists to participate in the standard routing pipeline (rate limiting,
  * URL validation, endpoint dispatch) without any changes to
- * {@link net.foulest.ospreyproxy.ProxyHandler}.
+ * {@link ProxyHandler}.
  * <p>
  * One bean is registered per {@link Descriptor} constant via {@link LocalListProviderConfig}.
  */

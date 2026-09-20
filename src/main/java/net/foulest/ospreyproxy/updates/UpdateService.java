@@ -18,7 +18,6 @@
 package net.foulest.ospreyproxy.updates;
 
 import jakarta.annotation.PostConstruct;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.jspecify.annotations.NonNull;
@@ -81,7 +80,6 @@ public class UpdateService {
      * The configured public origin used to build absolute {@code codebase} and download URLs, for example
      * {@code https://updates.example.com}. Blank means "derive it from the incoming request instead".
      */
-    @Getter
     private final String baseUrl;
 
     // App id override from configuration; when blank the handler falls back to the id the browser asks for.
@@ -118,6 +116,15 @@ public class UpdateService {
     }
 
     /**
+     * Returns the configured public update origin.
+     *
+     * @return The public origin without a trailing slash, or an empty string when request-derived.
+     */
+    public @NonNull String getBaseUrl() {
+        return baseUrl;
+    }
+
+    /**
      * Loads the catalog once at startup so the first update check does not pay the parse cost and so a
      * misconfiguration is visible in the logs immediately rather than on first traffic.
      */
@@ -137,6 +144,8 @@ public class UpdateService {
     }
 
     /**
+     * Returns the current update catalog.
+     *
      * @return The current catalog snapshot, reloading first when the files on disk have changed.
      */
     public @NonNull UpdateCatalog catalog() {
@@ -354,9 +363,9 @@ public class UpdateService {
 
         if (channels instanceof Map<?, ?> map) {
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                String name = asString(entry.getKey());
+                String name = Objects.requireNonNullElse(asString(entry.getKey()), "");
 
-                if (name == null || name.isBlank()) {
+                if (name.isBlank()) {
                     continue;
                 }
 

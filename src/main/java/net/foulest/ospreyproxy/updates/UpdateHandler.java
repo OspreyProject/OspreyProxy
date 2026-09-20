@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.updates;
 
+import com.google.common.base.Splitter;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
@@ -375,7 +376,7 @@ public class UpdateHandler {
         }
 
         for (String value : values) {
-            for (String part : value.split("&")) {
+            for (String part : Splitter.on('&').split(value)) {
                 if (part.startsWith("id=")) {
                     String id = part.substring(3).strip();
 

@@ -331,7 +331,7 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = burstViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(burstBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(burstBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         burstBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         burstBucketCache.invalidate(ip);
@@ -345,7 +345,7 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = sustainedViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(sustainedBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(sustainedBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         sustainedBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         sustainedBucketCache.invalidate(ip);
@@ -359,7 +359,7 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = invalidRequestViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(invalidRequestBlockDuration.getSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = Math.min(invalidRequestBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
 
         invalidRequestBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         invalidRequestBucketCache.invalidate(ip);

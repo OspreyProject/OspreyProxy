@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.util.list;
 
+import com.google.common.collect.ImmutableList;
 import lombok.Getter;
 import net.foulest.ospreyproxy.result.LookupResult;
 import org.jspecify.annotations.NonNull;
@@ -33,7 +34,6 @@ import java.util.List;
  * are present, each is fetched and conditionally refreshed independently (its own ETag), and the
  * parsed domains from every source are merged into one live set served by the descriptor's endpoint.
  */
-@Getter
 public enum Descriptor {
 
     /**
@@ -173,7 +173,7 @@ public enum Descriptor {
      * with the value of the environment variable named by {@link #apiKeyEnvVar}.
      * Most descriptors have a single source; some aggregate several into one endpoint.
      */
-    private final List<String> urls;
+    private final ImmutableList<String> urls;
 
     /**
      * The format of the list, which determines how it should be parsed.
@@ -198,6 +198,7 @@ public enum Descriptor {
     /**
      * The interval in seconds at which this list should be refreshed.
      */
+    @Getter
     private final long refreshIntervalSeconds;
 
     /**
@@ -219,6 +220,7 @@ public enum Descriptor {
      * the backing {@link java.util.Set} keeps the merged set de-duplicated. This suits feeds
      * that expose only a rolling window of recent entries (e.g. AA419).
      */
+    @Getter
     private final boolean accumulate;
 
     /**
@@ -244,6 +246,7 @@ public enum Descriptor {
      * limit instead of the ~60/hour unauthenticated per-IP limit that raw.githubusercontent.com
      * enforces. The token is optional: if it is unset, the same request is made unauthenticated.
      */
+    @Getter
     private final boolean githubApi;
 
     /**
@@ -253,7 +256,7 @@ public enum Descriptor {
                @NonNull String endpointName, @NonNull LookupResult resultType, long refreshIntervalSeconds,
                @Nullable String apiKeyEnvVar, boolean accumulate, @Nullable String authHeaderName,
                @Nullable String jsonObjectField, boolean githubApi) {
-        this.urls = urls;
+        this.urls = ImmutableList.copyOf(urls);
         this.format = format;
         this.shortName = shortName;
         this.endpointName = endpointName;
@@ -297,6 +300,38 @@ public enum Descriptor {
     Descriptor(@NonNull String shortName, @NonNull String endpointName, @NonNull LookupResult resultType) {
         this(List.of(), Format.TEXT, shortName, endpointName, resultType, 0L, null,
                 true, null, null, false);
+    }
+
+    public @NonNull List<String> getUrls() {
+        return urls;
+    }
+
+    @NonNull Format getFormat() {
+        return format;
+    }
+
+    public @NonNull String getShortName() {
+        return shortName;
+    }
+
+    public @NonNull String getEndpointName() {
+        return endpointName;
+    }
+
+    public @NonNull LookupResult getResultType() {
+        return resultType;
+    }
+
+    public @Nullable String getApiKeyEnvVar() {
+        return apiKeyEnvVar;
+    }
+
+    public @Nullable String getAuthHeaderName() {
+        return authHeaderName;
+    }
+
+    public @Nullable String getJsonObjectField() {
+        return jsonObjectField;
     }
 
     /**

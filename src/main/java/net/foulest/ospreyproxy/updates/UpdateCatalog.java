@@ -17,6 +17,7 @@
  */
 package net.foulest.ospreyproxy.updates;
 
+import com.google.common.base.Splitter;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -49,6 +50,8 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
     public static final String LATEST = "latest";
 
     /**
+     * Creates an empty update catalog.
+     *
      * @return An empty catalog with no releases and no channels.
      */
     public static @NonNull UpdateCatalog empty() {
@@ -56,6 +59,8 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
     }
 
     /**
+     * Returns the application identifier.
+     *
      * @return The configured application id, or an empty string when none is set.
      */
     @Override
@@ -64,6 +69,8 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
     }
 
     /**
+     * Returns the available releases.
+     *
      * @return The releases, newest first.
      */
     @Override
@@ -72,6 +79,8 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
     }
 
     /**
+     * Returns the configured channel pins.
+     *
      * @return The channel-to-pin map, channel names lowercased.
      */
     @Override
@@ -109,11 +118,7 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
      * @param version The version to look up.
      * @return The matching release, or {@code null} when none matches.
      */
-    private @Nullable Release byVersion(@Nullable String version) {
-        if (version == null) {
-            return null;
-        }
-
+    private @Nullable Release byVersion(@NonNull String version) {
         for (Release release : releases) {
             if (release.version().equals(version)) {
                 return release;
@@ -152,13 +157,13 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
      * @return A negative, zero, or positive result when {@code a} is lower than, equal to, or higher than {@code b}.
      */
     public static int compareVersions(@NonNull String a, @NonNull String b) {
-        String[] left = a.split("\\.");
-        String[] right = b.split("\\.");
-        int max = Math.max(left.length, right.length);
+        List<String> left = Splitter.on('.').splitToList(a);
+        List<String> right = Splitter.on('.').splitToList(b);
+        int max = Math.max(left.size(), right.size());
 
         for (int i = 0; i < max; i++) {
-            String ls = i < left.length ? left[i] : "0";
-            String rs = i < right.length ? right[i] : "0";
+            String ls = i < left.size() ? left.get(i) : "0";
+            String rs = i < right.size() ? right.get(i) : "0";
 
             Long ln = parseSegment(ls);
             Long rn = parseSegment(rs);
