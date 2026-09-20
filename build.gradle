@@ -1,10 +1,12 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import net.ltgt.gradle.errorprone.CheckSeverity
 
 plugins {
     id 'org.springframework.boot' version '4.1.0'
     id 'org.jetbrains.kotlinx.kover' version '0.9.9'
     id 'org.jetbrains.kotlin.jvm' version '2.2.20'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'net.ltgt.errorprone' version '5.1.1'
     id 'maven-publish'
     id 'java'
 }
@@ -61,9 +63,27 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.48'
     annotationProcessor 'org.projectlombok:lombok:1.18.48'
 
+    // NullAway - compile-time null-safety checks
+    errorprone 'com.google.errorprone:error_prone_core:2.50.0'
+    errorprone 'com.uber.nullaway:nullaway:0.14.1'
+
     // Testing - JUnit 5 + Mockito + AssertJ
     // https://docs.spring.io/spring-boot/reference/testing/index.html
     testImplementation 'org.springframework.boot:spring-boot-starter-test:4.1.1'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.errorprone {
+        option('NullAway:AnnotatedPackages', 'net.foulest.ospreyproxy')
+    }
+}
+
+tasks.named('compileJava', JavaCompile) {
+    options.errorprone.check('NullAway', CheckSeverity.ERROR)
+}
+
+tasks.named('compileTestJava', JavaCompile) {
+    options.errorprone.enabled.set(false)
 }
 
 kover {
