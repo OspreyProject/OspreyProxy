@@ -219,8 +219,8 @@ public final class RequestUtil {
         // Uses InetAddress parsing as a final check to confirm the
         // candidate is a valid IP literal and not a hostname
         try {
-            InetAddress address = InetAddress.getByName(ip);
-            return address instanceof Inet6Address || (address instanceof Inet4Address && ip.indexOf(':') >= 0);
+            InetAddress.getByName(ip);
+            return true;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
             log.warn("Rejected IP candidate that failed InetAddress parsing ({} chars)", ip.length());
             return false;
@@ -252,10 +252,11 @@ public final class RequestUtil {
             }
 
             int fieldCount = 0;
-            JsonToken token;
 
-            while ((token = parser.nextToken()) != JsonToken.END_OBJECT) {
-                if (token != JsonToken.PROPERTY_NAME || ++fieldCount > 1) {
+            while (parser.nextToken() != JsonToken.END_OBJECT) {
+                ++fieldCount;
+
+                if (fieldCount > 1) {
                     throw reject(provider, hashedIp, providerName, "Blocked request with unexpected fields");
                 }
 
@@ -408,7 +409,6 @@ public final class RequestUtil {
                 throw rejectInvalidHost(provider, providerName, hashedIp,
                         "Blocked request with no host"
                 );
-                return "";
             }
 
             int lastColon = authority.lastIndexOf(':');
