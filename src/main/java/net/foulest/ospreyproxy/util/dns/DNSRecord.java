@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
  * DNS RR type constants for the record types we care about in filtering responses.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class Record {
+public final class DNSRecord {
 
     /**
      * The A record type, which maps a domain name to an IPv4 address.

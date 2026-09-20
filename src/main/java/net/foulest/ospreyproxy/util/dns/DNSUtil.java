@@ -40,21 +40,21 @@ public final class DNSUtil {
 
     /**
      * Builds a Base64url-encoded wire-format DNS query for the given hostname, defaulting to an
-     * {@link Record#A} record query.
+     * {@link DNSRecord#A} record query.
      *
      * @param host The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
      * @return Base64url-encoded wire-format DNS query (no padding).
      * @throws IllegalArgumentException If the hostname is invalid.
      */
     public static @NonNull String buildBase64Query(@NonNull String host) {
-        return buildBase64Query(host, Record.A);
+        return buildBase64Query(host, DNSRecord.A);
     }
 
     /**
      * Builds a Base64url-encoded wire-format DNS query for the given hostname and record type.
      *
      * @param host  The hostname to query. Must contain only {@code [a-zA-Z0-9._-]}.
-     * @param qtype The DNS QTYPE to query for, e.g. {@link Record#A} or {@link Record#NS}.
+     * @param qtype The DNS QTYPE to query for, e.g. {@link DNSRecord#A} or {@link DNSRecord#NS}.
      * @return Base64url-encoded wire-format DNS query (no padding).
      * @throws IllegalArgumentException If the hostname is invalid.
      */
