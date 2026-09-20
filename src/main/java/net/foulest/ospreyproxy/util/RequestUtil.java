@@ -400,31 +400,25 @@ public final class RequestUtil {
         String host = parsedUri.getHost();
 
         // Extracts host from authority if getHost() is null
-        if (host == null || host.isBlank()) {
+        if (host == null) {
             String authority = parsedUri.getRawAuthority();
 
             // Rejects requests with no authority/host component
-            if (authority == null || authority.isBlank()) {
-                rejectInvalidHost(provider, providerName, hashedIp,
+            if (authority == null) {
+                throw rejectInvalidHost(provider, providerName, hashedIp,
                         "Blocked request with no host"
                 );
                 return "";
             }
 
-            // Handles bracketed IPv6 literals (e.g., [::1] or [::1]:8080)
-            if (authority.charAt(0) == '[' && authority.contains("]")) {
-                int endIndex = authority.indexOf(']');
-                host = authority.substring(1, endIndex);
-            } else {
-                int lastColon = authority.lastIndexOf(':');
-                host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
-            }
+            int lastColon = authority.lastIndexOf(':');
+            host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
         }
 
         host = host.strip().toLowerCase(Locale.ROOT);
 
         // Strips surrounding brackets that URI.getHost() returns for IPv6 literals
-        if (host.length() >= 2 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
+        if (host.startsWith("[")) {
             host = host.substring(1, host.length() - 1);
         }
 
@@ -440,14 +434,14 @@ public final class RequestUtil {
 
         // Rejects hosts that are empty after normalization
         if (host.isBlank()) {
-            rejectInvalidHost(provider, providerName, hashedIp,
+            throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with empty host"
             );
         }
 
         // Rejects excessively long hosts
         if (host.length() > MAX_HOST_LENGTH) {
-            rejectInvalidHost(provider, providerName, hashedIp,
+            throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with excessively long host (" + host.length() + " characters)"
             );
         }
@@ -455,7 +449,7 @@ public final class RequestUtil {
         // Handles IPv6 literals with colons without further processing
         if (host.indexOf(':') >= 0) {
             if (!NetworkUtil.isIpv6Literal(host)) {
-                rejectInvalidHost(provider, providerName, hashedIp,
+                throw rejectInvalidHost(provider, providerName, hashedIp,
                         "Blocked request with invalid IPv6 literal host: '" + host + "'"
                 );
             }
@@ -464,7 +458,7 @@ public final class RequestUtil {
 
         // Rejects hosts without a . symbol
         if (!host.contains(".")) {
-            rejectInvalidHost(provider, providerName, hashedIp, "");
+            throw rejectInvalidHost(provider, providerName, hashedIp, "");
         }
 
         // Returns IP literals as-is without IDN processing
@@ -474,7 +468,7 @@ public final class RequestUtil {
 
         // Rejects private hosts
         if (NetworkUtil.isPrivateHost(host)) {
-            rejectInvalidHost(provider, providerName, hashedIp,
+            throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with private/internal host"
             );
         }
@@ -485,60 +479,16 @@ public final class RequestUtil {
         try {
             asciiHost = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
         } catch (IllegalArgumentException e) {
-            rejectInvalidHost(provider, providerName, hashedIp,
+            throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with invalid IDN host"
             );
-            return "";
         }
 
         // Rejects hosts that are empty after IDN normalization
-        if (asciiHost.isBlank() || asciiHost.length() > MAX_HOST_LENGTH) {
-            rejectInvalidHost(provider, providerName, hashedIp,
+        if (asciiHost.length() > MAX_HOST_LENGTH) {
+            throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with invalid DNS host length"
             );
-        }
-
-        // Rejects hosts without a . symbol after IDN normalization
-        if (!asciiHost.contains(".")) {
-            rejectInvalidHost(provider, providerName, hashedIp,
-                    "Blocked request with host missing dot after IDN normalization"
-            );
-        }
-
-        String[] labels = asciiHost.split("\\.", -1);
-
-        for (String label : labels) {
-            // Rejects empty labels (e.g., consecutive dots or leading/trailing dot)
-            if (label.isEmpty()) {
-                rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with empty DNS label"
-                );
-            }
-
-            // Rejects labels that are too long
-            if (label.length() > MAX_DNS_LABEL_LENGTH) {
-                rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with oversized DNS label"
-                );
-            }
-
-            // Rejects labels that start or end with a hyphen
-            if (label.charAt(0) == '-' || label.charAt(label.length() - 1) == '-') {
-                rejectInvalidHost(provider, providerName, hashedIp,
-                        "Blocked request with DNS label starting or ending with hyphen"
-                );
-            }
-
-            // Rejects labels with characters other than letters, digits, or hyphens
-            for (int i = 0; i < label.length(); i++) {
-                char c = label.charAt(i);
-
-                if (c != '-' && !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'z')) {
-                    rejectInvalidHost(provider, providerName, hashedIp,
-                            "Blocked request with invalid DNS label character"
-                    );
-                }
-            }
         }
         return asciiHost;
     }
