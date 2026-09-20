@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.APIKeyUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
 import org.jspecify.annotations.NonNull;
@@ -44,9 +45,7 @@ public class ChainPatrol extends AbstractProvider {
      */
     @PostConstruct
     public void validateConfig() {
-        if (API_KEY == null || API_KEY.isBlank()) {
-            throw new IllegalStateException("CHAINPATROL_API_KEY environment variable is invalid or not set");
-        }
+        APIKeyUtil.requireNonBlank(API_KEY, "CHAINPATROL_API_KEY environment variable is invalid or not set");
     }
 
     @Override
@@ -71,7 +70,7 @@ public class ChainPatrol extends AbstractProvider {
 
     @Override
     public @NonNull String getApiKey() {
-        return API_KEY != null ? API_KEY : "";
+        return APIKeyUtil.orEmpty(API_KEY);
     }
 
     @Override

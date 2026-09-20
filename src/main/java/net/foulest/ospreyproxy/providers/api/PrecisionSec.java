@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
+import net.foulest.ospreyproxy.util.APIKeyUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -43,9 +44,7 @@ public class PrecisionSec extends AbstractProvider {
      */
     @PostConstruct
     public void validateConfig() {
-        if (API_KEY == null || API_KEY.isBlank()) {
-            throw new IllegalStateException("PRECISIONSEC_API_KEY environment variable is not set");
-        }
+        APIKeyUtil.requireNonBlank(API_KEY, "PRECISIONSEC_API_KEY environment variable is not set");
     }
 
     @Override
@@ -70,7 +69,7 @@ public class PrecisionSec extends AbstractProvider {
 
     @Override
     public @NonNull String getApiKey() {
-        return API_KEY != null ? API_KEY : "";
+        return APIKeyUtil.orEmpty(API_KEY);
     }
 
     @SuppressWarnings("NestedMethodCall")
