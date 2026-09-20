@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy;
+package net.foulest.ospreyproxy.handlers;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -145,6 +145,27 @@ public class CheckHandler {
                         @Value("${osprey.check.rate.sustained-capacity:40}") long sustainedCapacity,
                         @Value("${osprey.check.rate.sustained-window-seconds:3600}") long sustainedWindowSeconds,
                         @Value("${osprey.check.deadline-seconds:12}") long deadlineSeconds) {
+        this(proxyHandler, providers, storeProvider, freshnessSeconds, turnstileEnabled, turnstileSecret,
+                turnstileVerifyUrl, turnstileTimeoutSeconds, burstCapacity, burstWindowSeconds, sustainedCapacity,
+                sustainedWindowSeconds, deadlineSeconds, HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(turnstileTimeoutSeconds))
+                        .build());
+    }
+
+    CheckHandler(@NonNull ProxyHandler proxyHandler,
+                 @NonNull List<Provider> providers,
+                 @NonNull ObjectProvider<ScanStore> storeProvider,
+                 long freshnessSeconds,
+                 boolean turnstileEnabled,
+                 @NonNull String turnstileSecret,
+                 @NonNull String turnstileVerifyUrl,
+                 long turnstileTimeoutSeconds,
+                 long burstCapacity,
+                 long burstWindowSeconds,
+                 long sustainedCapacity,
+                 long sustainedWindowSeconds,
+                 long deadlineSeconds,
+                 @NonNull HttpClient turnstileClient) {
         this.proxyHandler = proxyHandler;
         this.providers = List.copyOf(providers);
         store = storeProvider.getIfAvailable();
@@ -153,10 +174,7 @@ public class CheckHandler {
         this.turnstileEnabled = turnstileEnabled;
         this.turnstileSecret = turnstileSecret;
         this.turnstileVerifyUrl = turnstileVerifyUrl;
-
-        turnstileClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(turnstileTimeoutSeconds))
-                .build();
+        this.turnstileClient = turnstileClient;
 
         burstBandwidth = Bandwidth.builder()
                 .capacity(burstCapacity)
@@ -594,33 +612,21 @@ public class CheckHandler {
             return null;
         }
 
-        String scheme = uri.getScheme();
-
-        if (scheme == null) {
-            return null;
-        }
-
-        scheme = scheme.toLowerCase(Locale.ROOT);
-
-        if (!"http".equals(scheme) && !"https".equals(scheme)) {
-            return null;
-        }
-
         String host = uri.getHost();
 
-        if (host == null || host.isBlank()) {
+        if (host == null) {
             return null;
         }
 
         host = host.strip().toLowerCase(Locale.ROOT);
 
         // Strip surrounding brackets from IPv6 literals
-        if (host.length() >= 2 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
+        if (host.startsWith("[")) {
             host = host.substring(1, host.length() - 1);
         }
 
         // Strip trailing dots and a single leading www., mirroring the extension's canonicalization
-        while (!host.isEmpty() && host.charAt(host.length() - 1) == '.') {
+        while (host.endsWith(".")) {
             host = host.substring(0, host.length() - 1);
         }
 
@@ -647,10 +653,6 @@ public class CheckHandler {
         }
 
         String path = uri.getRawPath();
-
-        if (path == null) {
-            path = "";
-        }
 
         // Drop a trailing slash so the canonical form matches the extension's normalized URL
         while (path.length() > 1 && path.charAt(path.length() - 1) == '/') {

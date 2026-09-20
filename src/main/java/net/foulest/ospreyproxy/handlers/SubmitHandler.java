@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy;
+package net.foulest.ospreyproxy.handlers;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -214,19 +214,16 @@ public class SubmitHandler {
             );
             throw new StatusCodeException(ErrorUtil.RESP_500);
         } finally {
-            // Only entries actually written spend budget; duplicates, rejects, and failed writes are refunded.
-            long unused = (long) entries.size() - accepted;
-
-            if (unused > 0L) {
-                dailyBucket.addTokens(unused);
-            }
+            refundUnusedTokens(dailyBucket, entries.size(), accepted);
         }
 
         // Anomaly signal: one batch consuming a large share of the day's budget is what a stolen token
         // looks like, so surface it at WARN where log monitoring will see it.
-        if (accepted > 0 && accepted * 5L >= dailyBandwidth.getCapacity()) {
-            log.warn("[{}] Large submission batch: {} entries accepted in one request (ip {})",
-                    descriptor.getShortName(), accepted, hashedIp);
+        if (accepted > 0) {
+            if (accepted * 5L >= dailyBandwidth.getCapacity()) {
+                log.warn("[{}] Large submission batch: {} entries accepted in one request (ip {})",
+                        descriptor.getShortName(), accepted, hashedIp);
+            }
         }
 
         // Audit trail: feed, hashed source, and counts only. Submitted URLs and tokens are never logged.
@@ -244,6 +241,17 @@ public class SubmitHandler {
                     descriptor.getShortName(), e.getClass().getName()
             );
             return ErrorUtil.RESP_500;
+        }
+    }
+
+    /**
+     * Refunds budget reserved for entries that were not persisted.
+     */
+    private static void refundUnusedTokens(@NonNull Bucket dailyBucket, int submitted, int accepted) {
+        long unused = (long) submitted - accepted;
+
+        if (unused > 0L) {
+            dailyBucket.addTokens(unused);
         }
     }
 }

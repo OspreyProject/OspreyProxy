@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-package net.foulest.ospreyproxy;
+package net.foulest.ospreyproxy.handlers;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
@@ -100,6 +100,7 @@ public class ProxyHandler {
     // Injected services
     private final MetricsService metrics;
     private final CircuitBreakerService circuitBreaker;
+    private final CloseableHttpClient httpClient;
 
     // Collapses concurrent duplicate lookups (same provider + same key) into a single execution,
     // so a burst of identical requests doesn't fan out into redundant upstream calls or log lines
@@ -139,8 +140,16 @@ public class ProxyHandler {
     public ProxyHandler(@NonNull List<Provider> providers,
                         @NonNull MetricsService metrics,
                         @NonNull CircuitBreakerService circuitBreaker) {
+        this(providers, metrics, circuitBreaker, HTTP_CLIENT);
+    }
+
+    ProxyHandler(@NonNull List<Provider> providers,
+                 @NonNull MetricsService metrics,
+                 @NonNull CircuitBreakerService circuitBreaker,
+                 @NonNull CloseableHttpClient httpClient) {
         this.metrics = metrics;
         this.circuitBreaker = circuitBreaker;
+        this.httpClient = httpClient;
 
         // Build the provider map for O(1) lookup by endpoint name
         providersByEndpointName = providers.stream()
@@ -158,7 +167,7 @@ public class ProxyHandler {
     @PreDestroy
     public void destroy() {
         try {
-            HTTP_CLIENT.close();
+            httpClient.close();
         } catch (IOException e) {
             log.warn("Failed to close upstream API HTTP client: {} ({})", e.getMessage(), e.getClass().getName());
         }
@@ -373,7 +382,7 @@ public class ProxyHandler {
         try {
             ClassicHttpRequest httpRequest = requestBuilder.build();
 
-            return HTTP_CLIENT.execute(httpRequest, (ClassicHttpResponse response) -> {
+            return httpClient.execute(httpRequest, (ClassicHttpResponse response) -> {
                 long durationNanos = System.nanoTime() - callStart;
                 int statusCode = response.getCode();
                 HttpEntity entity = response.getEntity();
@@ -387,7 +396,7 @@ public class ProxyHandler {
                     return ErrorUtil.RESP_502;
                 }
 
-                if (responseBytes != null && responseBytes.length > MAX_RESPONSE_BYTES) {
+                if (responseBytes.length > MAX_RESPONSE_BYTES) {
                     log.warn("[{}] Upstream response exceeded {} bytes; rejecting", providerName, MAX_RESPONSE_BYTES);
                     return ErrorUtil.RESP_502;
                 }
@@ -402,7 +411,7 @@ public class ProxyHandler {
 
                     return switch (statusCode) {
                         case 400 -> {
-                            log.warn("[{}] Upstream returned 400 ({} body bytes)", providerName, (responseBytes == null ? 0 : responseBytes.length));
+                            log.warn("[{}] Upstream returned 400 ({} body bytes)", providerName, responseBytes.length);
                             yield ErrorUtil.RESP_400;
                         }
 
@@ -415,7 +424,7 @@ public class ProxyHandler {
                         case 415 -> ErrorUtil.RESP_415;
 
                         case 422 -> {
-                            log.warn("[{}] Upstream returned 422 ({} body bytes)", providerName, (responseBytes == null ? 0 : responseBytes.length));
+                            log.warn("[{}] Upstream returned 422 ({} body bytes)", providerName, responseBytes.length);
                             yield ErrorUtil.RESP_422;
                         }
 
@@ -434,7 +443,7 @@ public class ProxyHandler {
                 }
 
                 // Rejects empty responses
-                if (responseBytes == null || responseBytes.length == 0) {
+                if (responseBytes.length == 0) {
                     log.error("[{}] Upstream response was empty", providerName);
                     return ErrorUtil.RESP_502;
                 }
