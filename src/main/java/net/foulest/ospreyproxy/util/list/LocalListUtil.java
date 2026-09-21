@@ -612,13 +612,10 @@ public final class LocalListUtil {
         int minLabels = 2;
         try {
             InternetDomainName idn = InternetDomainName.from(normalized);
+            InternetDomainName suffix = idn.registrySuffix();
 
-            if (idn.hasRegistrySuffix()) {
-                InternetDomainName suffix = idn.registrySuffix();
-
-                if (suffix != null) {
-                    minLabels = suffix.parts().size() + 1;
-                }
+            if (suffix != null) {
+                minLabels = suffix.parts().size() + 1;
             }
         } catch (IllegalArgumentException ignored) {
             // ignored
