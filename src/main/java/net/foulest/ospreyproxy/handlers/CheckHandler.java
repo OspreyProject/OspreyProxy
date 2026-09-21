@@ -41,6 +41,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -147,6 +148,7 @@ public class CheckHandler {
      * @param sustainedWindowSeconds Per-IP sustained refill window, in seconds.
      * @param deadlineSeconds Hard per-scan deadline, in seconds.
      */
+    @Autowired
     public CheckHandler(@NonNull ProxyHandler proxyHandler,
                         @NonNull List<Provider> providers,
                         @NonNull ObjectProvider<ScanStore> storeProvider,

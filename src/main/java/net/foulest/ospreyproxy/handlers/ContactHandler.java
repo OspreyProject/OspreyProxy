@@ -31,6 +31,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
@@ -155,6 +156,7 @@ public class ContactHandler {
      * @param submitCapacity Submissions allowed per IP per window.
      * @param submitWindowSeconds The submission rate window, in seconds.
      */
+    @Autowired
     public ContactHandler(@NonNull JdbcTemplate scanJdbcTemplate,
                           @NonNull ObjectProvider<JavaMailSender> senderProvider,
                           @Value("${osprey.contact.from:support@osprey.ac}") String fromAddress,

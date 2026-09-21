@@ -45,6 +45,7 @@ import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -137,6 +138,7 @@ public class ProxyHandler {
      * @param metrics Micrometer-backed metrics service, injected by Spring.
      * @param circuitBreaker Resilience4j circuit breaker service, injected by Spring.
      */
+    @Autowired
     public ProxyHandler(@NonNull List<Provider> providers,
                         @NonNull MetricsService metrics,
                         @NonNull CircuitBreakerService circuitBreaker) {
