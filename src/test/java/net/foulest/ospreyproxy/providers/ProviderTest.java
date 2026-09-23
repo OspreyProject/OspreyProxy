@@ -23,6 +23,7 @@ import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.result.LookupVerdict;
 import org.apache.hc.core5.http.Method;
 import org.assertj.core.api.Assertions;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -45,12 +46,12 @@ class ProviderTest {
                 .build();
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "Minimal";
         }
 
         @Override
-        public String getEndpointName() {
+        public @NonNull String getEndpointName() {
             return "minimal";
         }
 
@@ -60,52 +61,52 @@ class ProviderTest {
         }
 
         @Override
-        public Bucket getBurstBucket(String ip) {
+        public @NonNull @NonNull Bucket getBurstBucket(@NonNull @NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public Bucket getSustainedBucket(String ip) {
+        public @NonNull @NonNull Bucket getSustainedBucket(@NonNull @NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public Bucket getInvalidRequestBucket(String ip) {
+        public @NonNull @NonNull Bucket getInvalidRequestBucket(@NonNull @NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public boolean isBurstBlocked(String ip) {
+        public boolean isBurstBlocked(@NonNull @NonNull String ip) {
             return false;
         }
 
         @Override
-        public boolean isSustainedBlocked(String ip) {
+        public boolean isSustainedBlocked(@NonNull @NonNull String ip) {
             return false;
         }
 
         @Override
-        public boolean isInvalidRequestBlocked(String ip) {
+        public boolean isInvalidRequestBlocked(@NonNull @NonNull String ip) {
             return false;
         }
 
         @Override
-        public void blockBurst(String ip) {
+        public void blockBurst(@NonNull @NonNull String ip) {
             // no-op
         }
 
         @Override
-        public void blockSustained(String ip) {
+        public void blockSustained(@NonNull @NonNull String ip) {
             // no-op
         }
 
         @Override
-        public void blockInvalidRequest(String ip) {
+        public void blockInvalidRequest(@NonNull @NonNull String ip) {
             // no-op
         }
 
         @Override
-        public String getViolatorId(String ip) {
+        public @NonNull @NonNull String getViolatorId(@NonNull @NonNull String ip) {
             return "#0";
         }
     }
@@ -117,7 +118,7 @@ class ProviderTest {
     private static class MaliciousInterpretProvider extends MinimalProvider {
 
         @Override
-        public LookupResult interpret(byte[] responseBytes, String url) {
+        public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String url) {
             return LookupResult.MALICIOUS;
         }
     }

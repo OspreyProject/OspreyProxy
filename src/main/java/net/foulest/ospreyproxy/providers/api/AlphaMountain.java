@@ -21,7 +21,6 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.providers.AbstractProvider;
 import net.foulest.ospreyproxy.result.LookupResult;
-import net.foulest.ospreyproxy.result.LookupVerdict;
 import net.foulest.ospreyproxy.util.APIKeyUtil;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
@@ -29,7 +28,6 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -42,49 +40,6 @@ public class AlphaMountain extends AbstractProvider {
 
     private static final String API_KEY = System.getenv("ALPHAMOUNTAIN_API_KEY");
     private static final String API_URL = "https://api.alphamountain.ai/category/uri";
-
-    /**
-     * AlphaMountain category IDs mapped to Osprey content policy results. Content
-     * categories are informational to the extension: they block only when the client's
-     * block-category toggle for the result is enabled, so no confidence gate applies here.
-     * Security categories are handled separately in {@link #interpretAll} with their gates.
-     */
-    private static final Map<Integer, LookupResult> CONTENT_CATEGORY_MAP = Map.ofEntries(
-            Map.entry(48, LookupResult.PARKED),
-            Map.entry(3, LookupResult.ADULT_CONTENT),
-            Map.entry(38, LookupResult.ADULT_CONTENT),
-            Map.entry(44, LookupResult.ADULT_CONTENT),
-            Map.entry(47, LookupResult.ADULT_CONTENT),
-            Map.entry(54, LookupResult.ADULT_CONTENT),
-            Map.entry(65, LookupResult.SEX_EDUCATION),
-            Map.entry(13, LookupResult.DATING),
-            Map.entry(24, LookupResult.GAMBLING),
-            Map.entry(15, LookupResult.DRUGS),
-            Map.entry(40, LookupResult.DRUGS),
-            Map.entry(4, LookupResult.ALCOHOL_TOBACCO),
-            Map.entry(74, LookupResult.ALCOHOL_TOBACCO),
-            Map.entry(82, LookupResult.WEAPONS),
-            Map.entry(28, LookupResult.HATE_DISCRIMINATION),
-            Map.entry(19, LookupResult.VIOLENCE_GORE),
-            Map.entry(80, LookupResult.VIOLENCE_GORE),
-            Map.entry(52, LookupResult.PIRACY),
-            Map.entry(27, LookupResult.HACKING),
-            Map.entry(67, LookupResult.SOCIAL_MEDIA),
-            Map.entry(7, LookupResult.STREAMING_MEDIA),
-            Map.entry(42, LookupResult.STREAMING_MEDIA),
-            Map.entry(79, LookupResult.STREAMING_MEDIA),
-            Map.entry(25, LookupResult.GAMES),
-            Map.entry(10, LookupResult.CHAT_MESSAGING),
-            Map.entry(20, LookupResult.FILE_SHARING),
-            Map.entry(49, LookupResult.FILE_SHARING),
-            Map.entry(6, LookupResult.SHOPPING_AUCTIONS),
-            Map.entry(66, LookupResult.SHOPPING_AUCTIONS),
-            Map.entry(37, LookupResult.JOB_SEARCH),
-            Map.entry(17, LookupResult.WEBMAIL),
-            Map.entry(61, LookupResult.REMOTE_ACCESS),
-            Map.entry(83, LookupResult.AI_APPLICATIONS),
-            Map.entry(84, LookupResult.CRYPTOCURRENCY)
-    );
 
     /**
      * Constructor for the provider, setting the cache durations for allowed and blocked results.
@@ -145,7 +100,7 @@ public class AlphaMountain extends AbstractProvider {
 
     @Override
     @SuppressWarnings("NestedMethodCall")
-    public @NonNull LookupVerdict interpretAll(byte @NonNull [] responseBytes, @NonNull String url) {
+    public @NonNull LookupResult interpret(byte @NonNull [] responseBytes, @NonNull String url) {
         String displayName = getDisplayName();
 
         try {
@@ -154,82 +109,65 @@ public class AlphaMountain extends AbstractProvider {
 
             if (!(categoryBlock instanceof Map<?, ?> categoryMap)) {
                 log.warn("[{}] Response missing 'category' block", displayName);
-                return LookupVerdict.FAILED;
+                return LookupResult.FAILED;
             }
 
             Object categoriesObj = categoryMap.get("categories");
 
             if (!(categoriesObj instanceof List<?> categories) || categories.isEmpty()) {
                 log.warn("[{}] No categories found", displayName);
-                return LookupVerdict.FAILED;
+                return LookupResult.FAILED;
             }
 
             double confidence = categoryMap.get("confidence") instanceof Number num ? num.doubleValue() : Double.NaN;
             String source = categoryMap.get("source") instanceof String sourceValue ? sourceValue : "";
-            List<LookupResult> results = new ArrayList<>();
+            boolean phishing = hasCategory(categories, 51);
+            boolean malicious = hasCategory(categories, 39);
+
+            if (phishing && confidence < 0.970767) {
+                log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}",
+                        displayName, url, categories, confidence, source
+                );
+            }
+
+            if (malicious && !"rt-medium".equals(source) && confidence < 0.95307525) {
+                log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}",
+                        displayName, url, categories, confidence, source
+                );
+            }
 
             // Phishing
-            if (hasCategory(categories, 51)) {
-                if (confidence >= 0.970767) {
-                    results.add(LookupResult.PHISHING);
-                } else {
-                    log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}", url, displayName, categories, confidence, source);
-                }
+            if (phishing && confidence >= 0.970767) {
+                return LookupResult.PHISHING;
             }
 
             // Malicious
-            if (hasCategory(categories, 39)) {
-                if ("rt-medium".equals(source)) {
-                    results.add(LookupResult.MALICIOUS);
-                } else if (confidence >= 0.95307525) {
-                    results.add(LookupResult.MALICIOUS);
-                } else {
-                    log.warn("[{}] URL: {}, Categories: {}, Confidence: {}, Source: {}", url, displayName, categories, confidence, source);
-                }
-            }
-
-            // Spam
-            if (hasCategory(categories, 70)) {
-                results.add(LookupResult.SUSPICIOUS);
+            if (hasCategory(categories, 11)
+                    || (malicious && ("rt-medium".equals(source) || confidence >= 0.95307525))) {
+                return LookupResult.MALICIOUS;
             }
 
             // Suspicious
-            if (hasCategory(categories, 72)) {
-                results.add(LookupResult.SUSPICIOUS);
+            if (hasCategory(categories, 70)
+                    || hasCategory(categories, 72)
+                    || hasCategory(categories, 55)) {
+                return LookupResult.SUSPICIOUS;
             }
 
             // Newly Registered
             if (hasCategory(categories, 87)) {
-                results.add(LookupResult.NEWLY_REGISTERED);
+                return LookupResult.NEWLY_REGISTERED;
             }
 
             // Dynamic DNS
             if (hasCategory(categories, 85)) {
-                results.add(LookupResult.DYNAMIC_DNS);
+                return LookupResult.DYNAMIC_DNS;
             }
-
-            // Child sexual abuse material blocks unconditionally as malicious
-            if (hasCategory(categories, 11)) {
-                results.add(LookupResult.MALICIOUS);
-            }
-
-            // Potentially Unwanted Programs corroborate as suspicious
-            if (hasCategory(categories, 55)) {
-                results.add(LookupResult.SUSPICIOUS);
-            }
-
-            // Content policy categories: emitted for the extension's block-category
-            // toggles; harmless to clients without the toggle enabled
-            for (Map.Entry<Integer, LookupResult> entry : CONTENT_CATEGORY_MAP.entrySet()) {
-                if (hasCategory(categories, entry.getKey())) {
-                    results.add(entry.getValue());
-                }
-            }
-            return results.isEmpty() ? LookupVerdict.ALLOWED : LookupVerdict.of(results);
+            return LookupResult.ALLOWED;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[{}] Failed to interpret response: {} ({})",
                     displayName, e.getMessage(), e.getClass().getName());
-            return LookupVerdict.FAILED;
+            return LookupResult.FAILED;
         }
     }
 

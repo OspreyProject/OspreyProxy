@@ -248,7 +248,7 @@ class ProxyHandlerTest {
         ResponseEntity<String> response = upstream(handler, provider, "https://target.example");
 
         Assertions.assertThat(response.getStatusCode().value()).isEqualTo(200);
-        Assertions.assertThat(response.getBody()).contains("\"result\":\"allowed\"");
+        Assertions.assertThat(response.getBody()).isEqualTo("{\"result\":\"allowed\",\"results\":[\"allowed\"]}");
         Assertions.assertThat(captured.get().getMethod()).isEqualTo("POST");
         Assertions.assertThat(captured.get().getFirstHeader("X-Key").getValue()).isEqualTo("secret");
         Assertions.assertThat(captured.get().getEntity()).isNotNull();

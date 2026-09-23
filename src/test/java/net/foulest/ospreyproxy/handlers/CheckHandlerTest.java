@@ -145,23 +145,22 @@ class CheckHandlerTest {
     }
 
     @Test
-    void checkHidesContentCategoriesWhilePreservingSecurityResults() throws Exception {
-        Provider contentOnly = provider("content-only");
+    void checkPreservesThreatResultsAndFiltersLegacyStoredCategories() throws Exception {
+        Provider allowed = provider("allowed");
         Provider mixed = provider("mixed");
         ProxyHandler proxy = mock(ProxyHandler.class);
-        when(proxy.resolveForCheck(contentOnly, CheckHandler.prepare("example.com")))
-                .thenReturn(LookupVerdict.of(List.of(LookupResult.SHOPPING_AUCTIONS, LookupResult.AI_APPLICATIONS)));
+        when(proxy.resolveForCheck(allowed, CheckHandler.prepare("example.com")))
+                .thenReturn(LookupVerdict.ALLOWED);
         when(proxy.resolveForCheck(mixed, CheckHandler.prepare("example.com")))
-                .thenReturn(LookupVerdict.of(List.of(LookupResult.PHISHING, LookupResult.PARKED)));
+                .thenReturn(LookupVerdict.of(List.of(LookupResult.PHISHING, LookupResult.MALICIOUS)));
 
-        CheckHandler live = handler(null, List.of(contentOnly, mixed), 10, proxy);
+        CheckHandler live = handler(null, List.of(allowed, mixed), 10, proxy);
         ByteArrayOutputStream liveOutput = new ByteArrayOutputStream();
         live.check(new CheckRequest("example.com", null, false), request()).getBody().writeTo(liveOutput);
 
         Assertions.assertThat(liveOutput.toString(StandardCharsets.UTF_8))
-                .contains("\"provider\":\"content-only\",\"result\":\"allowed\",\"results\":[\"allowed\"]")
-                .contains("\"provider\":\"mixed\",\"result\":\"phishing\",\"results\":[\"phishing\"]")
-                .doesNotContain("shopping_auctions", "ai_applications", "parked");
+                .contains("\"provider\":\"allowed\",\"result\":\"allowed\",\"results\":[\"allowed\"]")
+                .contains("\"provider\":\"mixed\",\"result\":\"phishing\",\"results\":[\"phishing\",\"malicious\"]");
 
         ScanStore store = mock(ScanStore.class);
         when(store.get("https://example.com")).thenReturn(record(System.currentTimeMillis(), Map.of(

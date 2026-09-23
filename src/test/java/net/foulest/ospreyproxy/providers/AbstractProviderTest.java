@@ -22,6 +22,7 @@ import io.github.bucket4j.Bucket;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.result.LookupVerdict;
 import org.assertj.core.api.Assertions;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -40,12 +41,12 @@ class AbstractProviderTest {
         }
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "Test";
         }
 
         @Override
-        public String getEndpointName() {
+        public @NonNull String getEndpointName() {
             return "test";
         }
 

@@ -66,12 +66,12 @@ class AbstractDNSProviderTest {
         }
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "TestDNS";
         }
 
         @Override
-        public String getEndpointName() {
+        public @NonNull String getEndpointName() {
             return "testdns";
         }
 
@@ -81,7 +81,7 @@ class AbstractDNSProviderTest {
         }
 
         @Override
-        public String getApiUrl() {
+        public @NonNull String getApiUrl() {
             return "http://dns.test.invalid/";
         }
 
@@ -111,12 +111,12 @@ class AbstractDNSProviderTest {
         }
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "DefaultFormatDNS";
         }
 
         @Override
-        public String getEndpointName() {
+        public @NonNull String getEndpointName() {
             return "defaultformatdns";
         }
 
@@ -138,7 +138,7 @@ class AbstractDNSProviderTest {
         }
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "BranchDNS";
         }
     }
@@ -150,12 +150,12 @@ class AbstractDNSProviderTest {
         }
 
         @Override
-        public String getDisplayName() {
+        public @NonNull String getDisplayName() {
             return "LegacyDNS";
         }
 
         @Override
-        public String getEndpointName() {
+        public @NonNull String getEndpointName() {
             return "legacy-dns";
         }
 

@@ -24,6 +24,8 @@ import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.apache.hc.core5.http.Method;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -270,13 +272,17 @@ class AlphaMountainTest {
         Assertions.assertThat(verdict.results()).containsExactly(LookupResult.SUSPICIOUS);
     }
 
-    @Test
-    void interpretAllReturnsContentPolicyCategory() {
-        Map<String, Object> category = Map.of("categories", List.of(48));
+    @ParameterizedTest
+    @ValueSource(ints = {48, 3, 38, 44, 47, 54, 65, 13, 24, 15, 40, 4, 74, 82, 28, 19, 80,
+            52, 27, 67, 7, 42, 79, 25, 10, 20, 49, 6, 66, 37, 17, 61, 83, 84})
+    void interpretIgnoresNonThreatCategories(int categoryId) {
+        Map<String, Object> category = Map.of("categories", List.of(categoryId));
         Map<String, Object> data = Map.of("category", category);
 
+        Assertions.assertThat(provider.interpret(bytes(data), "https://example.com")).isEqualTo(LookupResult.ALLOWED);
         LookupVerdict verdict = provider.interpretAll(bytes(data), "https://example.com");
-        Assertions.assertThat(verdict.results()).containsExactly(LookupResult.PARKED);
+        Assertions.assertThat(verdict.primary().getValue()).isEqualTo("allowed");
+        Assertions.assertThat(verdict.values()).containsExactly("allowed");
     }
 
     @Test
@@ -291,14 +297,25 @@ class AlphaMountainTest {
     }
 
     @Test
-    void interpretAllReturnsMultipleResultsInSeverityOrder() {
+    void interpretReturnsHighestPriorityThreatAsSingleResult() {
         Map<String, Object> category = new LinkedHashMap<>();
-        category.put("categories", List.of(51, 39));
+        category.put("categories", List.of(51, 39, 70, 87, 85, 48));
         category.put("confidence", 0.99);
         category.put("source", "rt-medium");
         Map<String, Object> data = Map.of("category", category);
 
         LookupVerdict verdict = provider.interpretAll(bytes(data), "https://example.com");
-        Assertions.assertThat(verdict.results()).containsExactly(LookupResult.PHISHING, LookupResult.MALICIOUS);
+        Assertions.assertThat(provider.interpret(bytes(data), "https://example.com")).isEqualTo(LookupResult.PHISHING);
+        Assertions.assertThat(verdict.results()).containsExactly(LookupResult.PHISHING);
+        Assertions.assertThat(verdict.values()).containsExactly("phishing");
+    }
+
+    @Test
+    void interpretReturnsThreatWhenCombinedWithNonThreatCategory() {
+        Map<String, Object> category = Map.of("categories", List.of(48, 85));
+        Map<String, Object> data = Map.of("category", category);
+
+        Assertions.assertThat(provider.interpretAll(bytes(data), "https://example.com").values())
+                .containsExactly("dynamic_dns");
     }
 }

@@ -452,8 +452,7 @@ public class CheckHandler {
     }
 
     /**
-     * Removes extension-only content categories from a live verdict. The public checker reports
-     * security risk, so a content-only verdict is clean while mixed verdicts retain their threats.
+     * Limits a live verdict to the public checker's supported results.
      *
      * @param verdict The full provider verdict.
      * @return A verdict containing only results understood by the public checker.
@@ -466,7 +465,7 @@ public class CheckHandler {
     }
 
     /**
-     * Removes extension-only content categories from a stored verdict before replaying it.
+     * Removes unsupported values, including legacy content categories, from a stored verdict.
      *
      * @param values The stored wire values.
      * @return Values understood by the public checker.
