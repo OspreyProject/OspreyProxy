@@ -91,3 +91,5 @@ machinet.conf
 /.run/
 src.zip
 OspreyProxy.zip
+/src/main/java/net/foulest/ospreyproxy/providers/api/hidden
+/src/test/java/net/foulest/ospreyproxy/providers/api/hidden
