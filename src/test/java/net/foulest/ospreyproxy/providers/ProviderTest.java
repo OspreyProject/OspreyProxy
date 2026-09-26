@@ -61,52 +61,52 @@ class ProviderTest {
         }
 
         @Override
-        public @NonNull @NonNull Bucket getBurstBucket(@NonNull @NonNull String ip) {
+        public @NonNull Bucket getBurstBucket(@NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public @NonNull @NonNull Bucket getSustainedBucket(@NonNull @NonNull String ip) {
+        public @NonNull Bucket getSustainedBucket(@NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public @NonNull @NonNull Bucket getInvalidRequestBucket(@NonNull @NonNull String ip) {
+        public @NonNull Bucket getInvalidRequestBucket(@NonNull String ip) {
             return bucket;
         }
 
         @Override
-        public boolean isBurstBlocked(@NonNull @NonNull String ip) {
+        public boolean isBurstBlocked(@NonNull String ip) {
             return false;
         }
 
         @Override
-        public boolean isSustainedBlocked(@NonNull @NonNull String ip) {
+        public boolean isSustainedBlocked(@NonNull String ip) {
             return false;
         }
 
         @Override
-        public boolean isInvalidRequestBlocked(@NonNull @NonNull String ip) {
+        public boolean isInvalidRequestBlocked(@NonNull String ip) {
             return false;
         }
 
         @Override
-        public void blockBurst(@NonNull @NonNull String ip) {
+        public void blockBurst(@NonNull String ip) {
             // no-op
         }
 
         @Override
-        public void blockSustained(@NonNull @NonNull String ip) {
+        public void blockSustained(@NonNull String ip) {
             // no-op
         }
 
         @Override
-        public void blockInvalidRequest(@NonNull @NonNull String ip) {
+        public void blockInvalidRequest(@NonNull String ip) {
             // no-op
         }
 
         @Override
-        public @NonNull @NonNull String getViolatorId(@NonNull @NonNull String ip) {
+        public @NonNull String getViolatorId(@NonNull String ip) {
             return "#0";
         }
     }
