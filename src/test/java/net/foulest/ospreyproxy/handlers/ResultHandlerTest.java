@@ -48,6 +48,12 @@ class ResultHandlerTest {
         when(store.get("https://stale.example")).thenReturn(record("stale.example", 0));
         ResponseEntity<String> stale = handler.result("stale.example", request());
         Assertions.assertThat(stale.getBody()).contains("\"fresh\":false");
+
+        when(store.get("https://private.example/doc")).thenReturn(new ScanRecord("https://private.example/doc",
+                "private.example", "private.example", "malicious", Map.of("provider", List.of("malicious")),
+                1, 1, 1, 1, 1, false, null));
+        Assertions.assertThat(handler.result("private.example/doc", request()).getBody())
+                .contains("\"found\":false");
     }
 
     @Test

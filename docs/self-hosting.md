@@ -73,6 +73,14 @@ With `osprey.tenant.auth.enabled=true` and no reachable store, or a store with n
 rejected with `401`. This is deliberate: enabling authentication without keys fails closed rather than open. The startup
 log states plainly how many tenants loaded.
 
+### CORS for the extension
+
+The extension sends a preflighted request (`Content-Type: application/json` plus the tenant key header) to the provider
+endpoints. The proxy answers it for browser-extension origins (`chrome-extension://*`, `moz-extension://*`,
+`safari-web-extension://*`) and allows the tenant key header configured above, so no CORS headers are needed in Nginx.
+Override the origins with `osprey.provider.allowed-origin-patterns` (comma-separated). Do not add the same headers in
+Nginx as well, since duplicated `Access-Control-Allow-Origin` headers are rejected by browsers.
+
 ### The tenant key store
 
 The store is a properties file kept outside the repository. Give it mode `0600` and the service user as owner. See

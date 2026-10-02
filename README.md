@@ -24,16 +24,25 @@ for [Osprey: Browser Protection](https://osprey.ac).
 
 ## Privacy
 
-OspreyProxy does not log, store, or persist any user data. There is no database, no disk writes, no user-identifiable
-analytics, no cookies, and no user accounts.
+OspreyProxy keeps no user accounts, cookies, or user-identifiable analytics. It is not stateless, though: some data is
+logged or written to disk, as described below.
 
 - **IP addresses** are held in memory only for rate limiting, hashed with HMAC-SHA256 using a random key that changes
-  every restart. Raw IPs are never logged or sent upstream.
-- **URLs** submitted for checking are forwarded to the upstream providers and then discarded. Refer to each provider's
-  privacy policy for how they handle submitted URLs.
-- **Minimal request logging**: User-supplied content may appear in logs only on upstream errors or unexpected internal
-  failures. IPs and request bodies are never logged. The root log level is set to `WARN` and no log file path is
-  configured. These are verifiable in [`application.properties`](src/main/resources/application.properties).
+  every restart. Raw IPs are never logged. The one exception is the Cloudflare Turnstile check on `/check` and the
+  contact form, where the client IP is passed to Cloudflare as `remoteip`. `X-Real-IP` is honored only when the socket
+  peer is in `osprey.proxy.trusted-addresses` (loopback by default).
+- **Provider lookups** (`POST /{provider}`): URLs are forwarded to the upstream providers and not stored. Refer to each
+  provider's privacy policy for how they handle submitted URLs.
+- **`/check` scans** are stored in a SQLite database (`osprey.store.path`): the canonical URL, per-provider verdicts,
+  and scan timestamps. Non-flagged records are pruned after `osprey.store.retention.days`; phishing and malicious
+  records are kept and host-level ones may be published as public result pages on osprey.ac and announced to IndexNow.
+  `/result` only returns records that are already published this way. Set `osprey.store.enabled=false` to disable the
+  store.
+- **Contact form** submissions (name, email, company, message) are stored in the same database.
+- **Logging**: the root log level is `WARN` and no log file path is configured, but warnings can contain user-supplied
+  content: a URL that a provider flags as phishing or malicious is logged with its full canonical URL, and malformed
+  URLs are logged as received. Request bodies and raw IPs are not logged. These are verifiable in
+  [`application.properties`](src/main/resources/application.properties).
 - **All in-memory caches** (IP hashes, rate limit buckets, blocked IP sets, violation counts) are bounded,
   non-persistent, and lost on restart.
 

@@ -24,6 +24,13 @@ class UpdateServiceTest {
     Path updatesDirectory;
 
     @Test
+    void startupFailsWhenBaseUrlIsBlank() {
+        UpdateService service = new UpdateService(updatesDirectory.toString(), " ", "");
+
+        Assertions.assertThatThrownBy(service::init).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void missingCatalogUsesStableLatestDefaultAndConfiguredAppId() {
         UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example/", "configured");
 
@@ -50,7 +57,7 @@ class UpdateServiceTest {
                 {"channels":{"Stable":"latest","rollback":{"version":"2.0.9"},
                 "empty":"","bad":3," ":"latest"}}
                 """);
-        UpdateService service = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
 
         service.init();
 
@@ -66,7 +73,7 @@ class UpdateServiceTest {
     void validatesCrxPathsAndCachesMetadataByFileIdentity() throws Exception {
         Path crx = updatesDirectory.resolve("package.crx");
         Files.write(crx, new byte[]{1, 2, 3});
-        UpdateService service = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
 
         Assertions.assertThat(service.crxPath("package.crx")).isEqualTo(crx);
         Assertions.assertThat(service.crxPath("missing.crx")).isNull();
@@ -125,7 +132,7 @@ class UpdateServiceTest {
     void keepsLastGoodCatalogAndSkipsMalformedCatalogEntries() throws Exception {
         Path releases = updatesDirectory.resolve("releases.json");
         Files.writeString(releases, "{not-json");
-        UpdateService unreadable = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService unreadable = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
 
         unreadable.init();
 
@@ -138,7 +145,7 @@ class UpdateServiceTest {
         Files.writeString(updatesDirectory.resolve("channels.json"), """
                 {"channels":{"empty-object":{},"blank-object":{"version":" "}}}
                 """);
-        UpdateService nonList = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService nonList = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
 
         nonList.init();
 
@@ -149,13 +156,13 @@ class UpdateServiceTest {
                 {"releases":[{"crx":"missing-version.crx"},{"version":"missing-crx"},
                 {"version":"blank-crx","crx":" "}]}
                 """);
-        UpdateService invalidEntries = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService invalidEntries = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
 
         invalidEntries.init();
 
         Assertions.assertThat(invalidEntries.catalog().releases()).isEmpty();
 
-        UpdateService configured = new UpdateService(updatesDirectory.toString(), "", "configured");
+        UpdateService configured = new UpdateService(updatesDirectory.toString(), "https://updates.example", "configured");
         configured.init();
 
         Assertions.assertThat(configured.catalog().appId()).isEqualTo("configured");
@@ -167,7 +174,7 @@ class UpdateServiceTest {
         Files.writeString(releases, """
                 {"releases":[{"version":"1.0.0","crx":"one.crx"}]}
                 """);
-        UpdateService service = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
         service.init();
         Files.writeString(releases, """
                 {"releases":[{"version":"2.0.0","crx":"two.crx"}]}
@@ -200,7 +207,7 @@ class UpdateServiceTest {
     void returnsSafeResultsForCatalogFileFailures() throws Exception {
         Path crx = updatesDirectory.resolve("package.crx");
         Files.writeString(crx, "content");
-        UpdateService service = new UpdateService(updatesDirectory.toString(), "", "");
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
         service.init();
 
         try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {

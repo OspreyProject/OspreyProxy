@@ -130,6 +130,11 @@ public class UpdateService {
      */
     @PostConstruct
     public void init() {
+        // A request-derived origin follows the Host header, which a cache or client can poison
+        if (baseUrl.isEmpty()) {
+            throw new IllegalStateException("osprey.updates.base-url must be set when osprey.updates.enabled=true");
+        }
+
         reload();
 
         UpdateCatalog current = catalog;

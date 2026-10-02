@@ -38,6 +38,7 @@ public class SecurityFilter implements Filter {
     // so they get their own larger ceiling (256 KB).
     private static final int MAX_LARGE_BODY_SIZE = 262_144;
     private static final String SUBMIT_PREFIX = "/submit/";
+    private static final String REPORTING_TEST_PREFIX = "/reporting/test/";
 
     // Single-segment paths that are NOT extension-facing provider endpoints and therefore never require
     // a tenant key. Everything else that is a single-segment POST is a provider endpoint.
@@ -176,11 +177,11 @@ public class SecurityFilter implements Filter {
     }
 
     /**
-     * Whether the request targets the bulk submission endpoint, which accepts larger JSON
-     * bodies than the provider-lookup endpoints.
+     * Whether the request targets an endpoint that accepts larger JSON bodies than the
+     * provider-lookup endpoints: bulk submissions and reporting-test event batches.
      *
      * @param request The incoming request.
-     * @return {@code true} if the path is under {@code /submit/}.
+     * @return {@code true} if the path is under {@code /submit/} or {@code /reporting/test/}.
      */
     private static boolean isLargeBodyPath(@NonNull HttpServletRequest request) {
         String path = request.getServletPath();
@@ -188,7 +189,7 @@ public class SecurityFilter implements Filter {
         if (path == null || path.isEmpty()) {
             path = request.getRequestURI();
         }
-        return path != null && path.startsWith(SUBMIT_PREFIX);
+        return path != null && (path.startsWith(SUBMIT_PREFIX) || path.startsWith(REPORTING_TEST_PREFIX));
     }
 
     /**

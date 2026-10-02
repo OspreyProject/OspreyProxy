@@ -108,7 +108,7 @@ public class ResultHandler {
     }
 
     /**
-     * Returns the stored verdict for a URL, if one exists. Never scans.
+     * Returns the stored verdict for a URL, if one exists and is publicly indexable. Never scans.
      *
      * @param url The raw URL to look up.
      * @param request The incoming request, used for per-IP rate limiting.
@@ -131,7 +131,9 @@ public class ResultHandler {
 
         ScanRecord scanRecord = store.get(prepared.canonicalUrl());
 
-        if (scanRecord == null) {
+        // Only records that already back a public result page are exposed. Anything else could reveal
+        // that a specific private-looking URL was submitted, and when.
+        if (scanRecord == null || !scanRecord.indexable()) {
             Map<String, Object> body = LinkedHashMap.newLinkedHashMap(2);
             body.put("found", false);
             body.put("url", prepared.canonicalUrl());

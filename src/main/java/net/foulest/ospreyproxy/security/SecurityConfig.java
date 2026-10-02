@@ -17,7 +17,9 @@
  */
 package net.foulest.ospreyproxy.security;
 
+import jakarta.annotation.PostConstruct;
 import net.foulest.ospreyproxy.tenant.TenantService;
+import net.foulest.ospreyproxy.util.RequestUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +28,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,11 +39,47 @@ public class SecurityConfig {
 
     /**
      * The single web origin allowed to call the browser-facing /check endpoint cross-origin.
-     * Every other endpoint stays same-origin only, since the extension calls them with host
-     * permissions and needs no CORS.
+     * Every other endpoint stays same-origin only, except the provider endpoints, which allow the
+     * extension's own origins.
      */
     @Value("${osprey.check.allowed-origin:https://osprey.ac}")
     private String checkAllowedOrigin;
+
+    /**
+     * Origin patterns of the browser extension, which calls the provider endpoints directly and so
+     * needs CORS against any proxy it has no host permission for (every self-hosted deployment).
+     */
+    @Value("${osprey.provider.allowed-origin-patterns:chrome-extension://*,moz-extension://*,safari-web-extension://*}")
+    private List<String> extensionOriginPatterns = List.of(
+            "chrome-extension://*", "moz-extension://*", "safari-web-extension://*");
+
+    /**
+     * Header carrying the tenant key, which must be allowed in provider preflights.
+     */
+    @Value("${osprey.tenant.auth.header:X-Osprey-Tenant-Key}")
+    private String tenantHeader = "X-Osprey-Tenant-Key";
+
+    /**
+     * Peer addresses whose X-Real-IP header is trusted. Defaults to loopback (Nginx on the same host).
+     * Add the proxy's address when it runs elsewhere; leave the CDN out and configure Nginx's real_ip
+     * module so the header already carries the true client address.
+     */
+    @Value("${osprey.proxy.trusted-addresses:127.0.0.1,::1}")
+    private List<String> trustedProxyAddresses = List.of("127.0.0.1", "::1");
+
+    /**
+     * Applies the trusted proxy list used when resolving client IPs.
+     */
+    @PostConstruct
+    public void configureTrustedProxies() {
+        List<String> addresses = new ArrayList<>(trustedProxyAddresses);
+
+        // "::1" has several textual forms; trust them all together
+        if (addresses.contains("::1")) {
+            addresses.add("0:0:0:0:0:0:0:1");
+        }
+        RequestUtil.setTrustedProxies(addresses);
+    }
 
     /**
      * Registers a servlet-level {@link CorsFilter} at order 0 so preflight OPTIONS requests
@@ -75,6 +114,20 @@ public class SecurityConfig {
         contactConfig.setAllowedMethods(List.of("POST", "OPTIONS"));
         contactConfig.setMaxAge(600L);
         source.registerCorsConfiguration("/contact/**", contactConfig);
+
+        // The extension calls provider endpoints directly. Against a self-hosted proxy it has no host
+        // permission, so the browser sends a preflight carrying the tenant key header. Extension
+        // origins are allowed here; access is still gated by the tenant key. Registered last so the
+        // specific paths above win.
+        List<String> headers = new ArrayList<>(List.of("Content-Type", "Accept"));
+        headers.add(tenantHeader);
+
+        CorsConfiguration providerConfig = new CorsConfiguration();
+        providerConfig.setAllowedOriginPatterns(extensionOriginPatterns);
+        providerConfig.setAllowedHeaders(headers);
+        providerConfig.setAllowedMethods(List.of("POST", "OPTIONS"));
+        providerConfig.setMaxAge(600L);
+        source.registerCorsConfiguration("/*", providerConfig);
 
         FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
         registration.setOrder(0);

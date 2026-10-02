@@ -251,7 +251,8 @@ public class ProxyHandler {
             boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
             String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
 
-            if (stripToBareHost && !RequestUtil.hasRegistrableDomain(host)) {
+            // IP literals have no registrable domain but are still checked by their full address
+            if (stripToBareHost && !NetworkUtil.isIpLiteral(host) && !RequestUtil.hasRegistrableDomain(host)) {
                 metrics.recordRequest(providerName, tenant);
 
                 if (provider instanceof AbstractProvider ap) {

@@ -184,7 +184,7 @@ class ContactHandlerTest {
         ContactHandler missingSender = handler(mock(JdbcTemplate.class), null, false, "");
         try {
             invokeInstance(missingSender, "sendVerificationEmail",
-                    new Class[]{String.class, String.class, String.class}, "ada@example.com", "Ada", "token");
+                    new Class[]{String.class, String.class}, "ada@example.com", "token");
             invokeInstance(missingSender, "forwardToSupport",
                     new Class[]{String.class, String.class, String.class, String.class, String.class, long.class},
                     "general", "Ada", "ada@example.com", "", "Message", 1L);
@@ -196,7 +196,7 @@ class ContactHandlerTest {
         ContactHandler configuredSender = handler(mock(JdbcTemplate.class), sender, false, "");
         try {
             invokeInstance(configuredSender, "sendVerificationEmail",
-                    new Class[]{String.class, String.class, String.class}, "ada@example.com", "Ada", "token");
+                    new Class[]{String.class, String.class}, "ada@example.com", "token");
             invokeInstance(configuredSender, "forwardToSupport",
                     new Class[]{String.class, String.class, String.class, String.class, String.class, long.class},
                     "general", "Ada", "ada@example.com", "", "Message", 1L);
@@ -349,8 +349,8 @@ class ContactHandlerTest {
         ContactHandler handler = new ContactHandler(mock(JdbcTemplate.class), provider, "from@example.com",
                 "to@example.com", "https://site.example", false, "", "http://unused", 1, 1,
                 mock(HttpClient.class), executor);
-        invokeOn(handler, "sendVerificationEmail", new Class[]{String.class, String.class, String.class},
-                "Name", "to@example.com", "token");
+        invokeOn(handler, "sendVerificationEmail", new Class[]{String.class, String.class},
+                "to@example.com", "token");
         invokeOn(handler, "forwardToSupport",
                 new Class[]{String.class, String.class, String.class, String.class, String.class, long.class},
                 "other", "Name", "to@example.com", "", "Message", 1L);

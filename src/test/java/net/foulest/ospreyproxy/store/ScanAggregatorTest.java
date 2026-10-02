@@ -17,6 +17,8 @@ class ScanAggregatorTest {
 
     private static final PreparedUrl PREPARED = new PreparedUrl(
             "bad.example", "example", "https://bad.example/path", true);
+    private static final PreparedUrl ROOT = new PreparedUrl(
+            "bad.example", "example", "https://bad.example", true);
 
     @Test
     void rejectsEmptyAndAllUnavailableScans() {
@@ -58,15 +60,24 @@ class ScanAggregatorTest {
 
     @Test
     void onlyPhishingAndMaliciousPrimaryVerdictsAreIndexable() {
-        ScanRecord phishing = ScanAggregator.build(PREPARED, Map.of(
+        ScanRecord phishing = ScanAggregator.build(ROOT, Map.of(
                 "allow", LookupVerdict.ALLOWED,
                 "phish", LookupVerdict.of(LookupResult.PHISHING)), 1);
-        ScanRecord malicious = ScanAggregator.build(PREPARED, Map.of(
+        ScanRecord malicious = ScanAggregator.build(ROOT, Map.of(
                 "malware", LookupVerdict.of(LookupResult.MALICIOUS)), 1);
 
         Assertions.assertThat(phishing).extracting(ScanRecord::primaryResult, ScanRecord::indexable)
                 .containsExactly("phishing", true);
         Assertions.assertThat(malicious).extracting(ScanRecord::primaryResult, ScanRecord::indexable)
                 .containsExactly("malicious", true);
+    }
+
+    @Test
+    void flaggedPathRecordsAreNotIndexable() {
+        ScanRecord record = ScanAggregator.build(PREPARED, Map.of(
+                "phish", LookupVerdict.of(LookupResult.PHISHING)), 1);
+
+        Assertions.assertThat(record).extracting(ScanRecord::primaryResult, ScanRecord::indexable)
+                .containsExactly("phishing", false);
     }
 }

@@ -51,7 +51,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.OutputStream;
-import java.net.IDN;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -307,8 +306,11 @@ public class CheckHandler {
 
         int flagged = 0;
 
-        // Per-request virtual-thread pool: one task per provider, results consumed as they complete
-        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+        // Per-request virtual-thread pool: one task per provider, results consumed as they complete.
+        // Not try-with-resources: close() would wait for stragglers and defeat the deadline.
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+
+        try {
             ExecutorCompletionService<IndexedVerdict> completion = new ExecutorCompletionService<>(pool);
 
             for (int i = 0; i < active.size(); i++) {
@@ -352,11 +354,17 @@ public class CheckHandler {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            // Interrupt any outstanding provider calls instead of waiting for them
+            pool.shutdownNow();
         }
+
+        boolean missedDeadline = false;
 
         // Any provider that did not report before the deadline is shown as failed
         for (int i = 0; i < active.size(); i++) {
             if (!reported[i]) {
+                missedDeadline = true;
                 collected.put(active.get(i).getEndpointName(), LookupVerdict.FAILED);
                 writeResult(out, active.get(i).getEndpointName(), LookupVerdict.FAILED);
             }
@@ -368,9 +376,12 @@ public class CheckHandler {
         doneLine.put("flagged", flagged);
         writeLine(out, doneLine);
 
-        // Persist the aggregate once the client has its full result. The aggregator returns null for
-        // a degraded scan (most providers failed), so an outage never creates or overwrites a record
-        persist(prepared, collected);
+        // A scan cut short by the deadline is partial, so it is never stored as a fresh result;
+        // otherwise the next lookups would serve the partial verdict for the whole freshness window.
+        // The aggregator also returns null for a degraded scan (most providers failed).
+        if (!missedDeadline) {
+            persist(prepared, collected);
+        }
     }
 
     /**
@@ -558,7 +569,7 @@ public class CheckHandler {
                     .append("secret=").append(URLEncoder.encode(turnstileSecret, StandardCharsets.UTF_8))
                     .append("&response=").append(URLEncoder.encode(token, StandardCharsets.UTF_8));
 
-            String remoteIp = request.getHeader("X-Real-IP");
+            String remoteIp = RequestUtil.trustedRealIpHeader(request);
 
             if (remoteIp != null && remoteIp.length() <= 45) {
                 String stripped = remoteIp.strip();
@@ -669,8 +680,21 @@ public class CheckHandler {
 
         String host = uri.getHost();
 
+        // java.net.URI leaves getHost() null for registry-style authorities such as underscore hosts
         if (host == null) {
-            return null;
+            String authority = uri.getRawAuthority();
+
+            if (authority == null) {
+                return null;
+            }
+
+            authority = authority.substring(authority.lastIndexOf('@') + 1);
+            int colon = authority.lastIndexOf(':');
+            host = colon >= 0 ? authority.substring(0, colon) : authority;
+
+            if (host.isEmpty() || host.indexOf('[') >= 0 || host.indexOf('%') >= 0) {
+                return null;
+            }
         }
 
         host = host.strip().toLowerCase(Locale.ROOT);
@@ -696,7 +720,7 @@ public class CheckHandler {
         // IDN-encode registrable hostnames; leave IP literals (which contain ':' or are dotted quads) alone
         if (host.indexOf(':') < 0) {
             try {
-                host = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
+                host = NetworkUtil.toAsciiHost(host);
             } catch (IllegalArgumentException e) {
                 return null;
             }

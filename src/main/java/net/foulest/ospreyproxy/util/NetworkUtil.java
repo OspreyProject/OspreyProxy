@@ -24,15 +24,13 @@ import org.apache.hc.client5.http.DnsResolver;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -91,6 +89,9 @@ public final class NetworkUtil {
      * Pattern to match illegal characters in URLs that should be percent-encoded.
      */
     private static final Pattern ENCODING_PATTERN = Pattern.compile("%(?![0-9a-fA-F]{2})");
+    private static final Pattern IPV6_AUTHORITY_PREFIX = Pattern.compile(
+            "^[a-zA-Z][a-zA-Z0-9+.\\-]*://(?:[^/?#@\\[]*@)?\\[[0-9a-fA-F:.]+]");
+    private static final Pattern ASCII_LABEL = Pattern.compile("\\w(?:[\\w-]{0,61}\\w)?");
 
     /**
      * Checks if an {@link InetAddress} is private or internal.
@@ -313,8 +314,11 @@ public final class NetworkUtil {
      * ("0x7f.0.0.1") and decimal-integer forms are intentionally NOT treated as
      * literals; they fall through to hostname validation, fail DoH resolution, and
      * are independently rejected by the connection-time DNS resolver.
+     *
+     * @param host The candidate host (expected bare and lowercased).
+     * @return {@code true} if {@code host} is an IP literal, {@code false} otherwise.
      */
-    static boolean isIpLiteral(@NonNull String host) {
+    public static boolean isIpLiteral(@NonNull String host) {
         return host.indexOf(':') >= 0 || isDottedDecimalIpv4(host);
     }
 
@@ -389,9 +393,19 @@ public final class NetworkUtil {
      */
     static @NonNull String encodeIllegalUriChars(@NonNull String url) {
         url = Normalizer.normalize(url, Normalizer.Form.NFC);
+
+        // Keep the brackets of an IPv6 host literal; encoding them would hide the host from URI.getHost()
+        Matcher matcher = IPV6_AUTHORITY_PREFIX.matcher(url);
+        String prefix = "";
+
+        if (matcher.find()) {
+            prefix = matcher.group();
+            url = url.substring(prefix.length());
+        }
+
         String result = ENCODING_PATTERN.matcher(url).replaceAll("%25");
 
-        return result.replace("[", "%5B")
+        return prefix + result.replace("[", "%5B")
                 .replace("]", "%5D")
                 .replace("|", "%7C")
                 .replace("{", "%7B")
@@ -399,6 +413,38 @@ public final class NetworkUtil {
                 .replace("^", "%5E")
                 .replace("`", "%60")
                 .replace(" ", "%20");
+    }
+
+    /**
+     * Converts a lowercased hostname to ASCII. All-ASCII labels are validated directly so that
+     * underscores, which browsers and resolvers accept but strict STD3 IDN rules reject, are kept.
+     * Labels containing non-ASCII characters go through strict IDN processing.
+     *
+     * @param host The lowercased, dot-separated hostname.
+     * @return The ASCII (punycode) hostname.
+     * @throws IllegalArgumentException If a label is invalid.
+     */
+    public static @NonNull String toAsciiHost(@NonNull String host) {
+        String[] labels = host.split("\\.", -1);
+
+        for (int i = 0; i < labels.length; i++) {
+            String label = labels[i];
+
+            if (label.isEmpty()) {
+                throw new IllegalArgumentException("Empty label");
+            }
+
+            if (ASCII_LABEL.matcher(label).matches()) {
+                continue;
+            }
+
+            if (label.chars().allMatch(c -> c < 0x80)) {
+                throw new IllegalArgumentException("Invalid ASCII label");
+            }
+
+            labels[i] = IDN.toASCII(label, IDN.USE_STD3_ASCII_RULES);
+        }
+        return String.join(".", labels).toLowerCase(Locale.ROOT);
     }
 
     /**

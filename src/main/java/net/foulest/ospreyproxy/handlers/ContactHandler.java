@@ -84,7 +84,7 @@ import java.util.regex.Pattern;
 public class ContactHandler {
 
     private static final String CONTEXT = "contact";
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[\\w\\-.]+@([\\w-]+\\.)+[\\w-]{2,}$");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[\\w\\-.]+@[\\w\\-.]+$");
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[A-Za-z0-9_-]{40,64}");
     private static final Pattern LINE_CONTROL_PATTERN = Pattern.compile("\\p{Cntrl}");
     private static final Pattern BLOCK_CONTROL_PATTERN = Pattern.compile("[\\p{Cntrl}&&[^\\n\\r\\t]]");
@@ -290,7 +290,7 @@ public class ContactHandler {
                 sha256(token), category, name, email, company, message, now, now + VERIFY_TTL_MILLIS
         );
 
-        mailExecutor.execute(() -> sendVerificationEmail(email, name, token));
+        mailExecutor.execute(() -> sendVerificationEmail(email, token));
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
@@ -415,7 +415,7 @@ public class ContactHandler {
                     .append("secret=").append(URLEncoder.encode(turnstileSecret, StandardCharsets.UTF_8))
                     .append("&response=").append(URLEncoder.encode(token, StandardCharsets.UTF_8));
 
-            String remoteIp = request.getHeader("X-Real-IP");
+            String remoteIp = RequestUtil.trustedRealIpHeader(request);
 
             if (remoteIp != null && remoteIp.length() <= 45) {
                 String stripped = remoteIp.strip();
@@ -451,13 +451,34 @@ public class ContactHandler {
     }
 
     /**
-     * Emails the verification link to the sender, laid out like the console's account emails.
+     * Checks an address has the shape {@code local@label.label...tld}: word, hyphen, or dot characters in
+     * the local part, a domain of at least two non-empty labels, and a final label of two or more characters.
+     *
+     * @param email The lowercased, trimmed address.
+     * @return {@code true} if the address is well-formed.
+     */
+    private static boolean isValidEmail(@NonNull String email) {
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            return false;
+        }
+
+        String domain = email.substring(email.indexOf('@') + 1);
+        int lastDot = domain.lastIndexOf('.');
+
+        // Needs at least two labels, a two-character final label, and no empty labels
+        return lastDot > 0
+                && domain.length() - lastDot - 1 >= 2
+                && domain.charAt(0) != '.'
+                && !domain.contains("..")
+                && !domain.endsWith(".");
+    }
+
+    /**
      *
      * @param to The sender's address.
-     * @param name The sender's name, for the greeting.
      * @param token The raw verification token to embed in the link.
      */
-    private void sendVerificationEmail(@NonNull String to, @NonNull String name, @NonNull String token) {
+    private void sendVerificationEmail(@NonNull String to, @NonNull String token) {
         if (sender == null) {
             return;
         }
@@ -466,8 +487,7 @@ public class ContactHandler {
             String link = siteOrigin + "/contact/?verify=" + token;
 
             String html = shell("Confirm your message",
-                    "<p style=\"margin:0 0 12px;color:#3d4a57;font-size:14px;line-height:1.6;\">Hi " + esc(name) + ",</p>"
-                            + "<p style=\"margin:0 0 24px;color:#3d4a57;font-size:14px;line-height:1.6;\">You sent a message to Osprey through osprey.ac/contact. Confirm this email address and it will be delivered to our team. The link below is valid for 24 hours.</p>"
+                    "<p style=\"margin:0 0 24px;color:#3d4a57;font-size:14px;line-height:1.6;\">Someone used this email address to send a message to Osprey through osprey.ac/contact. Confirm this email address and it will be delivered to our team. The link below is valid for 24 hours.</p>"
                             + "<a href=\"" + esc(link) + "\" style=\"display:inline-block;background:" + ACCENT + ";color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 24px;border-radius:6px;\">Confirm and send</a>",
                     "If you did not send this, you can ignore this email; the message is discarded unless confirmed."
             );
@@ -477,8 +497,8 @@ public class ContactHandler {
             helper.setFrom(fromAddress, "Osprey");
             helper.setTo(to);
             helper.setSubject("[Osprey] Confirm your message");
-            helper.setText("Hi " + name + ",\n\n"
-                    + "You sent a message to Osprey through osprey.ac/contact. Open this link within 24 hours "
+            helper.setText("Someone used this email address to send a message to Osprey through osprey.ac/contact. "
+                    + "Open this link within 24 hours "
                     + "to confirm this email address and deliver it to our team:\n"
                     + link + "\n\n"
                     + "If you did not send this, you can ignore this email; the message is discarded unless confirmed.", html);
@@ -592,7 +612,7 @@ public class ContactHandler {
             return "Your name is required.";
         }
 
-        if (email.isEmpty() || !EMAIL_PATTERN.matcher(email).matches()) {
+        if (email.isEmpty() || !isValidEmail(email)) {
             return "A valid email address is required so we can reply to you.";
         }
 

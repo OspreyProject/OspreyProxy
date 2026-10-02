@@ -95,7 +95,11 @@ public final class ScanAggregator {
         }
 
         LookupResult primary = LookupVerdict.of(primaries).primary();
-        boolean indexable = INDEXABLE.contains(primary);
+
+        // Only host-root records may become public pages. Hostname-keyed providers flag a whole host,
+        // so indexing every submitted path would let anyone mint indexable pages with chosen text.
+        boolean indexable = INDEXABLE.contains(primary)
+                && prepared.canonicalUrl().equals("https://" + prepared.host());
 
         return new ScanRecord(
                 prepared.canonicalUrl(),

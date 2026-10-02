@@ -59,7 +59,7 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @RestController
-@ConditionalOnProperty(name = "osprey.reporting-test.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "osprey.reporting-test.enabled", havingValue = "true")
 public class ReportingTestHandler {
 
     // Tokens are page-generated (crypto.randomUUID or similar); constrain the shape so the path
@@ -72,6 +72,9 @@ public class ReportingTestHandler {
 
     // Most recent payloads kept per session; a fresh pilot endpoint sends far fewer.
     private static final int MAX_PAYLOADS_PER_SESSION = 30;
+
+    // Total raw JSON bytes kept per session, so large batches cannot multiply into excessive memory.
+    private static final int MAX_BYTES_PER_SESSION = 1_048_576;
 
     // Sessions keyed by token, evicted shortly after the page stops polling. Bounded so the
     // public deployment cannot be grown without limit.
@@ -145,9 +148,14 @@ public class ReportingTestHandler {
 
         synchronized (deque) {
             deque.addLast(payload);
+            long bytes = 0;
 
-            while (deque.size() > MAX_PAYLOADS_PER_SESSION) {
-                deque.removeFirst();
+            for (ReceivedPayload kept : deque) {
+                bytes += kept.rawJson().length();
+            }
+
+            while (deque.size() > 1 && (deque.size() > MAX_PAYLOADS_PER_SESSION || bytes > MAX_BYTES_PER_SESSION)) {
+                bytes -= deque.removeFirst().rawJson().length();
             }
         }
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{\"ok\":true}");

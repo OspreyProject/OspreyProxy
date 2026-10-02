@@ -21,6 +21,7 @@ import com.google.common.base.Splitter;
 import com.google.common.net.InternetDomainName;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
@@ -32,12 +33,9 @@ import org.jspecify.annotations.NonNull;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
-import java.net.IDN;
 import java.net.InetAddress;
 import java.net.URI;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -62,8 +60,51 @@ public final class RequestUtil {
     };
 
     /**
+     * Addresses allowed to set {@code X-Real-IP}. Defaults to loopback, matching the documented
+     * deployment where the app is bound to 127.0.0.1 behind Nginx. Replaced at startup from
+     * {@code osprey.proxy.trusted-addresses}.
+     */
+    @Getter
+    private static volatile Set<String> trustedProxies = Set.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1");
+
+    /**
+     * Sets the addresses whose {@code X-Real-IP} header is trusted.
+     *
+     * @param addresses The trusted proxy IP literals.
+     */
+    public static void setTrustedProxies(@NonNull Collection<String> addresses) {
+        Set<String> normalized = new HashSet<>();
+
+        for (String address : addresses) {
+            String ip = normalizeClientIp(address);
+
+            if (ip != null) {
+                normalized.add(ip);
+            }
+        }
+        trustedProxies = Set.copyOf(normalized);
+    }
+
+    /**
+     * Returns the {@code X-Real-IP} header value, but only when the request arrived from a trusted
+     * proxy. A direct connection from anywhere else could forge the header, so it is ignored.
+     *
+     * @param request The incoming request.
+     * @return The raw header value, or {@code null} when absent or the peer is not trusted.
+     */
+    public static @Nullable String trustedRealIpHeader(@NonNull HttpServletRequest request) {
+        String peer = request.getRemoteAddr();
+
+        if (peer == null || !trustedProxies.contains(peer.strip().toLowerCase(Locale.ROOT))) {
+            return null;
+        }
+        return request.getHeader("X-Real-IP");
+    }
+
+    /**
      * Resolves the client IP from the request and returns its salted hash, with no rate-limit side
-     * effects. Prefers the {@code X-Real-IP} header set by the trusted reverse proxy, falls back to
+     * effects. Prefers the {@code X-Real-IP} header set by the trusted reverse proxy (only honored when
+     * the socket peer is a configured trusted proxy), falls back to
      * the socket remote address, and finally to a fixed {@code "unknown"} bucket.
      * <p>
      * This is the IP-resolution half of {@link #validateIP}, factored out so callers that run their
@@ -75,7 +116,7 @@ public final class RequestUtil {
      * @return The salted hash of the resolved client IP.
      */
     public static @NonNull String hashClientIp(@NonNull HttpServletRequest request, @NonNull String context) {
-        String headerIp = request.getHeader("X-Real-IP");
+        String headerIp = trustedRealIpHeader(request);
         String realIp = normalizeClientIp(headerIp);
 
         // Checks if the X-Real-IP header is present but malformed
@@ -94,22 +135,6 @@ public final class RequestUtil {
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", context);
         }
         return HashUtil.hashIp(realIp);
-    }
-
-    /**
-     * Validates and rate-limits a request against a single hashed-IP bucket, with no tenant dimension.
-     *
-     * @param request      The request to validate.
-     * @param provider     The provider to lookup rate limits against.
-     * @param providerName The name of the provider.
-     * @return The rate-limit key (here, the hashed client IP).
-     * @throws StatusCodeException If the IP address is found to be invalid/blocked.
-     */
-    @SuppressWarnings("UnusedMethod")
-    private static @NonNull String validateIP(@NonNull HttpServletRequest request,
-                                              @NonNull Provider provider,
-                                              String providerName) {
-        return validateIP(request, provider, providerName, null);
     }
 
     /**
@@ -480,7 +505,7 @@ public final class RequestUtil {
 
         // Converts the host to ASCII using IDN processing
         try {
-            asciiHost = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
+            asciiHost = NetworkUtil.toAsciiHost(host);
         } catch (IllegalArgumentException e) {
             throw rejectInvalidHost(provider, providerName, hashedIp,
                     "Blocked request with invalid IDN host"

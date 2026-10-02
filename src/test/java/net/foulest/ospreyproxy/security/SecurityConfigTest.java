@@ -25,6 +25,25 @@ class SecurityConfigTest {
         assertCorsAllows(registration.getFilter(), "/check", "POST");
         assertCorsAllows(registration.getFilter(), "/result", "GET");
         assertCorsAllows(registration.getFilter(), "/contact/verify", "POST");
+
+        // Extension preflight against a provider endpoint, including the tenant key header
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/safebrowsing");
+        request.addHeader("Origin", "chrome-extension://abcdef");
+        request.addHeader("Access-Control-Request-Method", "POST");
+        request.addHeader("Access-Control-Request-Headers", "content-type,x-osprey-tenant-key");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        registration.getFilter().doFilter(request, response, (ignoredRequest, ignoredResponse) -> {
+        });
+        assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("chrome-extension://abcdef");
+
+        // Web origins other than the configured one stay blocked on provider endpoints
+        request = new MockHttpServletRequest("OPTIONS", "/safebrowsing");
+        request.addHeader("Origin", "https://evil.example");
+        request.addHeader("Access-Control-Request-Method", "POST");
+        response = new MockHttpServletResponse();
+        registration.getFilter().doFilter(request, response, (ignoredRequest, ignoredResponse) -> {
+        });
+        assertThat(response.getHeader("Access-Control-Allow-Origin")).isNull();
     }
 
     @Test
