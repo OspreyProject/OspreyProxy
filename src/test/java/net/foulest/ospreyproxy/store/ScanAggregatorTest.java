@@ -39,6 +39,18 @@ class ScanAggregatorTest {
     }
 
     @Test
+    void rejectsWhenStrictMajorityOfProvidersFailedOrWereRateLimited() {
+        ScanRecord record = ScanAggregator.build(PREPARED, Map.of(
+                "limited-one", LookupVerdict.RATE_LIMITED,
+                "limited-two", LookupVerdict.RATE_LIMITED,
+                "failed", LookupVerdict.FAILED,
+                "allowed", LookupVerdict.ALLOWED,
+                "malicious", LookupVerdict.of(LookupResult.MALICIOUS)), 10);
+
+        Assertions.assertThat(record).isNull();
+    }
+
+    @Test
     void acceptsExactlyHalfFailedWhenThereIsUsableSignalAndPreservesResults() {
         Map<String, LookupVerdict> verdicts = new LinkedHashMap<>();
         verdicts.put("failed", LookupVerdict.FAILED);

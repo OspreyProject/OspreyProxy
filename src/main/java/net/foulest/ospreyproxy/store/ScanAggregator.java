@@ -46,8 +46,8 @@ public final class ScanAggregator {
     /**
      * Builds a durable record from the verdicts of one scan, or returns {@code null} when the scan is
      * not authoritative enough to trust. A scan is non-authoritative when every provider failed or was
-     * rate limited, or when more than half of them failed, which usually means the providers were
-     * degraded rather than that the URL is clean. Non-authoritative scans are never written, so a
+     * rate limited, or when more than half of them failed or were rate limited, which usually means
+     * the providers were degraded rather than that the URL is clean. Non-authoritative scans are never written, so a
      * provider outage can neither create a misleading record nor launder an existing bad verdict.
      *
      * @param prepared The URL that was scanned.
@@ -66,6 +66,7 @@ public final class ScanAggregator {
 
         int flagged = 0;
         int failed = 0;
+        int rateLimited = 0;
         int usable = 0;
 
         List<LookupResult> primaries = new ArrayList<>(total);
@@ -78,9 +79,11 @@ public final class ScanAggregator {
 
             if (verdict.isFailed()) {
                 failed++;
-            } else if (!verdict.isRateLimited()) {
-                // Rate-limited verdicts are neither usable signal nor a hard failure, so they fall
-                // through here and are counted in neither tally.
+            } else if (verdict.isRateLimited()) {
+                // Rate-limited verdicts carry no signal and, like failures, indicate degraded providers.
+                // Rate limiting can be induced by flooding /check, so it must not let a lone provider decide.
+                rateLimited++;
+            } else {
                 usable++;
 
                 if (isFlagged(verdict)) {
@@ -89,8 +92,8 @@ public final class ScanAggregator {
             }
         }
 
-        // Require at least one usable provider and no more than half failed.
-        if (usable == 0 || failed * 2 > total) {
+        // Require at least one usable provider and no more than half failed or rate limited.
+        if (usable == 0 || (failed + rateLimited) * 2 > total) {
             return null;
         }
 
