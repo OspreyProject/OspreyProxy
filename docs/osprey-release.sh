@@ -145,6 +145,8 @@ MODE=check VERSION="$VERSION" RELEASES="$RELEASES" python3 -c "$RELEASE_PY"
 CRX_TMP="$(mktemp "${UPDATES_DIR}/.${CRX_NAME}.XXXXXX")"
 trap 'rm -f "$CRX_TMP"' EXIT
 cp -f "$CRX_SRC" "$CRX_TMP"
+# mktemp creates the file owner-only; the proxy service user must be able to read the published CRX
+chmod 0644 "$CRX_TMP"
 mv -n "$CRX_TMP" "$CRX_DEST"
 
 if [ -e "$CRX_TMP" ]; then
