@@ -222,6 +222,10 @@ class RequestUtilTest {
         URI underscore = RequestUtil.validateURI("http://A_b.example.com/x", provider, PROVIDER_NAME, HASHED_IP);
         Assertions.assertThat(RequestUtil.validateHost(underscore, provider, PROVIDER_NAME, HASHED_IP))
                 .isEqualTo("a_b.example.com");
+
+        // Userinfo before an underscore host must not let the userinfo become the checked host
+        URI userinfo = RequestUtil.validateURI("http://good.example:x@evil_host.example/x", provider, PROVIDER_NAME, HASHED_IP);
+        assertStatus(400, () -> RequestUtil.validateHost(userinfo, provider, PROVIDER_NAME, HASHED_IP));
     }
 
     @Test

@@ -508,6 +508,14 @@ public final class RequestUtil {
                 );
             }
 
+            // Rejects userinfo, since browsers connect to the host after the last '@'. Splitting on
+            // the last ':' would otherwise check "benign.example:x@evil_host.example" as "benign.example".
+            if (authority.indexOf('@') >= 0) {
+                throw rejectInvalidHost(provider, providerName, hashedIp,
+                        "Blocked request with userinfo in an unparsed authority"
+                );
+            }
+
             int lastColon = authority.lastIndexOf(':');
             host = lastColon >= 0 ? authority.substring(0, lastColon) : authority;
         }
