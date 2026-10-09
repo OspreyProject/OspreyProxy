@@ -355,8 +355,10 @@ public class CheckHandler {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
-            // Interrupt any outstanding provider calls instead of waiting for them
-            pool.shutdownNow();
+            // Stop accepting work without waiting for or interrupting stragglers. An interrupt would
+            // close the socket of an upstream call that extension lookups may share through the
+            // request coalescer, failing those lookups too; stragglers finish on their own.
+            pool.shutdown();
         }
 
         boolean missedDeadline = false;

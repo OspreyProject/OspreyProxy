@@ -78,6 +78,44 @@ class RequestCoalescerTest {
     }
 
     @Test
+    void leaderErrorReleasesBlockedFollowers() throws Exception {
+        RequestCoalescer<String> coalescer = new RequestCoalescer<>();
+        CountDownLatch leaderRunning = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Throwable> followerFailure = new AtomicReference<>();
+
+        Thread leader = new Thread(() -> {
+            try {
+                coalescer.get("key", () -> {
+                    leaderRunning.countDown();
+                    await(release);
+                    throw new AssertionError("boom");
+                });
+            } catch (AssertionError ignored) {
+                // Expected
+            }
+        });
+        leader.start();
+        await(leaderRunning);
+
+        Thread follower = new Thread(() -> {
+            try {
+                coalescer.get("key", () -> "unused");
+            } catch (Throwable t) {
+                followerFailure.set(t);
+            }
+        });
+        follower.start();
+        awaitWaiting(follower);
+        release.countDown();
+
+        follower.join(5000);
+        leader.join(5000);
+        Assertions.assertThat(follower.isAlive()).isFalse();
+        Assertions.assertThat(followerFailure.get()).isInstanceOf(AssertionError.class);
+    }
+
+    @Test
     void followerRethrowsRuntimeAndErrorCausesAndWrapsCheckedCause() throws Exception {
         RequestCoalescer<String> coalescer = new RequestCoalescer<>();
 

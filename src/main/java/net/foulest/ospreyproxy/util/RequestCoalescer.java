@@ -70,7 +70,8 @@ public final class RequestCoalescer<T> {
             T value = loader.get();
             ours.complete(value);
             return value;
-        } catch (Exception e) {
+        } catch (Exception | Error e) {
+            // Errors too: otherwise followers blocked in join() would never be released
             ours.completeExceptionally(e);
             throw e;
         } finally {

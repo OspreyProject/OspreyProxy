@@ -288,6 +288,33 @@ class CheckHandlerTest {
     }
 
     @Test
+    void deadlineDoesNotInterruptAStragglingProviderCall() throws Exception {
+        Provider slowProvider = provider("straggler");
+        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
+        ProxyHandler slowProxy = mock(ProxyHandler.class);
+        when(slowProxy.resolveForCheck(eq(slowProvider), any())).thenAnswer(ignored -> {
+            try {
+                Thread.sleep(1_500L);
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+            } finally {
+                finished.countDown();
+            }
+            return net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED;
+        });
+
+        CheckHandler handler = handler(null, List.of(slowProvider), 5, slowProxy, false, "", mock(HttpClient.class), 1);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        handler.check(new CheckRequest("example.com", null, false), request()).getBody().writeTo(output);
+
+        // The scan was cut off at the deadline, but the shared call is left to finish undisturbed
+        Assertions.assertThat(output.toString(StandardCharsets.UTF_8)).contains("\"result\":\"failed\"");
+        Assertions.assertThat(finished.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        Assertions.assertThat(interrupted).isFalse();
+    }
+
+    @Test
     void streamingWithAnImmediateDeadlineMarksProvidersAsFailed() throws Exception {
         Provider provider = provider("immediate");
         CheckHandler handler = handler(null, List.of(provider), 5, mock(ProxyHandler.class),
