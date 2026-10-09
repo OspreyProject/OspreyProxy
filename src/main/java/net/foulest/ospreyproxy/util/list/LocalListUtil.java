@@ -46,7 +46,7 @@ import tools.jackson.core.JsonToken;
 import java.io.*;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -232,6 +232,38 @@ public final class LocalListUtil {
     }
 
     /**
+     * Returns a URI's host, including registry-style hosts such as {@code a_b.example.com} that
+     * {@link URI#getHost()} reports as null. Browsers resolve such hosts, so feeds list them and
+     * lookups must match them rather than treat them as hostless.
+     *
+     * @param uri The parsed URI.
+     * @return The host, or null when the URI has none or it is not a plain hostname.
+     */
+    static @Nullable String hostOf(@NonNull URI uri) {
+        String host = uri.getHost();
+
+        if (host != null) {
+            return host;
+        }
+
+        String authority = uri.getRawAuthority();
+
+        if (authority == null) {
+            return null;
+        }
+
+        authority = authority.substring(authority.lastIndexOf('@') + 1);
+
+        if (authority.startsWith("[")) {
+            return null;
+        }
+
+        int colon = authority.lastIndexOf(':');
+        String candidate = colon >= 0 ? authority.substring(0, colon) : authority;
+        return !candidate.isEmpty() && candidate.matches("[A-Za-z0-9._-]+") ? candidate : null;
+    }
+
+    /**
      * Looks up the given request URI against the live set for the specified descriptor.
      *
      * @param descriptor The list descriptor to look up against.
@@ -262,7 +294,7 @@ public final class LocalListUtil {
             return LookupResult.ALLOWED;
         }
 
-        String host = uri.getHost();
+        String host = hostOf(uri);
 
         if (host == null) {
             return LookupResult.ALLOWED;
@@ -362,8 +394,9 @@ public final class LocalListUtil {
 
             Set<String> parsed;
 
+            // Persisted entries may be "host/path", which the fetched-list parser would reject
             try (InputStream in = new ByteArrayInputStream(bytes, 0, length)) {
-                parsed = parsePlainText(in);
+                parsed = parsePlainText(in, true);
             }
 
             // Re-run the submission gate so entries that no longer pass (a host added to the protected
@@ -481,17 +514,12 @@ public final class LocalListUtil {
 
                 StringBuilder block = new StringBuilder(header.length() + added.size() * 40);
 
-                // Keep the file line-oriented even if it was hand-edited without a trailing newline
+                // A file that does not end in a newline was torn mid-write (or hand-edited). The loader
+                // ignores such an unterminated tail, so drop it here too: terminating it with a newline
+                // would promote a truncated fragment (for example "paypal.com" cut from
+                // "paypal.com.evil.example") into a valid entry.
                 if (Files.isRegularFile(file) && Files.size(file) > 0L) {
-                    try (SeekableByteChannel channel = Files.newByteChannel(file, StandardOpenOption.READ)) {
-                        ByteBuffer last = ByteBuffer.allocate(1);
-                        channel.position(channel.size() - 1L);
-                        channel.read(last);
-
-                        if (last.get(0) != '\n') {
-                            block.append('\n');
-                        }
-                    }
+                    dropUnterminatedTail(descriptor, file);
                 }
 
                 block.append(header);
@@ -500,9 +528,18 @@ public final class LocalListUtil {
                     block.append(entry).append('\n');
                 }
 
-                Files.writeString(file, block, StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
-                        StandardOpenOption.DSYNC);
+                // Measured after any torn tail was dropped, so a rollback restores exactly this size
+                long sizeBeforeAppend = Files.isRegularFile(file) ? Files.size(file) : 0L;
+
+                try {
+                    Files.writeString(file, block, StandardCharsets.UTF_8,
+                            StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
+                            StandardOpenOption.DSYNC);
+                } catch (IOException | RuntimeException e) {
+                    // A partial write (e.g. disk full) must not leave a torn last line behind
+                    rollbackSubmissionAppend(file, sizeBeforeAppend, e);
+                    throw e;
+                }
 
                 applyContent(descriptor, merged);
             }
@@ -513,6 +550,84 @@ public final class LocalListUtil {
         counts.put("duplicates", duplicates);
         counts.put("rejected", rejected);
         return counts;
+    }
+
+    /**
+     * Truncates a submission file back to its pre-append size after a failed write.
+     *
+     * @param file The submission file.
+     * @param originalBytes The file's size before the append began.
+     * @param failure The write failure, which gets any rollback failure attached as suppressed.
+     */
+    private static void rollbackSubmissionAppend(@NonNull Path file, long originalBytes, @NonNull Exception failure) {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
+            if (channel.size() > originalBytes) {
+                channel.truncate(originalBytes);
+            }
+        } catch (IOException | RuntimeException rollbackFailure) {
+            failure.addSuppressed(rollbackFailure);
+        }
+    }
+
+    /**
+     * Truncates a submission file back to its last complete line when it does not end in a newline.
+     * The last byte is checked first, so the common case reads a single byte.
+     *
+     * @param descriptor The submission feed descriptor, for logging.
+     * @param file The submission file.
+     * @throws IOException If the file could not be read or truncated.
+     */
+    private static void dropUnterminatedTail(@NonNull Descriptor descriptor,
+                                             @NonNull Path file) throws IOException {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            long size = channel.size();
+
+            if (size == 0L) {
+                return;
+            }
+
+            ByteBuffer chunk = ByteBuffer.allocate(4096);
+            long end = size;
+            long keep = 0L;
+
+            // Scan backwards in chunks for the last newline; no newline at all means the whole file is torn
+            while (end > 0L) {
+                int length = (int) Math.min(chunk.capacity(), end);
+                long start = end - length;
+                chunk.clear().limit(length);
+
+                while (chunk.hasRemaining()) {
+                    if (channel.read(chunk, start + chunk.position()) < 0) {
+                        throw new IOException("Unexpected end of submission file");
+                    }
+                }
+
+                int newline = -1;
+
+                for (int i = length - 1; i >= 0; i--) {
+                    if (chunk.get(i) == '\n') {
+                        newline = i;
+                        break;
+                    }
+                }
+
+                if (newline >= 0) {
+                    keep = start + newline + 1L;
+                    break;
+                }
+                end = start;
+            }
+
+            if (keep == size) {
+                return;
+            }
+
+            log.warn("[{}] Submission file {} ended mid-line; dropping {} unterminated byte(s) before appending",
+                    descriptor.getShortName(), file, size - keep
+            );
+            channel.truncate(keep);
+            channel.force(true);
+        }
     }
 
     /**
@@ -700,8 +815,11 @@ public final class LocalListUtil {
                     anyChanged = true;
                 }
             } catch (IOException | RuntimeException e) {
-                log.warn("[{}] Failed to fetch list source {}: {}",
-                        descriptor.getShortName(), url, e.getClass().getName(), e);
+                // The resolved URL (and any message echoing it) can carry the API key, so it is redacted
+                // and the throwable itself is not passed to the logger
+                log.warn("[{}] Failed to fetch list source {}: {} ({})",
+                        descriptor.getShortName(), descriptor.redact(url), e.getClass().getName(),
+                        descriptor.redact(String.valueOf(e.getMessage())));
             }
         }
 
@@ -798,11 +916,12 @@ public final class LocalListUtil {
                 // wants us to wait longer than we're willing to block this single refresh thread.
                 // A long cooldown (e.g. GitHub's 30-minute penalty) exceeds the cap and bails here.
                 if (attempt >= MAX_FETCH_ATTEMPTS || waitMillis > MAX_INLINE_RETRY_WAIT_MILLIS) {
-                    throw new IllegalStateException(e.getMessage());
+                    throw new IllegalStateException(descriptor.redact(String.valueOf(e.getMessage())));
                 }
 
                 log.warn("[{}] {} for {}; retrying in {} ms (attempt {}/{})",
-                        descriptor.getShortName(), e.getMessage(), url, waitMillis, attempt, MAX_FETCH_ATTEMPTS);
+                        descriptor.getShortName(), descriptor.redact(String.valueOf(e.getMessage())),
+                        descriptor.redact(url), waitMillis, attempt, MAX_FETCH_ATTEMPTS);
                 sleepMillis(waitMillis);
                 backoffMillis *= 2L;
             }
@@ -1195,6 +1314,20 @@ public final class LocalListUtil {
      */
     @SuppressWarnings("NestedAssignment")
     private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText) throws IOException {
+        return parsePlainText(rawText, false);
+    }
+
+    /**
+     * Parses plain text content like {@link #parsePlainText(InputStream)}, optionally also accepting
+     * scheme-less {@code host/path} lines, which is the form persisted submissions are written in.
+     *
+     * @param rawText The raw text stream.
+     * @param allowSchemelessPaths Whether a line such as {@code evil.example/phish/kit} is accepted.
+     * @return A set of normalized hostnames and URL paths.
+     */
+    @SuppressWarnings("NestedAssignment")
+    private static @NonNull Set<String> parsePlainText(@NonNull InputStream rawText,
+                                                       boolean allowSchemelessPaths) throws IOException {
         Set<String> set = new HashSet<>();
 
         try (BufferedReader reader = new BufferedReader(
@@ -1206,7 +1339,7 @@ public final class LocalListUtil {
                     throw new IllegalArgumentException("List line exceeds " + MAX_LINE_CHARS + " characters");
                 }
 
-                addNormalizedEntry(line, set);
+                addNormalizedEntry(line, set, allowSchemelessPaths);
             }
         }
         return set;
@@ -1220,11 +1353,24 @@ public final class LocalListUtil {
      */
     private static void addNormalizedEntry(@Nullable String rawEntry,
                                            @NonNull Collection<? super String> destination) {
+        addNormalizedEntry(rawEntry, destination, false);
+    }
+
+    /**
+     * Normalizes and adds one list entry to the destination set.
+     *
+     * @param rawEntry The raw list entry or line.
+     * @param destination The destination set.
+     * @param allowSchemelessPaths Whether a scheme-less {@code host/path} entry is accepted.
+     */
+    private static void addNormalizedEntry(@Nullable String rawEntry,
+                                           @NonNull Collection<? super String> destination,
+                                           boolean allowSchemelessPaths) {
         if (rawEntry == null) {
             return;
         }
 
-        String normalized = normalizeListEntry(rawEntry);
+        String normalized = normalizeListEntry(rawEntry, allowSchemelessPaths);
 
         if (normalized == null) {
             return;
@@ -1281,6 +1427,18 @@ public final class LocalListUtil {
      * @return The normalized hostname or URL path, or {@code null} if the entry should be ignored.
      */
     private static @Nullable String normalizeListEntry(@NonNull String rawEntry) {
+        return normalizeListEntry(rawEntry, false);
+    }
+
+    /**
+     * Normalizes one plain list entry, URL, or hosts-file line.
+     *
+     * @param rawEntry The raw entry.
+     * @param allowSchemelessPaths Whether a scheme-less {@code host/path} entry is parsed as a URL
+     *                             instead of being rejected as an invalid hostname.
+     * @return The normalized hostname or URL path, or {@code null} if the entry should be ignored.
+     */
+    private static @Nullable String normalizeListEntry(@NonNull String rawEntry, boolean allowSchemelessPaths) {
         String entry = rawEntry.strip();
 
         if (entry.isEmpty() || entry.charAt(0) == '#') {
@@ -1306,7 +1464,14 @@ public final class LocalListUtil {
                 entry = first;
             }
         }
-        return entry.contains("://") ? normalizeUrlEntry(entry) : normalizeHostnameEntry(entry);
+        if (entry.contains("://")) {
+            return normalizeUrlEntry(entry);
+        }
+
+        if (allowSchemelessPaths && entry.indexOf('/') > 0) {
+            return normalizeUrlEntry("https://" + entry);
+        }
+        return normalizeHostnameEntry(entry);
     }
 
     /**
@@ -1322,10 +1487,16 @@ public final class LocalListUtil {
         try {
             uri = URI.create(entry);
         } catch (IllegalArgumentException e) {
-            return null;
+            // Feeds sometimes carry unescaped characters such as '|', '^', '{' or '}'. Retry with the same
+            // escaping lookups apply to request URLs, so the entry keeps its path and still matches.
+            try {
+                uri = URI.create(NetworkUtil.encodeIllegalUriChars(entry));
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
         }
 
-        String host = uri.getHost();
+        String host = hostOf(uri);
 
         if (host == null) {
             return null;

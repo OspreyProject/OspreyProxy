@@ -64,6 +64,19 @@ class DescriptorTest {
     }
 
     @Test
+    void redactUrlMasksTheApiKeyAndLeavesKeylessUrlsUntouched() {
+        assertThat(Descriptor.PHISHUNT_IO.redactUrl("https://phishunt.io/feed.txt"))
+                .isEqualTo("https://phishunt.io/feed.txt");
+
+        String key = System.getenv("THREATFOX_API_KEY");
+
+        if (key != null && !key.isBlank()) {
+            assertThat(Descriptor.THREATFOX.redactUrl("https://x.test/" + key + "/hostfile.txt"))
+                    .doesNotContain(key).contains("***");
+        }
+    }
+
+    @Test
     void keyDependentDescriptorsReflectTheActualProcessEnvironment() {
         assertThat(Descriptor.AA419.getResolvedUrls())
                 .isEqualTo(expectedResolvedUrls(Descriptor.AA419));
@@ -94,6 +107,31 @@ class DescriptorTest {
             setInstanceField(Descriptor.AA419, "apiKeyEnvVar", originalAa419KeyVariable);
             setInstanceField(Descriptor.THREATFOX, "apiKeyEnvVar", originalThreatfoxKeyVariable);
         }
+    }
+
+    @Test
+    void redactReplacesTheResolvedKeyAndLeavesKeylessDescriptorsUntouched() {
+        Map.Entry<String, String> environment = System.getenv().entrySet().stream()
+                .filter(entry -> entry.getValue().length() > 3)
+                .findFirst()
+                .orElseThrow();
+        String originalThreatfoxKeyVariable = instanceField(Descriptor.THREATFOX, "apiKeyEnvVar");
+
+        try {
+            setInstanceField(Descriptor.THREATFOX, "apiKeyEnvVar", environment.getKey());
+
+            String resolved = Descriptor.THREATFOX.getResolvedUrls().getFirst();
+            assertThat(resolved).contains(environment.getValue());
+            assertThat(Descriptor.THREATFOX.redact(resolved))
+                    .doesNotContain(environment.getValue())
+                    .contains("%api_key%");
+            assertThat(Descriptor.THREATFOX.redact("Timeout for " + resolved))
+                    .doesNotContain(environment.getValue());
+        } finally {
+            setInstanceField(Descriptor.THREATFOX, "apiKeyEnvVar", originalThreatfoxKeyVariable);
+        }
+
+        assertThat(Descriptor.OPEN_PHISH.redact("https://example.test/list")).isEqualTo("https://example.test/list");
     }
 
     @Test

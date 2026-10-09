@@ -359,6 +359,22 @@ public enum Descriptor {
     }
 
     /**
+     * Replaces the resolved API key in a log-bound string with its {@code %api_key%} placeholder, so a
+     * URL (or an exception message that echoes it) can be logged without leaking the secret.
+     *
+     * @param text The text to redact.
+     * @return The text with any occurrence of the API key replaced; unchanged if this descriptor has no key.
+     */
+    @NonNull String redact(@NonNull String text) {
+        if (apiKeyEnvVar == null) {
+            return text;
+        }
+
+        String key = System.getenv(apiKeyEnvVar);
+        return key == null || key.isBlank() ? text : text.replace(key, "%api_key%");
+    }
+
+    /**
      * Returns the fetch URLs with the {@code %api_key%} placeholder substituted in each.
      * <p>
      * If this descriptor requires an API key that is not configured, an empty list is returned
@@ -383,5 +399,20 @@ public enum Descriptor {
             resolved.add(url.replace("%api_key%", key));
         }
         return Collections.unmodifiableList(resolved);
+    }
+
+    /**
+     * Returns the given URL with this descriptor's API key, if any, replaced so the URL is safe to log.
+     *
+     * @param url A resolved fetch URL.
+     * @return The URL with the API key value masked.
+     */
+    String redactUrl(@NonNull String url) {
+        if (apiKeyEnvVar == null) {
+            return url;
+        }
+
+        String key = System.getenv(apiKeyEnvVar);
+        return key == null || key.isBlank() ? url : url.replace(key, "***");
     }
 }

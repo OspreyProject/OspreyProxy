@@ -194,11 +194,75 @@ class LocalListUtilTest {
         Files.writeString(file, "existing.com", StandardCharsets.UTF_8);
         assertThat(LocalListUtil.submit(Descriptor.ACOMICS, List.of("evil.com"), "a"))
                 .containsEntry("accepted", 1);
-        assertThat(Files.readString(file)).startsWith("existing.com\n# ").contains("evil.com\n");
+        // The unterminated tail is dropped, as the loader would ignore it, rather than promoted to an entry
+        assertThat(Files.readString(file)).startsWith("# ").doesNotContain("existing.com").contains("evil.com\n");
 
         putSnapshot(Descriptor.ACOMICS, fullDomainSet());
         assertThat(LocalListUtil.submit(Descriptor.ACOMICS, List.of("new.example"), "a"))
                 .containsEntry("rejected", 1);
+    }
+
+    @Test
+    void rollbackSubmissionAppendTruncatesATornWriteBackToTheOriginalSize() throws Exception {
+        Path file = temporaryDirectory.resolve("torn.txt");
+        Files.writeString(file, "kept.example\npaypal.co", StandardCharsets.UTF_8);
+
+        invoke("rollbackSubmissionAppend", new Class<?>[]{Path.class, long.class, Exception.class},
+                file, 13L, new IOException("disk full"));
+
+        assertThat(Files.readString(file)).isEqualTo("kept.example\n");
+    }
+
+    @Test
+    void submitKeepsCompleteLinesAndDropsOnlyTheTornTail() throws IOException {
+        putSnapshot(Descriptor.ACOMICS, Set.of());
+        Path file = temporaryDirectory.resolve("acomics.txt");
+        Files.writeString(file, "kept.example.com\nsecond.example.com\npaypal.com", StandardCharsets.UTF_8);
+
+        assertThat(LocalListUtil.submit(Descriptor.ACOMICS, List.of("evil.com"), "a"))
+                .containsEntry("accepted", 1);
+
+        String persisted = Files.readString(file);
+        assertThat(persisted).startsWith("kept.example.com\nsecond.example.com\n# ").contains("evil.com\n");
+        assertThat(persisted.lines().filter(line -> line.equals("paypal.com"))).isEmpty();
+    }
+
+    @Test
+    void submitDropsAFileThatIsEntirelyOneTornLine() throws IOException {
+        putSnapshot(Descriptor.ACOMICS, Set.of());
+        Path file = temporaryDirectory.resolve("acomics.txt");
+        Files.writeString(file, "paypal.com", StandardCharsets.UTF_8);
+
+        assertThat(LocalListUtil.submit(Descriptor.ACOMICS, List.of("evil.com"), "a"))
+                .containsEntry("accepted", 1);
+        assertThat(Files.readString(file)).startsWith("# ").doesNotContain("paypal.com");
+    }
+
+    @Test
+    void persistedPathSubmissionsSurviveARestart() throws Exception {
+        putSnapshot(Descriptor.ACOMICS, Set.of());
+
+        try (MockedStatic<NetworkUtil> network = mockStatic(NetworkUtil.class)) {
+            network.when(() -> NetworkUtil.isPrivateHost(anyString())).thenReturn(false);
+
+            assertThat(LocalListUtil.submit(Descriptor.ACOMICS,
+                    List.of("https://evil.com/phish/kit", "https://other.example.com"), "a"))
+                    .containsEntry("accepted", 2);
+
+            putSnapshot(Descriptor.ACOMICS, null);
+            invoke("loadSubmissionFeed", new Class<?>[]{Descriptor.class}, Descriptor.ACOMICS);
+
+            assertThat(snapshot(Descriptor.ACOMICS)).containsExactlyInAnyOrder("evil.com/phish/kit", "other.example.com");
+        }
+    }
+
+    @Test
+    void urlEntriesWithUnescapedSpecialCharactersAreKeptWithTheirPath() {
+        assertThat(invoke("normalizeUrlEntry", new Class<?>[]{String.class},
+                "http://evil.example.com/a|b/{kit}^x")).isEqualTo("evil.example.com/a%7cb/%7bkit%7d%5ex");
+        assertThat(invoke("normalizeUrlEntry", new Class<?>[]{String.class}, "http://evil.example.com/%zz"))
+                .isNotNull();
+        assertThat(invoke("normalizeUrlEntry", new Class<?>[]{String.class}, "http://exa mple.com/\u0000")).isNull();
     }
 
     @Test
