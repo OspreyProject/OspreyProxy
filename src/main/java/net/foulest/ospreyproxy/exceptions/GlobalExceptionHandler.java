@@ -21,9 +21,13 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.apache.catalina.connector.ClientAbortException;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -105,6 +109,40 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<String> handleMethodNotAllowed(Exception ignored) {
         return ErrorUtil.RESP_405;
+    }
+
+    /**
+     * Handles requests with a missing or malformed parameter, header, or other bound value.
+     * These are client errors, so they are answered quietly rather than logged as unexpected.
+     *
+     * @param ignored The exception to handle (ignored).
+     * @return A 400 Bad Request response.
+     */
+    @ExceptionHandler({ServletRequestBindingException.class, TypeMismatchException.class})
+    public ResponseEntity<String> handleBadRequest(Exception ignored) {
+        return ErrorUtil.RESP_400;
+    }
+
+    /**
+     * Handles requests whose {@code Accept} header cannot be satisfied.
+     *
+     * @param ignored The exception to handle (ignored).
+     * @return A 406 Not Acceptable response.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<String> handleNotAcceptable(Exception ignored) {
+        return ErrorUtil.RESP_406;
+    }
+
+    /**
+     * Handles requests whose {@code Content-Type} is not supported by the endpoint.
+     *
+     * @param ignored The exception to handle (ignored).
+     * @return A 415 Unsupported Media Type response.
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<String> handleUnsupportedMediaType(Exception ignored) {
+        return ErrorUtil.RESP_415;
     }
 
     /**

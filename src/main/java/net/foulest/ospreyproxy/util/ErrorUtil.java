@@ -38,6 +38,7 @@ public final class ErrorUtil {
     private static final String BODY_403 = body(HttpStatus.FORBIDDEN.getReasonPhrase());
     private static final String BODY_404 = body(HttpStatus.NOT_FOUND.getReasonPhrase());
     public static final String BODY_405 = body(HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase());
+    private static final String BODY_406 = body(HttpStatus.NOT_ACCEPTABLE.getReasonPhrase());
     public static final String BODY_415 = body(HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase());
     private static final String BODY_422 = body(HttpStatus.UNPROCESSABLE_CONTENT.getReasonPhrase());
     public static final String BODY_429 = body(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase());
@@ -52,6 +53,7 @@ public final class ErrorUtil {
     public static final ResponseEntity<String> RESP_403 = build(HttpStatus.FORBIDDEN, BODY_403);
     public static final ResponseEntity<String> RESP_404 = build(HttpStatus.NOT_FOUND, BODY_404);
     public static final ResponseEntity<String> RESP_405 = build(HttpStatus.METHOD_NOT_ALLOWED, BODY_405);
+    public static final ResponseEntity<String> RESP_406 = build(HttpStatus.NOT_ACCEPTABLE, BODY_406);
     public static final ResponseEntity<String> RESP_415 = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, BODY_415);
     public static final ResponseEntity<String> RESP_422 = build(HttpStatus.UNPROCESSABLE_CONTENT, BODY_422);
     public static final ResponseEntity<String> RESP_429 = build(HttpStatus.TOO_MANY_REQUESTS, BODY_429);

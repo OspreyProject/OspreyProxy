@@ -98,6 +98,22 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void clientErrorHandlersReturn4xxInsteadOf500() {
+        Assertions.assertThat(handler.handleBadRequest(
+                new org.springframework.web.bind.MissingServletRequestParameterException("since", "Long")))
+                .isSameAs(ErrorUtil.RESP_400);
+        Assertions.assertThat(handler.handleBadRequest(
+                new org.springframework.beans.TypeMismatchException("abc", Long.class)))
+                .isSameAs(ErrorUtil.RESP_400);
+        Assertions.assertThat(handler.handleNotAcceptable(
+                new org.springframework.web.HttpMediaTypeNotAcceptableException("no")))
+                .isSameAs(ErrorUtil.RESP_406);
+        Assertions.assertThat(handler.handleUnsupportedMediaType(
+                new org.springframework.web.HttpMediaTypeNotSupportedException("no")))
+                .isSameAs(ErrorUtil.RESP_415);
+    }
+
+    @Test
     void handleUnexpectedReturns500() {
         Exception ex = new RuntimeException("unexpected failure");
         ResponseEntity<String> response = handler.handleUnexpected(ex);
