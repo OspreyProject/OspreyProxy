@@ -251,8 +251,15 @@ public class ProxyHandler {
             boolean hostKeyed = provider instanceof AbstractDNSProvider || provider.isStripToHost() || stripToBareHost;
             String hostKey = stripToBareHost ? RequestUtil.getBareHost(host) : host;
 
-            // IP literals have no registrable domain but are still checked by their full address
-            if (stripToBareHost && !NetworkUtil.isIpLiteral(host) && !RequestUtil.hasRegistrableDomain(host)) {
+            // Bare-host providers look up registrable domains only. An IP literal is reported as
+            // FAILED (never cached), so the extension neither treats it as checked-and-safe nor
+            // caches a pass; a bare public suffix has nothing to look up and stays ALLOWED.
+            if (stripToBareHost && NetworkUtil.isIpLiteral(host)) {
+                metrics.recordRequest(providerName, tenant);
+                return resultResponse(LookupVerdict.FAILED, providerName);
+            }
+
+            if (stripToBareHost && !RequestUtil.hasRegistrableDomain(host)) {
                 metrics.recordRequest(providerName, tenant);
 
                 if (provider instanceof AbstractProvider ap) {
@@ -477,7 +484,13 @@ public class ProxyHandler {
             log.error("[{}] Upstream request blocked by SSRF resolver", providerName, e);
             return ErrorUtil.RESP_502;
         } catch (SocketException e) {
+            // Connection refused or reset: the provider host is down, so this must count toward the breaker
             log.error("[{}] Upstream request failed due to socket error ({})", providerName, e.getClass().getName());
+            circuitBreaker.recordFailure(providerName, System.nanoTime() - callStart, e);
+            return ErrorUtil.RESP_502;
+        } catch (IOException e) {
+            log.error("[{}] Upstream request failed due to I/O error ({})", providerName, e.getClass().getName());
+            circuitBreaker.recordFailure(providerName, System.nanoTime() - callStart, e);
             return ErrorUtil.RESP_502;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.error("[{}] Unexpected error during upstream request ({})", providerName, e.getClass().getName(), e);
@@ -510,8 +523,13 @@ public class ProxyHandler {
         String lookupKey;
 
         if (stripToBareHost) {
-            // A host with no registrable domain (a bare public suffix or an IP literal) cannot be
-            // looked up by bare-host providers, so it is treated as allowed, mirroring proxyRequest
+            // Mirrors proxyRequest: an IP literal cannot be looked up by bare-host providers and is
+            // reported as FAILED rather than allowed; a bare public suffix stays ALLOWED.
+            if (NetworkUtil.isIpLiteral(prepared.host())) {
+                metrics.recordRequest(providerName, TenantService.PUBLIC);
+                return LookupVerdict.FAILED;
+            }
+
             if (!prepared.hasRegistrableDomain()) {
                 metrics.recordRequest(providerName, TenantService.PUBLIC);
 

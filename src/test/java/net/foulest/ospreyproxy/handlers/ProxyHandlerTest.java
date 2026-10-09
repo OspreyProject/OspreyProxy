@@ -17,6 +17,7 @@ import net.foulest.ospreyproxy.util.RequestUtil;
 import net.foulest.ospreyproxy.util.check.PreparedUrl;
 import net.foulest.ospreyproxy.util.list.Descriptor;
 import net.foulest.ospreyproxy.util.list.LocalListUtil;
+import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.HttpClientResponseHandler;
@@ -308,6 +309,7 @@ class ProxyHandlerTest {
         assertTransportStatus(new ConnectionRequestTimeoutException("leased connection timeout"), 504);
         assertTransportStatus(new NoHttpResponseException("upstream closed"), 504);
         assertTransportStatus(new UnknownHostException("private target"), 502);
+        assertTransportStatus(new ConnectTimeoutException("connect timeout"), 504);
         assertTransportStatus(new SocketException("socket closed"), 502);
         assertTransportStatus(new IOException("unexpected I/O"), 502);
     }
@@ -414,7 +416,10 @@ class ProxyHandlerTest {
         CircuitBreakerService circuit = mock(CircuitBreakerService.class);
         ResponseEntity<String> response = upstream(handler(provider, mock(MetricsService.class), circuit, client), provider, "target");
         Assertions.assertThat(response.getStatusCode().value()).isEqualTo(expectedStatus);
-        if (expectedStatus == 504) {
+        if (failure instanceof UnknownHostException) {
+            // The SSRF resolver blocking a target is not a provider failure
+            verify(circuit, never()).recordFailure(anyString(), anyLong(), any());
+        } else {
             verify(circuit).recordFailure(eq(PROVIDER_NAME), anyLong(), same(failure));
         }
     }

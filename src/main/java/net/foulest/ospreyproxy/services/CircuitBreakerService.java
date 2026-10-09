@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -102,7 +103,11 @@ public class CircuitBreakerService {
      */
     public void recordFailure(@NonNull String providerName, long durationNanos,
                               @NonNull Throwable throwable) {
-        circuitBreaker(providerName).onError(durationNanos, TimeUnit.NANOSECONDS, throwable);
+        // Callers invoke this only for real failures, but Resilience4j counts a throwable outside
+        // record-exceptions as a success. Wrapping non-I/O causes (e.g. the "HTTP 429" marker) in an
+        // IOException, which is a recorded type, makes every reported failure count.
+        Throwable recorded = throwable instanceof IOException ? throwable : new IOException(throwable.getMessage(), throwable);
+        circuitBreaker(providerName).onError(durationNanos, TimeUnit.NANOSECONDS, recorded);
     }
 
     /**

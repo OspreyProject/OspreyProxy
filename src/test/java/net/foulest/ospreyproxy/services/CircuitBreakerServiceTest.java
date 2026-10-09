@@ -40,4 +40,21 @@ class CircuitBreakerServiceTest {
 
         Assertions.assertThat(service.isOpen("downstream")).isTrue();
     }
+
+    @Test
+    void countsNonIoFailuresSuchAsHttpStatusMarkersTowardOpeningTheCircuit() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .slidingWindowSize(1)
+                .minimumNumberOfCalls(1)
+                .failureRateThreshold(1)
+                .recordExceptions(java.io.IOException.class)
+                .waitDurationInOpenState(Duration.ofMinutes(1))
+                .build();
+        CircuitBreakerRegistry registry = CircuitBreakerRegistry.of(config);
+        CircuitBreakerService service = new CircuitBreakerService(registry);
+
+        service.recordFailure("limited", 9, new RuntimeException("HTTP 429"));
+
+        Assertions.assertThat(service.isOpen("limited")).isTrue();
+    }
 }

@@ -177,7 +177,7 @@ public interface Provider {
      * This is the common case: most providers report exactly one verdict per URL.
      * Single-result API providers (e.g. PrecisionSec, ChainPatrol) override this.
      * Providers whose upstream can report several independent categories for one URL
-     * (e.g. AlphaMountain) override {@link #interpretAll} instead and leave this alone.
+     * override {@link #interpretAll} instead and leave this alone.
      * DNS providers use a separate {@link AbstractDNSProvider#interpret} contract.
      * <p>
      * The default implementation returns {@link LookupResult#FAILED}, which is safe
@@ -201,8 +201,8 @@ public interface Provider {
      * and get a one-element verdict for free.
      * <p>
      * Override this method directly only when a single URL can legitimately map to multiple
-     * independent categories at once (e.g. AlphaMountain reporting that a host is both newly
-     * registered and malicious). Such providers should not also override {@link #interpret}.
+     * independent categories at once (e.g. a host that is both newly registered and malicious).
+     * Such providers should not also override {@link #interpret}.
      *
      * @param responseBytes The validated, non-empty upstream response bytes.
      * @param url The normalized URL that was checked, for logging context.
