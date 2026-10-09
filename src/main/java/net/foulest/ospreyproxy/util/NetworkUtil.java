@@ -91,7 +91,9 @@ public final class NetworkUtil {
     private static final Pattern ENCODING_PATTERN = Pattern.compile("%(?![0-9a-fA-F]{2})");
     private static final Pattern IPV6_AUTHORITY_PREFIX = Pattern.compile(
             "^[a-zA-Z][a-zA-Z0-9+.\\-]*://(?:[^/?#@\\[]*@)?\\[[0-9a-fA-F:.]+]");
-    private static final Pattern ASCII_LABEL = Pattern.compile("\\w(?:[\\w-]{0,61}\\w)?");
+    // Letters, digits, underscores, and hyphens anywhere in the label, including the first or last
+    // character: browsers resolve such hosts, so rejecting them would leave them unchecked.
+    private static final Pattern ASCII_LABEL = Pattern.compile("[\\w-]{1,63}");
 
     /**
      * Checks if an {@link InetAddress} is private or internal.
@@ -391,7 +393,7 @@ public final class NetworkUtil {
      * @param url The URL string to encode.
      * @return The encoded URL.
      */
-    static @NonNull String encodeIllegalUriChars(@NonNull String url) {
+    public static @NonNull String encodeIllegalUriChars(@NonNull String url) {
         url = Normalizer.normalize(url, Normalizer.Form.NFC);
 
         // Keep the brackets of an IPv6 host literal; encoding them would hide the host from URI.getHost()

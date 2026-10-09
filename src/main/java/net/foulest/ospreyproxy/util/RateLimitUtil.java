@@ -32,6 +32,11 @@ import org.jspecify.annotations.NonNull;
 public final class RateLimitUtil {
 
     /**
+     * Longest rejection message written to the log; longer ones are truncated.
+     */
+    private static final int MAX_LOG_MESSAGE_LENGTH = 1024;
+
+    /**
      * Checks if the given {@code hashedIp} is burst-blocked or has exceeded the burst rate limit.
      * Consumes one token from the burst bucket if not already blocked.
      *
@@ -103,12 +108,15 @@ public final class RateLimitUtil {
      * @param provider The provider to consume the invalid request token from.
      * @param hashedIp The hashed IP address to lookup and consume from.
      * @param providerName The provider name for logging purposes.
-     * @param logMessage The warning message to log when the request is rejected.
+     * @param rawLogMessage The warning message to log when the request is rejected. It may embed
+     *                      client-supplied text, so control characters are escaped and the length capped.
      */
     public static void rejectInvalidRequest(@NonNull Provider provider,
                                             @NonNull String hashedIp,
                                             @NonNull String providerName,
-                                            @NonNull String logMessage) {
+                                            @NonNull String rawLogMessage) {
+        String logMessage = sanitizeForLog(rawLogMessage);
+
         // Checks if abuse limiting is enabled for the provider
         if (!provider.isAbuseLimitingEnabled()) {
             if (!logMessage.isEmpty()) {
@@ -135,5 +143,28 @@ public final class RateLimitUtil {
         if (!logMessage.isEmpty()) {
             log.warn("[{}] {}", providerName, logMessage);
         }
+    }
+
+    /**
+     * Makes a message that may embed client-supplied text safe to write to a log line: every control
+     * character (including CR and LF, which could forge extra log lines) becomes an underscore, and
+     * the message is capped so an 8 KB URL cannot bloat the log.
+     *
+     * @param message The message to sanitize.
+     * @return The sanitized message.
+     */
+    static @NonNull String sanitizeForLog(@NonNull String message) {
+        int length = Math.min(message.length(), MAX_LOG_MESSAGE_LENGTH);
+        StringBuilder out = new StringBuilder(length + 3);
+
+        for (int i = 0; i < length; i++) {
+            char c = message.charAt(i);
+            out.append(Character.isISOControl(c) ? '_' : c);
+        }
+
+        if (message.length() > length) {
+            out.append("...");
+        }
+        return out.toString();
     }
 }

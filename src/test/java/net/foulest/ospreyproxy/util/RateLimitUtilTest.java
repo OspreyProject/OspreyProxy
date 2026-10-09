@@ -64,6 +64,13 @@ class RateLimitUtilTest {
     }
 
     @Test
+    void sanitizeForLogEscapesControlCharactersAndCapsLength() {
+        Assertions.assertThat(RateLimitUtil.sanitizeForLog("a\r\nFAKE [x] line\tb")).isEqualTo("a__FAKE [x] line_b");
+        Assertions.assertThat(RateLimitUtil.sanitizeForLog("x".repeat(5000))).hasSize(1027).endsWith("...");
+        Assertions.assertThat(RateLimitUtil.sanitizeForLog("plain")).isEqualTo("plain");
+    }
+
+    @Test
     void invalidRequestRejectionCoversDisabledLimiterAndOptionalMessages() {
         Provider provider = Mockito.mock(Provider.class);
         Mockito.when(provider.isAbuseLimitingEnabled()).thenReturn(false);

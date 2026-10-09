@@ -33,6 +33,7 @@ import org.jspecify.annotations.NonNull;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.util.*;
@@ -65,7 +66,7 @@ public final class RequestUtil {
      * {@code osprey.proxy.trusted-addresses}.
      */
     @Getter
-    private static volatile Set<String> trustedProxies = Set.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1");
+    private static volatile Set<String> trustedProxies = Set.of("127.0.0.1", "0:0:0:0:0:0:0:1");
 
     /**
      * Sets the addresses whose {@code X-Real-IP} header is trusted.
@@ -76,13 +77,44 @@ public final class RequestUtil {
         Set<String> normalized = new HashSet<>();
 
         for (String address : addresses) {
-            String ip = normalizeClientIp(address);
+            String ip = canonicalIpLiteral(address);
 
             if (ip != null) {
                 normalized.add(ip);
             }
         }
         trustedProxies = Set.copyOf(normalized);
+    }
+
+    /**
+     * Canonicalizes an IP literal so textual variants compare equal ({@code ::1},
+     * {@code 0:0:0:0:0:0:0:1}, {@code fd00::1} and Tomcat's expanded {@code fd00:0:0:0:0:0:0:1}).
+     * Never performs a DNS lookup: anything that is not a literal yields null.
+     *
+     * @param value The candidate literal.
+     * @return The JDK's canonical text form, or null.
+     */
+    static @Nullable String canonicalIpLiteral(@Nullable String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String candidate = value.strip();
+
+        if (candidate.startsWith("[") && candidate.endsWith("]")) {
+            candidate = candidate.substring(1, candidate.length() - 1);
+        }
+
+        if (candidate.isEmpty() || candidate.length() > 45 || !candidate.matches("[0-9A-Fa-f:.]+")
+                || !(candidate.indexOf(':') >= 0 || NetworkUtil.isIpLiteral(candidate))) {
+            return null;
+        }
+
+        try {
+            return InetAddress.getByName(candidate).getHostAddress().toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**
@@ -95,7 +127,9 @@ public final class RequestUtil {
     public static @Nullable String trustedRealIpHeader(@NonNull HttpServletRequest request) {
         String peer = request.getRemoteAddr();
 
-        if (peer == null || !trustedProxies.contains(peer.strip().toLowerCase(Locale.ROOT))) {
+        String canonicalPeer = canonicalIpLiteral(peer);
+
+        if (canonicalPeer == null || !trustedProxies.contains(canonicalPeer)) {
             return null;
         }
         return request.getHeader("X-Real-IP");
@@ -134,7 +168,41 @@ public final class RequestUtil {
             realIp = "unknown";
             log.warn("[{}] Could not determine client IP; applying rate limits to 'unknown' IP", context);
         }
-        return HashUtil.hashIp(realIp);
+        return HashUtil.hashIp(rateLimitKey(realIp));
+    }
+
+    /**
+     * Maps a client IP to the identity its rate limits are tracked under. IPv4 addresses (including
+     * IPv4-mapped IPv6) are used as is. A native IPv6 address is reduced to its /64, since a single
+     * subscriber is typically allocated at least a /64 and could otherwise rotate through addresses to
+     * get a fresh set of buckets for each one.
+     *
+     * @param ip A validated, normalized client IP literal (or {@code "unknown"}).
+     * @return The key to hash for rate limiting.
+     */
+    private static @NonNull String rateLimitKey(@NonNull String ip) {
+        if (ip.indexOf(':') < 0) {
+            return ip;
+        }
+
+        try {
+            // The literal was validated by normalizeClientIp, so this parses without any DNS lookup.
+            // An IPv4-mapped address comes back as an Inet4Address and is deliberately left unchanged.
+            if (!(InetAddress.getByName(ip) instanceof Inet6Address ipv6)) {
+                return ip;
+            }
+
+            byte[] bytes = ipv6.getAddress();
+            StringBuilder prefix = new StringBuilder(24);
+
+            for (int group = 0; group < 4; group++) {
+                prefix.append(Integer.toHexString(((bytes[group * 2] & 0xFF) << 8) | (bytes[group * 2 + 1] & 0xFF)))
+                        .append(':');
+            }
+            return prefix.append(":/64").toString();
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
+            return ip;
+        }
     }
 
     /**
@@ -367,9 +435,10 @@ public final class RequestUtil {
             String encoded = NetworkUtil.encodeIllegalUriChars(url);
             parsedUri = new URI(encoded).normalize();
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
+            // The raw URL and the parser's message (which echoes it) are client-controlled and may carry
+            // control characters, so neither is logged; only the length and exception type are
             RateLimitUtil.rejectInvalidRequest(provider, hashedIp, providerName,
-                    "Rejected request with malformed URL: '" + url
-                            + "' (" + e.getClass().getName() + ": " + e.getMessage() + ")"
+                    "Rejected request with malformed URL (" + length + " chars, " + e.getClass().getName() + ")"
             );
             throw new StatusCodeException(ErrorUtil.RESP_400);
         }

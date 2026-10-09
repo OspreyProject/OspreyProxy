@@ -11,6 +11,7 @@ import net.foulest.ospreyproxy.providers.Provider;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
@@ -29,7 +30,7 @@ class RequestUtilTest {
         Mockito.when(request.getRemoteAddr()).thenReturn("127.0.0.1");
         Mockito.when(request.getHeader("X-Real-IP")).thenReturn(" 2001:DB8::1 ");
         Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME))
-                .isEqualTo(HashUtil.hashIp("2001:db8::1"));
+                .isEqualTo(HashUtil.hashIp("2001:db8:0:0::/64"));
 
         Mockito.when(request.getHeader("X-Real-IP")).thenReturn("not-an-ip");
         Mockito.when(request.getRemoteAddr()).thenReturn(" 127.0.0.1 ");
@@ -48,6 +49,40 @@ class RequestUtilTest {
         Mockito.when(request.getRemoteAddr()).thenReturn(null);
         Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME))
                 .isEqualTo(HashUtil.hashIp("unknown"));
+    }
+
+    @Test
+    void hashClientIpGroupsIpv6AddressesByTheirSlash64() {
+        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+        Mockito.when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+
+        Mockito.when(request.getHeader("X-Real-IP")).thenReturn("2001:db8:1:2::1");
+        String first = RequestUtil.hashClientIp(request, PROVIDER_NAME);
+        Mockito.when(request.getHeader("X-Real-IP")).thenReturn("2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+        Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME)).isEqualTo(first);
+
+        Mockito.when(request.getHeader("X-Real-IP")).thenReturn("2001:db8:1:3::1");
+        Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME)).isNotEqualTo(first);
+
+        // IPv4 and IPv4-mapped addresses are single hosts and keep their own identity
+        Mockito.when(request.getHeader("X-Real-IP")).thenReturn("203.0.113.9");
+        Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME))
+                .isEqualTo(HashUtil.hashIp("203.0.113.9"));
+    }
+
+    @Test
+    void malformedUrlRejectionDoesNotLogTheClientControlledUrl() {
+        Provider provider = Mockito.mock(Provider.class);
+        Mockito.when(provider.isAbuseLimitingEnabled()).thenReturn(false);
+        String injected = "http://a b\nFAKE LOG LINE";
+
+        try (MockedStatic<RateLimitUtil> limits = Mockito.mockStatic(RateLimitUtil.class)) {
+            assertStatus(400, () -> RequestUtil.validateURI(injected, provider, PROVIDER_NAME, HASHED_IP));
+
+            limits.verify(() -> RateLimitUtil.rejectInvalidRequest(Mockito.eq(provider), Mockito.eq(HASHED_IP),
+                    Mockito.eq(PROVIDER_NAME), Mockito.argThat(message -> !message.contains("FAKE")
+                            && !message.contains("\n") && message.contains("malformed URL"))));
+        }
     }
 
     @Test
@@ -77,7 +112,7 @@ class RequestUtilTest {
 
         Mockito.when(request.getHeader("X-Real-IP")).thenReturn("ABCD:EF01::1");
         Assertions.assertThat(RequestUtil.hashClientIp(request, PROVIDER_NAME))
-                .isEqualTo(HashUtil.hashIp("abcd:ef01::1"));
+                .isEqualTo(HashUtil.hashIp("abcd:ef01:0:0::/64"));
     }
 
     @Test
@@ -204,8 +239,10 @@ class RequestUtilTest {
         assertStatus(400, () -> RequestUtil.validateHost(new URI("http://host"), provider, PROVIDER_NAME, HASHED_IP));
         assertStatus(400, () -> RequestUtil.validateHost(new URI("http://service.local"), provider, PROVIDER_NAME, HASHED_IP));
         assertStatus(400, () -> RequestUtil.validateHost(new URI("http://bad::address"), provider, PROVIDER_NAME, HASHED_IP));
-        assertStatus(400, () -> RequestUtil.validateHost(new URI("http://-bad.example"), provider, PROVIDER_NAME, HASHED_IP));
-        assertStatus(400, () -> RequestUtil.validateHost(new URI("http://bad-.example"), provider, PROVIDER_NAME, HASHED_IP));
+        Assertions.assertThat(RequestUtil.validateHost(new URI("http://-bad.example"), provider,
+                PROVIDER_NAME, HASHED_IP)).isEqualTo("-bad.example");
+        Assertions.assertThat(RequestUtil.validateHost(new URI("http://bad-.example"), provider,
+                PROVIDER_NAME, HASHED_IP)).isEqualTo("bad-.example");
         assertStatus(400, () -> RequestUtil.validateHost(new URI("http://user@bad_host.example"), provider,
                 PROVIDER_NAME, HASHED_IP));
         Assertions.assertThat(RequestUtil.validateHost(new URI("http://bad_.example"), provider,
