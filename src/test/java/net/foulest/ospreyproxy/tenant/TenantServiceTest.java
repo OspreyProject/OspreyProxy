@@ -86,6 +86,28 @@ class TenantServiceTest {
     }
 
     @Test
+    void outOfRangeRateValuesFallBackAndDoNotBreakReload() throws Exception {
+        Path store = temporaryDirectory.resolve("tenants.properties");
+        Files.writeString(store, """
+                tenant.alpha.keys=key
+                tenant.alpha.rate.burst-window-seconds=9999999999999
+                tenant.alpha.rate.sustained-window-seconds=9223372036854775807
+                """);
+        TenantService service = service(true, store.toString());
+        service.init();
+
+        Assertions.assertThat(service.resolve("key").rate).isEqualTo(new RateSettings(11, 1, 400, 60));
+    }
+
+    @Test
+    void enabledServiceRejectsInvalidDefaultRates() {
+        Assertions.assertThatThrownBy(() -> new TenantService(true, "X-Tenant", "", 0, 1, 400, 60))
+                .isInstanceOf(IllegalArgumentException.class);
+        Assertions.assertThatCode(() -> new TenantService(false, "X-Tenant", "", 0, 1, 400, 60))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void parsesIgnoredFieldsCollisionsAndReloadsTenantChanges() throws Exception {
         Path store = temporaryDirectory.resolve("tenants.properties");
         Files.writeString(store, """
@@ -251,6 +273,24 @@ class TenantServiceTest {
 
     private static TenantService failureService(String storePath) {
         return new TenantService(true, "X-Osprey-Tenant-Key", storePath, 11L, 1L, 400L, 60L);
+    }
+
+    @Test
+    void malformedStoreKeepsPreviousTenantsAndDoesNotRetryUntilTheFileChanges() throws Exception {
+        Path store = temporaryDirectory.resolve("tenants.properties");
+        Files.writeString(store, "tenant.beta.keys=beta" + System.lineSeparator());
+        TenantService service = service(true, store.toString());
+        service.init();
+        Assertions.assertThat(service.resolve("beta")).isNotNull();
+
+        // A malformed unicode escape makes Properties.load throw an unchecked exception
+        reloadAfterChanging(store, service, "tenant.gamma.keys=bad\\u12\n");
+        Assertions.assertThat(service.resolve("beta")).isNotNull();
+        Assertions.assertThat(service.resolve("missing")).isNull();
+
+        reloadAfterChanging(store, service, "tenant.beta.keys=beta" + System.lineSeparator()
+                + "tenant.delta.keys=delta-key" + System.lineSeparator());
+        Assertions.assertThat(service.resolve("delta-key")).isNotNull();
     }
 
     private static TenantService service(boolean enabled, String path) {

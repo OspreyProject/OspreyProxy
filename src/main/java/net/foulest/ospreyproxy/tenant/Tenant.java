@@ -14,8 +14,7 @@ public final class Tenant {
 
     private final String id;
     public final RateSettings rate;
-    private final Bucket burstBucket;
-    private final Bucket sustainedBucket;
+    private final Bucket bucket;
 
     /**
      * Constructs a new Tenant with the given id and rate settings.
@@ -37,8 +36,9 @@ public final class Tenant {
                 .refillGreedy(rate.sustainedCapacity(), Duration.ofSeconds(rate.sustainedWindowSeconds()))
                 .build();
 
-        burstBucket = Bucket.builder().addLimit(burst).build();
-        sustainedBucket = Bucket.builder().addLimit(sustained).build();
+        // One bucket holding both limits, so a request is admitted or refused atomically: a request
+        // refused by one limit never spends a token from the other
+        bucket = Bucket.builder().addLimit(burst).addLimit(sustained).build();
     }
 
     /**
@@ -57,8 +57,6 @@ public final class Tenant {
      *         either its burst or sustained allowance.
      */
     public boolean tryConsume() {
-        boolean burstOk = burstBucket.tryConsume(1);
-        boolean sustainedOk = sustainedBucket.tryConsume(1);
-        return burstOk && sustainedOk;
+        return bucket.tryConsume(1);
     }
 }

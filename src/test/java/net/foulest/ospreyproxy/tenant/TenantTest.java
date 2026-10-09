@@ -20,4 +20,23 @@ class TenantTest {
         Assertions.assertThat(sustainedLimited.tryConsume()).isTrue();
         Assertions.assertThat(sustainedLimited.tryConsume()).isFalse();
     }
+
+    @Test
+    void refusedRequestsDoNotSpendTokensFromTheOtherLimit() {
+        // Burst of 1 per minute, sustained of 3 per minute: only one request fits the burst limit
+        Tenant tenant = new Tenant("flooded", new RateSettings(1, 60, 3, 60));
+
+        Assertions.assertThat(tenant.tryConsume()).isTrue();
+
+        for (int i = 0; i < 100; i++) {
+            Assertions.assertThat(tenant.tryConsume()).isFalse();
+        }
+
+        // The 100 refused requests must not have drained the sustained budget (2 tokens remain)
+        Tenant sustainedProbe = new Tenant("probe", new RateSettings(10, 60, 3, 60));
+        Assertions.assertThat(sustainedProbe.tryConsume()).isTrue();
+        Assertions.assertThat(sustainedProbe.tryConsume()).isTrue();
+        Assertions.assertThat(sustainedProbe.tryConsume()).isTrue();
+        Assertions.assertThat(sustainedProbe.tryConsume()).isFalse();
+    }
 }

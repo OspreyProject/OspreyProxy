@@ -92,6 +92,9 @@ public class TenantService {
     private static final String SHA_256 = "SHA-256";
     private static final String TENANT_PREFIX = "tenant.";
 
+    // Upper bound for any capacity or window (seconds) so Duration.toNanos() cannot overflow in Bucket4j
+    private static final long MAX_RATE_VALUE = 1_000_000_000L;
+
     // Do not stat the store file more than once per second, so a request burst does not turn into a
     // syscall storm. Key rotation is a human-timescale action, so a one-second reload lag is fine.
     private static final long STAT_THROTTLE_NANOS = Duration.ofSeconds(1).toNanos();
@@ -134,6 +137,11 @@ public class TenantService {
                          @Value("${osprey.tenant.rate.burst-window-seconds:1}") long defaultBurstWindowSeconds,
                          @Value("${osprey.tenant.rate.sustained-capacity:400}") long defaultSustainedCapacity,
                          @Value("${osprey.tenant.rate.sustained-window-seconds:60}") long defaultSustainedWindowSeconds) {
+        if (enabled && !(isValidRateValue(defaultBurstCapacity) && isValidRateValue(defaultBurstWindowSeconds)
+                && isValidRateValue(defaultSustainedCapacity) && isValidRateValue(defaultSustainedWindowSeconds))) {
+            throw new IllegalArgumentException("osprey.tenant.rate.* values must each be between 1 and " + MAX_RATE_VALUE);
+        }
+
         this.enabled = enabled;
         this.headerName = headerName;
         storePath = storePathValue.isBlank() ? null : Path.of(storePathValue.strip());
@@ -264,6 +272,58 @@ public class TenantService {
      * @param configuredStorePath The configured, non-null tenant store path.
      */
     private void reload(@NonNull Path configuredStorePath) {
+        // Stat before reading: a write that lands during the read then leaves a newer mtime on disk
+        // than the one recorded, so the next check reloads again instead of treating it as seen.
+        Long modifiedBeforeRead = statModified(configuredStorePath);
+
+        try {
+            doReload(configuredStorePath, modifiedBeforeRead);
+        } catch (@SuppressWarnings("OverlyBroadCatchBlock") RuntimeException e) {
+            // A malformed escape in the file, or a rate setting the buckets reject, must not escape into
+            // request handling. Keep the last-known-good tenants and stop retrying until the file changes.
+            log.warn("[tenant] Keeping previous tenants; tenant store {} could not be applied: {}",
+                    configuredStorePath, e.getClass().getName()
+            );
+            recordModified(modifiedBeforeRead);
+        }
+    }
+
+    /**
+     * Reads the store's modification time.
+     *
+     * @param configuredStorePath The configured, non-null tenant store path.
+     * @return The modification time in epoch millis, or {@code null} if it could not be read.
+     */
+    private static @Nullable Long statModified(@NonNull Path configuredStorePath) {
+        try {
+            return Files.getLastModifiedTime(configuredStorePath).toMillis();
+        } catch (IOException e) {
+            log.warn("[tenant] Could not stat tenant store {}: {}",
+                    configuredStorePath, e.getClass().getName()
+            );
+            return null;
+        }
+    }
+
+    /**
+     * Records the store's modification time so the next {@link #maybeReload()} is a no-op until it changes.
+     * Does nothing when the time is unknown, so the next check simply tries again.
+     *
+     * @param modified The modification time read before the store was parsed, or {@code null}.
+     */
+    private void recordModified(@Nullable Long modified) {
+        if (modified != null) {
+            lastModifiedMillis = modified;
+        }
+    }
+
+    /**
+     * Performs the read, parse, and swap for {@link #reload}.
+     *
+     * @param configuredStorePath The configured, non-null tenant store path.
+     * @param modifiedBeforeRead The store's modification time read before parsing, or {@code null}.
+     */
+    private void doReload(@NonNull Path configuredStorePath, @Nullable Long modifiedBeforeRead) {
         Properties properties = new Properties();
 
         try (InputStream in = Files.newInputStream(configuredStorePath)) {
@@ -307,14 +367,7 @@ public class TenantService {
         }
 
         applyParsed(parsedKeys, parsedRates);
-
-        try {
-            lastModifiedMillis = Files.getLastModifiedTime(configuredStorePath).toMillis();
-        } catch (IOException e) {
-            log.warn("[tenant] Could not record tenant store mtime: {}",
-                    e.getClass().getName()
-            );
-        }
+        recordModified(modifiedBeforeRead);
     }
 
     /**
@@ -444,16 +497,28 @@ public class TenantService {
     }
 
     /**
-     * Parses a positive {@code long}, falling back to a default on any malformed or non-positive value.
+     * Whether a capacity or window value is usable: positive, and small enough that converting a window
+     * to nanoseconds cannot overflow when the token bucket is built.
+     *
+     * @param value The capacity or window-seconds value.
+     * @return {@code true} if the value is within {@code 1..MAX_RATE_VALUE}.
+     */
+    private static boolean isValidRateValue(long value) {
+        return value > 0 && value <= MAX_RATE_VALUE;
+    }
+
+    /**
+     * Parses a positive {@code long}, falling back to a default on any malformed, non-positive or
+     * out-of-range value.
      *
      * @param value The raw string value.
-     * @param fallback The value to use when parsing fails or the result is not positive.
+     * @param fallback The value to use when parsing fails or the result is out of range.
      * @return The parsed value, or {@code fallback}.
      */
     private static long parseLong(@NonNull String value, long fallback) {
         try {
             long parsed = Long.parseLong(value.strip());
-            return parsed > 0 ? parsed : fallback;
+            return isValidRateValue(parsed) ? parsed : fallback;
         } catch (NumberFormatException e) {
             return fallback;
         }
