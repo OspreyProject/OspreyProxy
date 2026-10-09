@@ -23,7 +23,7 @@ import net.foulest.ospreyproxy.store.ScanStore;
 import net.foulest.ospreyproxy.util.JacksonUtil;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -48,7 +48,7 @@ import java.util.*;
  */
 @Slf4j
 @Service
-@ConditionalOnBean(ScanStore.class)
+@ConditionalOnProperty(name = "osprey.store.enabled", havingValue = "true")
 public class IndexingService {
 
     private static final String HOST = "osprey.ac";
