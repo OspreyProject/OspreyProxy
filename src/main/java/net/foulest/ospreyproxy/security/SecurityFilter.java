@@ -1,5 +1,9 @@
 package net.foulest.ospreyproxy.security;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -7,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.foulest.ospreyproxy.tenant.Tenant;
 import net.foulest.ospreyproxy.tenant.TenantService;
 import net.foulest.ospreyproxy.util.ErrorUtil;
+import net.foulest.ospreyproxy.util.RequestUtil;
 import org.jetbrains.annotations.Contract;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +21,7 @@ import org.springframework.http.MediaType;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Set;
 
 /**
@@ -46,6 +52,18 @@ public class SecurityFilter implements Filter {
             "check", "result", "internal", "actuator", "error", "favicon.ico", "updates", "reporting", "contact",
             "submit"
     );
+
+    // Failed tenant-key attempts allowed per client IP per minute. Beyond this the client is refused with
+    // 429 before any key lookup, which bounds both key guessing and the volume of failure log lines.
+    private static final Bandwidth AUTH_FAILURE_LIMIT = Bandwidth.builder()
+            .capacity(20)
+            .refillGreedy(20, Duration.ofMinutes(1))
+            .build();
+
+    private final Cache<String, Bucket> authFailureBuckets = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofMinutes(10))
+            .maximumSize(20_000)
+            .build();
 
     // Resolves and rate-limits tenants on extension-facing endpoints
     private final TenantService tenantService;
@@ -154,13 +172,26 @@ public class SecurityFilter implements Filter {
             return true;
         }
 
+        String hashedIp = RequestUtil.hashClientIp(request, "tenant-auth");
+        Bucket failures = authFailureBuckets.get(hashedIp, ignored -> Bucket.builder().addLimit(AUTH_FAILURE_LIMIT).build());
+
+        // A client that has used up its failed-attempt budget is refused before any key lookup
+        if (failures.getAvailableTokens() <= 0L) {
+            sendError(response, 429, ErrorUtil.BODY_429);
+            return false;
+        }
+
         String key = request.getHeader(tenantService.getHeaderName());
         Tenant tenant = tenantService.resolve(key);
 
         // Reject a missing or unknown key without revealing which of the two it was. Submission-feed
         // keys live in the same store but only ever authorize POST /submit/{feed}, never lookups.
         if (tenant == null || tenant.id().startsWith(TenantService.SUBMIT_TENANT_PREFIX)) {
-            log.warn("Rejected provider request with missing or invalid tenant key");
+            // Logged only while the client is within its failure budget, so a flood cannot flood the log
+            if (failures.tryConsume(1)) {
+                log.warn("Rejected provider request with missing or invalid tenant key");
+            }
+
             sendError(response, HttpServletResponse.SC_UNAUTHORIZED, ErrorUtil.BODY_401);
             return false;
         }

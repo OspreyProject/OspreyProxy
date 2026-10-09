@@ -164,6 +164,28 @@ class SecurityFilterTest {
                 providerWithoutLeadingSlash.response);
     }
 
+    @Test
+    void refusesClientsThatExhaustTheirFailedKeyBudgetBeforeAnyKeyLookup() throws Exception {
+        TenantService tenants = mock(TenantService.class);
+        when(tenants.isEnabled()).thenReturn(true);
+        when(tenants.getHeaderName()).thenReturn("X-Key");
+        SecurityFilter filter = new SecurityFilter(tenants);
+
+        for (int i = 0; i < 20; i++) {
+            Invocation failed = invocation("POST", "/provider", 2, "application/json");
+            filter.doFilter(failed.request, failed.response, failed.chain);
+            verify(failed.response).setStatus(401);
+        }
+        verify(tenants, times(20)).resolve(any());
+
+        // The budget is spent: further attempts from the same client are refused without a lookup
+        Invocation refused = invocation("POST", "/provider", 2, "application/json");
+        filter.doFilter(refused.request, refused.response, refused.chain);
+        verify(refused.response).setStatus(429);
+        verifyNoInteractions(refused.chain);
+        verify(tenants, times(20)).resolve(any());
+    }
+
     private static Invocation invocation(String method, String path, long contentLength, String contentType) throws Exception {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
