@@ -66,6 +66,9 @@ public class ScanStore {
     // Maximum records deleted per prune pass
     private final int pruneLimit;
 
+    // Upper bound on batches deleted by one scheduled prune run
+    private static final int MAX_PRUNE_PASSES = 200;
+
     private final RowMapper<ScanRecord> mapper = (ResultSet rs, int rowNum) -> {
         Map<String, List<String>> results = parseResults(rs.getString("results_json"));
         long published = rs.getLong("published_at");
@@ -92,7 +95,7 @@ public class ScanStore {
      *
      * @param scanJdbcTemplate The JdbcTemplate bound to the SQLite scan database.
      * @param retentionDays How long a non-indexable record is kept before pruning; zero disables it.
-     * @param pruneLimit The maximum number of records deleted per prune pass.
+     * @param pruneLimit The maximum number of records deleted per prune batch.
      */
     public ScanStore(@NonNull JdbcTemplate scanJdbcTemplate,
                      @Value("${osprey.store.retention.days:90}") long retentionDays,
@@ -129,6 +132,15 @@ public class ScanStore {
 
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_scan_publish "
                 + "ON scan_result (indexable, published_at)");
+
+        // Before indexing was limited to host roots, any flagged path could become a public page.
+        // Retire those records so the site and the index feed stop publishing them.
+        int retired = jdbc.update("UPDATE scan_result SET indexable = 0, published_at = NULL "
+                + "WHERE indexable = 1 AND canonical_url <> 'https://' || host");
+
+        if (retired > 0) {
+            log.warn("[store] Retired {} path-level records from indexing", retired);
+        }
 
         log.warn("[store] Schema ready");
     }
@@ -252,7 +264,7 @@ public class ScanStore {
     }
 
     /**
-     * Periodically prunes stale non-indexable records. Disabled when retention is zero or negative.
+     * Periodically prunes stale non-indexable records, in batches until the backlog is drained. Disabled when retention is zero or negative.
      */
     @Scheduled(initialDelayString = "${osprey.store.retention.initial-delay-millis:600000}",
             fixedDelayString = "${osprey.store.retention.interval-millis:86400000}")
@@ -261,7 +273,19 @@ public class ScanStore {
             return;
         }
 
-        int deleted = pruneStale(System.currentTimeMillis() - retentionMillis, pruneLimit);
+        long cutoff = System.currentTimeMillis() - retentionMillis;
+        int deleted = 0;
+
+        // Keep deleting full batches so a backlog larger than one batch drains instead of growing
+        // without bound; the pass cap keeps a single run from holding the database for too long.
+        for (int pass = 0; pass < MAX_PRUNE_PASSES && pruneLimit > 0; pass++) {
+            int batch = pruneStale(cutoff, pruneLimit);
+            deleted += batch;
+
+            if (batch < pruneLimit) {
+                break;
+            }
+        }
 
         if (deleted > 0) {
             log.warn("[store] Pruned {} stale record(s)", deleted);

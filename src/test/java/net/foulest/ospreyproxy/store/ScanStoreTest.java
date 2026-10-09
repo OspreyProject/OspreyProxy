@@ -48,6 +48,26 @@ class ScanStoreTest {
     }
 
     @Test
+    void scheduledPruningDrainsABacklogLargerThanOneBatch() {
+        JdbcTemplate jdbc = Mockito.mock(JdbcTemplate.class);
+        Mockito.when(jdbc.update(anyString(), anyLong(), eq(4))).thenReturn(4, 4, 1);
+
+        new ScanStore(jdbc, 1, 4).pruneScheduled();
+
+        Mockito.verify(jdbc, Mockito.times(3)).update(anyString(), anyLong(), eq(4));
+    }
+
+    @Test
+    void scheduledPruningStopsAfterThePassCap() {
+        JdbcTemplate jdbc = Mockito.mock(JdbcTemplate.class);
+        Mockito.when(jdbc.update(anyString(), anyLong(), eq(4))).thenReturn(4);
+
+        new ScanStore(jdbc, 1, 4).pruneScheduled();
+
+        Mockito.verify(jdbc, Mockito.times(200)).update(anyString(), anyLong(), eq(4));
+    }
+
+    @Test
     void getReturnsNullForNoRowsAndDatabaseFailure() {
         JdbcTemplate jdbc = Mockito.mock(JdbcTemplate.class);
         ScanStore store = new ScanStore(jdbc, 1, 2);

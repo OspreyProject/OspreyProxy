@@ -17,6 +17,8 @@
  */
 package net.foulest.ospreyproxy.store;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,10 +63,23 @@ public class StoreConfig {
         config.setBusyTimeout(busyTimeoutMillis);
         config.enforceForeignKeys(true);
 
-        SQLiteDataSource dataSource = new SQLiteDataSource(config);
-        dataSource.setUrl("jdbc:sqlite:" + path);
+        SQLiteDataSource sqlite = new SQLiteDataSource(config);
+        sqlite.setUrl("jdbc:sqlite:" + path);
+
+        // Exactly one pooled connection: writers are serialized in-process (no SQLITE_BUSY between them),
+        // and the pragmas are applied once per connection instead of on every call. Callers queue on the
+        // pool for at most the busy timeout. maxLifetime 0 keeps the connection (and an in-memory
+        // database) for the life of the pool.
+        HikariConfig pool = new HikariConfig();
+        pool.setPoolName("scan-store");
+        pool.setDataSource(sqlite);
+        pool.setMaximumPoolSize(1);
+        pool.setMinimumIdle(1);
+        pool.setMaxLifetime(0L);
+        pool.setConnectionTimeout(Math.max(250L, busyTimeoutMillis));
+
         log.warn("[store] Scan store enabled at {}", path);
-        return dataSource;
+        return new HikariDataSource(pool);
     }
 
     /**
