@@ -275,6 +275,18 @@ class AbstractProviderTest {
         Assertions.assertThat(secondsUntilUnblock).isBetween(3590L, 3600L);
     }
 
+    @Test
+    void blockBurstStaysBlockedAfterManyRepeatViolations() throws ReflectiveOperationException {
+        for (int i = 0; i < 200; i++) {
+            provider.blockBurst("persistent-violator.example");
+        }
+
+        Cache<String, Instant> blocked = cacheField(provider, "burstBlockedCache");
+        Instant unblockTime = blocked.getIfPresent("persistent-violator.example");
+        Assertions.assertThat(unblockTime).isNotNull();
+        Assertions.assertThat(Duration.between(Instant.now(), unblockTime).getSeconds()).isBetween(3590L, 3600L);
+    }
+
     // --- blockSustained ---
 
     @Test
@@ -293,6 +305,18 @@ class AbstractProviderTest {
         Cache<String, Integer> violations = cacheField(provider, "sustainedViolationCount");
         Assertions.assertThat(violations.getIfPresent("violator.example")).isEqualTo(1);
         Assertions.assertThat(provider.getSustainedBucket("violator.example")).isNotSameAs(original);
+    }
+
+    @Test
+    void blockSustainedStaysBlockedAfterManyRepeatViolations() throws ReflectiveOperationException {
+        for (int i = 0; i < 200; i++) {
+            provider.blockSustained("persistent-violator.example");
+        }
+
+        Cache<String, Instant> blocked = cacheField(provider, "sustainedBlockedCache");
+        Instant unblockTime = blocked.getIfPresent("persistent-violator.example");
+        Assertions.assertThat(unblockTime).isNotNull();
+        Assertions.assertThat(Duration.between(Instant.now(), unblockTime).getSeconds()).isBetween(3590L, 3600L);
     }
 
     @Test
@@ -359,5 +383,22 @@ class AbstractProviderTest {
         Assertions.assertThat(first).isNotEqualTo(second);
         Assertions.assertThat(first).isEqualTo("#1");
         Assertions.assertThat(second).isEqualTo("#2");
+    }
+
+    @Test
+    void escalatedBlockSecondsDoublesThenCapsAndNeverOverflows() {
+        java.time.Duration base = java.time.Duration.ofSeconds(60);
+
+        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, 1)).isEqualTo(60);
+        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, 2)).isEqualTo(120);
+        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, 7)).isEqualTo(3600);
+
+        for (int violations : new int[]{56, 57, 63, 64, 1000, Integer.MAX_VALUE}) {
+            Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, violations)).isEqualTo(3600);
+            Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(java.time.Duration.ofSeconds(5), violations))
+                    .isEqualTo(3600);
+        }
+
+        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(java.time.Duration.ofDays(1), 50)).isEqualTo(3600);
     }
 }

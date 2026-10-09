@@ -36,6 +36,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class AbstractProvider implements Provider {
 
+    private static final long MAX_BLOCK_SECONDS = 3600L;
+    private static final int MAX_BLOCK_DOUBLINGS = 12;
     private static final int RATE_LIMIT_CACHE_MAX_SIZE = 20_000;
     private static final int VIOLATOR_ID_CACHE_MAX_SIZE = 5_000;
     private static final int ALLOWED_RESULT_CACHE_MAX_SIZE = 25_000;
@@ -331,7 +333,7 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = burstViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(burstBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = escalatedBlockSeconds(burstBlockDuration, violations);
 
         burstBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         burstBucketCache.invalidate(ip);
@@ -345,7 +347,7 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = sustainedViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(sustainedBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = escalatedBlockSeconds(sustainedBlockDuration, violations);
 
         sustainedBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         sustainedBucketCache.invalidate(ip);
@@ -359,10 +361,25 @@ public abstract class AbstractProvider implements Provider {
         }
 
         int violations = invalidRequestViolationCount.asMap().merge(ip, 1, Integer::sum);
-        long blockSeconds = Math.min(invalidRequestBlockDuration.toSeconds() * (1L << Math.min(violations - 1, 62)), 3600L);
+        long blockSeconds = escalatedBlockSeconds(invalidRequestBlockDuration, violations);
 
         invalidRequestBlockedCache.put(ip, Instant.now().plusSeconds(blockSeconds));
         invalidRequestBucketCache.invalidate(ip);
+    }
+
+    /**
+     * Computes a block length that doubles with each repeat violation, capped at one hour. The doubling
+     * is limited before it is applied so a persistent offender cannot overflow the multiplication into
+     * a zero or negative (already expired) block.
+     *
+     * @param baseDuration The block length for a first violation.
+     * @param violations The offender's violation count, including the current one.
+     * @return The block length in seconds, between zero and 3600.
+     */
+    static long escalatedBlockSeconds(@NonNull Duration baseDuration, int violations) {
+        int shift = Math.max(0, Math.min(violations - 1, MAX_BLOCK_DOUBLINGS));
+        long base = Math.min(baseDuration.toSeconds(), MAX_BLOCK_SECONDS);
+        return Math.min(base << shift, MAX_BLOCK_SECONDS);
     }
 
     @Override
