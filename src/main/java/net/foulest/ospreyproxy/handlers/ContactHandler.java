@@ -76,13 +76,14 @@ import java.util.regex.Pattern;
  * hours and are pruned hourly; forwarded submissions are kept for a week and then pruned too,
  * since the email is the record.
  * <p>
- * Off by default and of no use to a self-hoster: it requires the scan store and a configured
+ * Off by default and of no use to a self-hoster: it requires the scan store (the handler stays
+ * disabled unless {@code osprey.store.enabled} is also true) and a configured
  * {@code spring.mail} transport, and every response carries a human-readable error the page shows
  * inline.
  */
 @Slf4j
 @RestController
-@ConditionalOnProperty(name = "osprey.contact.enabled", havingValue = "true")
+@ConditionalOnProperty(name = {"osprey.contact.enabled", "osprey.store.enabled"}, havingValue = "true")
 public class ContactHandler {
 
     private static final String CONTEXT = "contact";
