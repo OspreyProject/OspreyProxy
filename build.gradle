@@ -65,7 +65,7 @@ dependencies {
 
     // NullAway - compile-time null-safety checks
     errorprone 'com.google.errorprone:error_prone_core:2.50.0'
-    errorprone 'com.uber.nullaway:nullaway:0.14.1'
+    errorprone 'com.uber.nullaway:nullaway:0.14.2'
 
     // Testing - JUnit 5 + Mockito + AssertJ
     // https://docs.spring.io/spring-boot/reference/testing/index.html
