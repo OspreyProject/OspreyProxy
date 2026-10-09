@@ -315,7 +315,19 @@ public class ContactHandler {
         );
 
         try {
-            mailExecutor.execute(() -> sendVerificationEmail(email, token));
+            mailExecutor.execute(() -> {
+                // The sender was already told to check their inbox, so on failure the unusable row is
+                // removed and the recipient quota refunded, letting them retry without being locked out
+                if (!sendVerificationEmail(email, token)) {
+                    recipientBucket.addTokens(1);
+
+                    try {
+                        jdbc.update("DELETE FROM contact_submissions WHERE token_hash = ?", sha256(token));
+                    } catch (DataAccessException e) {
+                        log.warn("[contact] Failed to remove undeliverable submission ({})", e.getClass().getName());
+                    }
+                }
+            });
         } catch (RejectedExecutionException e) {
             // The user is told to retry rather than left waiting for an email that was never queued
             log.warn("[contact] Mail queue full; verification email not queued");
@@ -545,10 +557,11 @@ public class ContactHandler {
      *
      * @param to The sender's address.
      * @param token The raw verification token to embed in the link.
+     * @return {@code true} if the email was handed to the mail transport.
      */
-    private void sendVerificationEmail(@NonNull String to, @NonNull String token) {
+    private boolean sendVerificationEmail(@NonNull String to, @NonNull String token) {
         if (sender == null) {
-            return;
+            return false;
         }
 
         try {
@@ -571,8 +584,10 @@ public class ContactHandler {
                     + link + "\n\n"
                     + "If you did not send this, you can ignore this email; the message is discarded unless confirmed.", html);
             sender.send(mime);
+            return true;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[contact] Verification email delivery failed: {}", e.getClass().getName());
+            return false;
         }
     }
 

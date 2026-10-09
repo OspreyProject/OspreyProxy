@@ -465,6 +465,30 @@ class ContactHandlerTest {
         method.invoke(target, args);
     }
 
+    @Test
+    void submitRemovesTheRowAndRefundsTheRecipientQuotaWhenTheVerificationEmailFails() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        JavaMailSender sender = mailSender();
+        org.mockito.Mockito.doThrow(new org.springframework.mail.MailSendException("smtp down"))
+                .when(sender).send(any(MimeMessage.class));
+        ThreadPoolExecutor direct = mock(ThreadPoolExecutor.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(direct).execute(any(Runnable.class));
+        ContactHandler handler = handler(jdbc, sender, false, "", mock(HttpClient.class), direct);
+        Map<String, Object> body = Map.of(
+                "category", "general", "name", "Ada", "email", "ada@example.com",
+                "message", "This is a complete message.", "token", "ignored");
+
+        // More attempts than the per-recipient quota of 3 all succeed, since each failed send is refunded
+        for (int i = 0; i < 4; i++) {
+            assertThat(handler.submit(body, request("198.51.100." + (10 + i))).getStatusCode().value()).isEqualTo(200);
+        }
+
+        verify(jdbc, times(4)).update(startsWith("DELETE FROM contact_submissions"), any(Object[].class));
+    }
+
     @SuppressWarnings("unchecked")
     private static ContactHandler handler(long capacity) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
