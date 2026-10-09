@@ -233,7 +233,7 @@ public final class NetworkUtil {
             // outright, since its IPv4 embedding position varies by deployment.
             if (bytes[0] == 0x00 && (bytes[1] & 0xFF) == 0x64
                     && (bytes[2] & 0xFF) == 0xFF && (bytes[3] & 0xFF) == 0x9B) {
-                if (bytes[4] == 0x01) {
+                if (bytes[4] == 0x00 && bytes[5] == 0x01) {
                     return true; // 64:ff9b:1::/48 local-use prefix
                 }
 

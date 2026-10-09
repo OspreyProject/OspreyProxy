@@ -90,7 +90,10 @@ class NetworkUtilTest {
         Assertions.assertThat(isPrivate(ipv6(bytes(0x20, 0x02, 8, 8, 8, 8)))).isFalse();
         Assertions.assertThat(isPrivate(ipv6(compatible(127, 0, 0, 1)))).isTrue();
         Assertions.assertThat(isPrivate(ipv6(compatible(8, 8, 8, 8)))).isFalse();
-        Assertions.assertThat(isPrivate(ipv6(nat64(1, 127, 0, 0, 1)))).isTrue();
+        // 64:ff9b:1::/48 (RFC 8215) is blocked outright; 64:ff9b:100:: is outside it
+        Assertions.assertThat(isPrivate(ipv6(nat64(0, 127, 0, 0, 1, 1)))).isTrue();
+        Assertions.assertThat(isPrivate(ipv6(nat64(0, 8, 8, 8, 8, 1)))).isTrue();
+        Assertions.assertThat(isPrivate(ipv6(nat64(1, 127, 0, 0, 1)))).isFalse();
         Assertions.assertThat(isPrivate(ipv6(nat64(0, 127, 0, 0, 1)))).isTrue();
         Assertions.assertThat(isPrivate(ipv6(nat64(0, 8, 8, 8, 8)))).isFalse();
         Assertions.assertThat(isPrivate(ipv6(nat64(2, 8, 8, 8, 8)))).isFalse();
@@ -207,8 +210,13 @@ class NetworkUtilTest {
     }
 
     private static byte[] nat64(int fifthByte, int a, int b, int c, int d) {
+        return nat64(fifthByte, a, b, c, d, 0);
+    }
+
+    private static byte[] nat64(int fifthByte, int a, int b, int c, int d, int sixthByte) {
         byte[] bytes = bytes(0, 0x64, 0xff, 0x9b);
         bytes[4] = (byte) fifthByte;
+        bytes[5] = (byte) sixthByte;
         bytes[12] = (byte) a;
         bytes[13] = (byte) b;
         bytes[14] = (byte) c;
