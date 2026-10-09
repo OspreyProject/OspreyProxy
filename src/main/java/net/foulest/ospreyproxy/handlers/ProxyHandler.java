@@ -455,6 +455,7 @@ public class ProxyHandler {
                 // Rejects empty responses
                 if (responseBytes.length == 0) {
                     log.error("[{}] Upstream response was empty", providerName);
+                    circuitBreaker.recordFailure(providerName, durationNanos, new IOException("Empty response body"));
                     return ErrorUtil.RESP_502;
                 }
 

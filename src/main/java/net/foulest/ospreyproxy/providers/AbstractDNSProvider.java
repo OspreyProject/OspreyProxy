@@ -320,9 +320,14 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                     return null;
                 }
 
+                // A wrong Content-Type, unreadable or oversized body, or empty body means the resolver
+                // is misbehaving, so each counts toward the breaker like a 5xx. Other 4xx statuses are
+                // left out above because they reflect the query rather than the resolver's health.
                 if (!contentType.contains(accept)) {
                     EntityUtils.consumeQuietly(response.getEntity());
                     log.warn("[{}] Unexpected Content-Type '{}'", displayName, contentType);
+                    circuitBreakerService.recordFailure(displayName, System.nanoTime() - startNanos,
+                            new IOException("Unexpected Content-Type"));
                     return null;
                 }
 
@@ -334,6 +339,7 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
                 } catch (IOException e) {
                     EntityUtils.consumeQuietly(entity);
                     log.warn("[{}] Failed to read DNS response body", displayName);
+                    circuitBreakerService.recordFailure(displayName, System.nanoTime() - startNanos, e);
                     return null;
                 }
 
@@ -341,6 +347,8 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
 
                 if (body == null || body.length == 0) {
                     log.warn("[{}] Empty response body after {} ms", displayName, totalElapsedMs);
+                    circuitBreakerService.recordFailure(displayName, System.nanoTime() - startNanos,
+                            new IOException("Empty response body"));
                     return null;
                 }
 

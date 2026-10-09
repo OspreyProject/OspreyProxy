@@ -381,7 +381,7 @@ class AbstractDNSProviderTest {
 
         Assertions.assertThat(verdict).isEqualTo(LookupVerdict.FAILED);
         Mockito.verify(circuitBreakerService, Mockito.never()).recordSuccess(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong());
-        Mockito.verify(circuitBreakerService, Mockito.never()).recordFailure(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
+        Mockito.verify(circuitBreakerService).recordFailure(ArgumentMatchers.eq("TestDNS"), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
     }
 
     // --- fetchBytes: non-200 statuses ---
@@ -431,7 +431,7 @@ class AbstractDNSProviderTest {
 
         Assertions.assertThat(verdict).isEqualTo(LookupVerdict.FAILED);
         Mockito.verify(circuitBreakerService, Mockito.never()).recordSuccess(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong());
-        Mockito.verify(circuitBreakerService, Mockito.never()).recordFailure(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
+        Mockito.verify(circuitBreakerService).recordFailure(ArgumentMatchers.eq("TestDNS"), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
     }
 
     // --- fetchBytes: IOException while reading the body ---
@@ -445,7 +445,7 @@ class AbstractDNSProviderTest {
 
         Assertions.assertThat(verdict).isEqualTo(LookupVerdict.FAILED);
         Mockito.verify(circuitBreakerService, Mockito.never()).recordSuccess(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong());
-        Mockito.verify(circuitBreakerService, Mockito.never()).recordFailure(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
+        Mockito.verify(circuitBreakerService).recordFailure(ArgumentMatchers.eq("TestDNS"), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
     }
 
     // --- fetchBytes: client-level failure (outer catch) ---
