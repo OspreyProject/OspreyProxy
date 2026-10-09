@@ -108,7 +108,8 @@ public class UpdateService {
     public UpdateService(@Value("${osprey.updates.path:/var/lib/osprey/updates}") String path,
                          @Value("${osprey.updates.base-url:}") String baseUrl,
                          @Value("${osprey.updates.app-id:}") String configuredAppId) {
-        updatesDir = Path.of(path.strip());
+        // Absolute and normalized so the containment check in crxPath compares like with like
+        updatesDir = Path.of(path.strip()).toAbsolutePath().normalize();
         releasesPath = updatesDir.resolve(RELEASES_FILE);
         channelsPath = updatesDir.resolve(CHANNELS_FILE);
         this.baseUrl = stripTrailingSlash(baseUrl.strip());
@@ -281,15 +282,23 @@ public class UpdateService {
      * they change again.
      */
     private void reload() {
+        // Stat before reading: a write that lands during the read then leaves a newer mtime on disk
+        // than the one recorded, so the next check reloads again instead of treating it as seen.
+        long releasesStamp = lastModified(releasesPath);
+        long channelsStamp = lastModified(channelsPath);
+
         Map<String, Object> releasesDoc = readJson(releasesPath);
         Map<String, Object> channelsDoc = readJson(channelsPath);
 
-        // A missing releases file is a valid, if empty, state; a present-but-unparseable one keeps the
-        // last-known-good catalog rather than blanking it.
-        if (releasesDoc == null && Files.exists(releasesPath)) {
-            log.warn("[updates] Keeping previous catalog; {} could not be read or parsed", releasesPath);
-            releasesModifiedMillis = lastModified(releasesPath);
-            channelsModifiedMillis = lastModified(channelsPath);
+        // A missing file is a valid, if empty, state; a present-but-unparseable one keeps the
+        // last-known-good catalog rather than blanking it (or, for channels, resetting every pin to latest).
+        Path unreadable = releasesDoc == null && Files.exists(releasesPath) ? releasesPath
+                : channelsDoc == null && Files.exists(channelsPath) ? channelsPath : null;
+
+        if (unreadable != null) {
+            log.warn("[updates] Keeping previous catalog; {} could not be read or parsed", unreadable);
+            releasesModifiedMillis = releasesStamp;
+            channelsModifiedMillis = channelsStamp;
             return;
         }
 
@@ -312,8 +321,8 @@ public class UpdateService {
         Map<String, String> channelPins = parseChannels(channelsDoc);
         catalog = new UpdateCatalog(appId, releases, channelPins);
 
-        releasesModifiedMillis = lastModified(releasesPath);
-        channelsModifiedMillis = lastModified(channelsPath);
+        releasesModifiedMillis = releasesStamp;
+        channelsModifiedMillis = channelsStamp;
     }
 
     /**

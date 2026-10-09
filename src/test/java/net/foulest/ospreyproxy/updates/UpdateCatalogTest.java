@@ -7,6 +7,8 @@ package net.foulest.ospreyproxy.updates;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -55,10 +57,30 @@ class UpdateCatalogTest {
         Assertions.assertThat(UpdateCatalog.compareVersions("1.2.0", "1.2")).isZero();
         Assertions.assertThat(UpdateCatalog.compareVersions("1.a", "1.10")).isPositive();
         Assertions.assertThat(UpdateCatalog.compareVersions("1.a", "1.b")).isNegative();
-        Assertions.assertThat(UpdateCatalog.compareVersions("1.-1", "1.0")).isNegative();
+        Assertions.assertThat(UpdateCatalog.compareVersions("1.-1", "1.0")).isPositive();
         Assertions.assertThat(UpdateCatalog.compareVersions("1.999999999999999999999", "1.2")).isPositive();
         Assertions.assertThat(UpdateCatalog.compareVersions("3.0", "3.0")).isZero();
         Assertions.assertThat(UpdateCatalog.compareVersions("1.2", "1.a")).isNegative();
         Assertions.assertThat(UpdateCatalog.compareVersions("1.0.2", "1.0.10")).isNegative();
+    }
+
+    @Test
+    void compareVersionsIsTransitiveForMixedNumericAndNonNumericSegments() {
+        List<String> versions = new ArrayList<>(List.of("1.0.a", "1.0.5", "1.0.10", "1.0.b", "1.0.9z", "1.0.0", "1.0"));
+
+        for (String a : versions) {
+            for (String b : versions) {
+                for (String c : versions) {
+                    if (UpdateCatalog.compareVersions(a, b) <= 0 && UpdateCatalog.compareVersions(b, c) <= 0) {
+                        Assertions.assertThat(UpdateCatalog.compareVersions(a, c)).isLessThanOrEqualTo(0);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < 50; i++) {
+            Collections.shuffle(versions);
+            Assertions.assertThatCode(() -> versions.sort(UpdateCatalog::compareVersions)).doesNotThrowAnyException();
+        }
     }
 }

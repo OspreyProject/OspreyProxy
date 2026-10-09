@@ -27,15 +27,25 @@ fi
 
 VERSION="$1"
 CRX_SRC="$2"
-NOTES="${3:-}"
+NOTES=""
 ROLLBACK_OF=""
 
+# The release notes are optional: a third argument that is not a flag is the notes
+shift 2
+if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then
+    NOTES="$1"
+    shift
+fi
+
 # Parse an optional --rollback-of flag from the remaining arguments
-shift $(( $# < 3 ? $# : 3 ))
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --rollback-of)
-            ROLLBACK_OF="${2:-}"
+            if [ "$#" -lt 2 ]; then
+                echo "error: --rollback-of needs a version" >&2
+                exit 2
+            fi
+            ROLLBACK_OF="$2"
             shift 2
             ;;
         *)
@@ -44,6 +54,12 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+# The version becomes part of a file name, so allow only characters that cannot escape the updates directory
+if ! [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || [[ "$VERSION" == *..* ]]; then
+    echo "error: invalid version: $VERSION" >&2
+    exit 2
+fi
 
 if [ ! -f "$CRX_SRC" ]; then
     echo "error: CRX not found: $CRX_SRC" >&2
@@ -57,11 +73,13 @@ CRX_DEST="${UPDATES_DIR}/${CRX_NAME}"
 RELEASES="${UPDATES_DIR}/releases.json"
 DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-cp -f "$CRX_SRC" "$CRX_DEST"
-echo "copied $CRX_SRC -> $CRX_DEST"
+if [ -e "$CRX_DEST" ]; then
+    echo "error: ${CRX_DEST} already exists; published builds are never overwritten" >&2
+    exit 1
+fi
 
-VERSION="$VERSION" CRX_NAME="$CRX_NAME" DATE="$DATE" NOTES="$NOTES" \
-ROLLBACK_OF="$ROLLBACK_OF" RELEASES="$RELEASES" python3 - <<'PY'
+# Shared by the pre-copy duplicate check and the final recording step
+RELEASE_PY=$(cat <<'PY'
 import json
 import os
 
@@ -87,6 +105,9 @@ if not isinstance(releases, list):
 if any(isinstance(r, dict) and r.get("version") == version for r in releases):
     raise SystemExit(f"error: version {version} is already present in {path}")
 
+if os.environ.get("MODE") == "check":
+    raise SystemExit(0)
+
 entry = {"version": version, "crx": os.environ["CRX_NAME"], "date": os.environ["DATE"]}
 
 notes = os.environ.get("NOTES", "").strip()
@@ -99,11 +120,44 @@ if rollback_of:
 
 releases.append(entry)
 
-with open(path, "w", encoding="utf-8") as fh:
-    json.dump(doc, fh, indent=2)
-    fh.write("\n")
+# Write a temp file in the same directory and rename it over releases.json, so the hot-reloading
+# server never reads a truncated file
+tmp_path = f"{path}.tmp.{os.getpid()}"
+try:
+    with open(tmp_path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp_path, path)
+finally:
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
 
 print(f"recorded version {version} in {path}")
 PY
+)
+
+# Refuse a duplicate version before touching the updates directory
+MODE=check VERSION="$VERSION" RELEASES="$RELEASES" python3 -c "$RELEASE_PY"
+
+# Copy via a temp file in the same directory so a reader never sees a partial CRX
+CRX_TMP="$(mktemp "${UPDATES_DIR}/.${CRX_NAME}.XXXXXX")"
+trap 'rm -f "$CRX_TMP"' EXIT
+cp -f "$CRX_SRC" "$CRX_TMP"
+mv -n "$CRX_TMP" "$CRX_DEST"
+
+if [ -e "$CRX_TMP" ]; then
+    echo "error: ${CRX_DEST} appeared while copying; not overwriting" >&2
+    exit 1
+fi
+
+echo "copied $CRX_SRC -> $CRX_DEST"
+
+# Remove the copied CRX again if the release cannot be recorded, so no unlisted build is left behind
+if ! MODE=record VERSION="$VERSION" CRX_NAME="$CRX_NAME" DATE="$DATE" NOTES="$NOTES"     ROLLBACK_OF="$ROLLBACK_OF" RELEASES="$RELEASES" python3 -c "$RELEASE_PY"; then
+    rm -f "$CRX_DEST"
+    exit 1
+fi
 
 echo "done. Point a channel at version ${VERSION} in channels.json to offer it."

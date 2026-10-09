@@ -149,8 +149,9 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
 
     /**
      * Compares two dot-separated version strings numerically, segment by segment, so {@code 2.0.10}
-     * sorts above {@code 2.0.9}. A missing trailing segment is treated as zero, and a non-numeric
-     * segment falls back to a lexical comparison so malformed input still orders deterministically.
+     * sorts above {@code 2.0.9}. A missing trailing segment is treated as zero. A numeric segment sorts
+     * below a non-numeric one, and two non-numeric segments compare lexically, which keeps the order
+     * transitive so sorting a list of malformed versions can never throw.
      *
      * @param a The first version.
      * @param b The second version.
@@ -172,6 +173,10 @@ public record UpdateCatalog(String appId, List<Release> releases, Map<String, St
 
             if (ln != null && rn != null) {
                 cmp = Long.compare(ln, rn);
+            } else if (ln != null) {
+                cmp = -1;
+            } else if (rn != null) {
+                cmp = 1;
             } else {
                 cmp = ls.compareTo(rs);
             }

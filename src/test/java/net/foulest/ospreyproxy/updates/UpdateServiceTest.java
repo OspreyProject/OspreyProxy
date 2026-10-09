@@ -129,6 +129,54 @@ class UpdateServiceTest {
     }
 
     @Test
+    void unreadableChannelsFileKeepsThePreviousPins() throws Exception {
+        Files.writeString(updatesDirectory.resolve("releases.json"), """
+                {"releases":[{"version":"2.0.0","crx":"a.crx"},{"version":"2.0.1","crx":"b.crx"}]}
+                """);
+        Path channels = updatesDirectory.resolve("channels.json");
+        Files.writeString(channels, "{\"channels\":{\"stable\":\"2.0.0\"}}");
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
+        service.init();
+        Assertions.assertThat(service.resolve("stable").version()).isEqualTo("2.0.0");
+
+        Files.writeString(channels, "{not-json");
+        Files.setLastModifiedTime(channels, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        setLastStatNanos(service, System.nanoTime() - 2_000_000_000L);
+
+        Assertions.assertThat(service.resolve("stable").version()).isEqualTo("2.0.0");
+    }
+
+    @Test
+    void servesCrxFromNonNormalizedUpdatesDirectory() throws Exception {
+        Files.write(updatesDirectory.resolve("package.crx"), new byte[]{1});
+        Path nonNormalized = updatesDirectory.resolve("sub").resolve("..");
+        UpdateService service = new UpdateService(nonNormalized.toString(), "https://updates.example", "");
+
+        Assertions.assertThat(service.crxPath("package.crx")).isEqualTo(updatesDirectory.resolve("package.crx"));
+        Assertions.assertThat(service.crxPath("../package.crx")).isNull();
+    }
+
+    @Test
+    void keepsPreviousChannelPinsWhenChannelsFileBecomesUnparseable() throws Exception {
+        Files.writeString(updatesDirectory.resolve("releases.json"), """
+                {"releases":[{"version":"2.0.0","crx":"a.crx"},{"version":"2.0.1","crx":"b.crx"}]}
+                """);
+        Path channels = updatesDirectory.resolve("channels.json");
+        Files.writeString(channels, """
+                {"channels":{"stable":"2.0.0","beta":"latest"}}
+                """);
+        UpdateService service = new UpdateService(updatesDirectory.toString(), "https://updates.example", "");
+        service.init();
+
+        Files.writeString(channels, "{truncated");
+        Files.setLastModifiedTime(channels, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        setLastStatNanos(service, System.nanoTime() - 2_000_000_000L);
+
+        Assertions.assertThat(service.resolve("stable").version()).isEqualTo("2.0.0");
+        Assertions.assertThat(service.resolve("beta").version()).isEqualTo("2.0.1");
+    }
+
+    @Test
     void keepsLastGoodCatalogAndSkipsMalformedCatalogEntries() throws Exception {
         Path releases = updatesDirectory.resolve("releases.json");
         Files.writeString(releases, "{not-json");
@@ -278,5 +326,22 @@ class UpdateServiceTest {
             Thread.sleep(10);
         }
         Assertions.assertThat(thread.getState()).isEqualTo(Thread.State.BLOCKED);
+    }
+
+    @Test
+    void relativeUpdatesPathStillServesCrxFiles() throws Exception {
+        Path relative = Path.of("build", "tmp", "updates-relative-" + System.nanoTime());
+        Files.createDirectories(relative);
+
+        try {
+            Path crx = Files.writeString(relative.resolve("package.crx"), "crx");
+            UpdateService service = new UpdateService("./" + relative, "https://updates.example", "");
+
+            Assertions.assertThat(service.crxPath("package.crx")).isEqualTo(crx.toAbsolutePath().normalize());
+            Assertions.assertThat(service.crxPath("../outside.crx")).isNull();
+        } finally {
+            Files.deleteIfExists(relative.resolve("package.crx"));
+            Files.deleteIfExists(relative);
+        }
     }
 }
