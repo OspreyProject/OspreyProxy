@@ -60,13 +60,15 @@ class TenantServiceTest {
 
         service.init();
 
-        Tenant alpha = service.resolve(" alpha-key ");
+        // alpha-key is listed by both alpha and beta, so it is disabled rather than given to either
+        Assertions.assertThat(service.resolve(" alpha-key ")).isNull();
+
+        Tenant alpha = service.resolve(" second-key ");
         Assertions.assertThat(alpha).isNotNull();
         Assertions.assertThat(alpha.id()).isEqualTo("alpha");
         Assertions.assertThat(alpha.rate).isEqualTo(new RateSettings(2, 3, 4, 5));
-        Assertions.assertThat(service.resolve("second-key")).isSameAs(alpha);
         Assertions.assertThat(service.resolve("missing")).isNull();
-        Assertions.assertThat(service.resolve("alpha-key").tryConsume()).isTrue();
+        Assertions.assertThat(service.resolve("second-key").tryConsume()).isTrue();
     }
 
     @Test
@@ -124,6 +126,7 @@ class TenantServiceTest {
         Tenant alpha = service.resolve("alpha");
         Assertions.assertThat(alpha).isNotNull();
         Assertions.assertThat(service.resolve("beta")).isNotNull();
+        Assertions.assertThat(service.resolve("shared")).isNull();
 
         reloadAfterChanging(store, service, """
                 tenant.alpha.keys=alpha

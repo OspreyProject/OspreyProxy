@@ -336,6 +336,7 @@ public class TenantService {
         }
 
         Map<String, String> parsedKeys = new HashMap<>();
+        Set<String> collidingKeys = new HashSet<>();
         Map<String, RateSettings> parsedRates = new HashMap<>();
 
         for (String name : properties.stringPropertyNames()) {
@@ -363,9 +364,12 @@ public class TenantService {
             }
 
             String value = properties.getProperty(name, "").strip();
-            parseTenantField(tenantId, field, value, parsedKeys, parsedRates);
+            parseTenantField(tenantId, field, value, parsedKeys, collidingKeys, parsedRates);
         }
 
+        // Property iteration order is arbitrary, so a key listed by two tenants cannot be attributed
+        // to either one reliably; it is disabled for both instead.
+        parsedKeys.keySet().removeAll(collidingKeys);
         applyParsed(parsedKeys, parsedRates);
         recordModified(modifiedBeforeRead);
     }
@@ -377,12 +381,14 @@ public class TenantService {
      * @param field The field after the tenant id (for example {@code keys} or {@code rate.burst-capacity}).
      * @param value The property value.
      * @param parsedKeys Accumulator mapping each key hash to its tenant id.
+     * @param collidingKeys Accumulator of key hashes listed by more than one tenant.
      * @param parsedRates Accumulator mapping each tenant id to its rate settings.
      */
     private void parseTenantField(@NonNull String tenantId,
                                   @NonNull String field,
                                   @NonNull String value,
                                   @NonNull Map<String, String> parsedKeys,
+                                  @NonNull Set<String> collidingKeys,
                                   @NonNull Map<String, RateSettings> parsedRates) {
         RateSettings rate = parsedRates.computeIfAbsent(tenantId, ignored -> defaultRateSettings());
 
@@ -399,7 +405,8 @@ public class TenantService {
                     String previous = parsedKeys.putIfAbsent(hash, tenantId);
 
                     if (previous != null && !previous.equals(tenantId)) {
-                        log.warn("[tenant] Key collision between tenants '{}' and '{}'; ignoring the later one",
+                        collidingKeys.add(hash);
+                        log.warn("[tenant] Key collision between tenants '{}' and '{}'; disabling the key for both",
                                 previous, tenantId
                         );
                     }
