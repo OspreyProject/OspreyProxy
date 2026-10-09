@@ -34,6 +34,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -57,6 +58,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -127,6 +129,16 @@ public class ContactHandler {
     private final Bandwidth submitBandwidth;
     private final Bandwidth verifyBandwidth;
 
+    // Verification emails allowed per recipient address, so the form cannot be used to mail-bomb a
+    // third party from rotating IPs. Keyed by a hash so addresses are not retained in memory.
+    private static final long RECIPIENT_CAPACITY = 3L;
+    private static final Duration RECIPIENT_WINDOW = Duration.ofHours(1);
+
+    private final Cache<String, Bucket> recipientBuckets = Caffeine.newBuilder()
+            .expireAfterAccess(RECIPIENT_WINDOW)
+            .maximumSize(20_000)
+            .build();
+
     private final Cache<String, Bucket> submitBuckets = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
             .maximumSize(20_000)
@@ -174,8 +186,7 @@ public class ContactHandler {
                 new ThreadPoolExecutor(
                         1, 1, 0L, TimeUnit.MILLISECONDS,
                         new ArrayBlockingQueue<>(200),
-                        r -> new Thread(r, "contact-mail"),
-                        (r, executor) -> log.warn("[contact] Mail queue full; dropping a delivery task")
+                        r -> new Thread(r, "contact-mail")
                 ));
     }
 
@@ -280,6 +291,18 @@ public class ContactHandler {
             return error(503, "Email delivery is not available right now. Please email " + supportAddress + " directly.");
         }
 
+        Bucket recipientBucket = recipientBuckets.get(sha256(email), ignored -> Bucket.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(RECIPIENT_CAPACITY)
+                        .refillGreedy(RECIPIENT_CAPACITY, RECIPIENT_WINDOW)
+                        .build())
+                .build());
+
+        if (!recipientBucket.tryConsume(1)) {
+            return error(429, "Several messages were already sent for that email address. "
+                    + "Please check your inbox, or try again later.");
+        }
+
         long now = System.currentTimeMillis();
         String token = randomToken();
 
@@ -290,7 +313,15 @@ public class ContactHandler {
                 sha256(token), category, name, email, company, message, now, now + VERIFY_TTL_MILLIS
         );
 
-        mailExecutor.execute(() -> sendVerificationEmail(email, token));
+        try {
+            mailExecutor.execute(() -> sendVerificationEmail(email, token));
+        } catch (RejectedExecutionException e) {
+            // The user is told to retry rather than left waiting for an email that was never queued
+            log.warn("[contact] Mail queue full; verification email not queued");
+            jdbc.update("DELETE FROM contact_submissions WHERE token_hash = ?", sha256(token));
+            return error(503, "Email delivery is busy right now. Please try again in a few minutes.");
+        }
+
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
@@ -335,7 +366,9 @@ public class ContactHandler {
         Map<String, Object> row = rows.getFirst();
         long id = ((Number) Objects.requireNonNull(row.get("id"))).longValue();
 
-        // The token hash is cleared with the verified stamp so the link can never be replayed.
+        // The token hash is cleared with the verified stamp so the link cannot be replayed while the
+        // forward is in flight; a failed forward restores it so the link keeps working until it expires.
+        String tokenHash = sha256(token);
         int updated = jdbc.update(
                 "UPDATE contact_submissions SET verified_at = ?, token_hash = '' WHERE id = ? AND verified_at = 0", now, id
         );
@@ -351,8 +384,34 @@ public class ContactHandler {
         String message = String.valueOf(row.get("message"));
         long createdAt = row.get("created_at") instanceof Number n ? n.longValue() : now;
 
-        mailExecutor.execute(() -> forwardToSupport(category, name, email, company, message, createdAt));
+        try {
+            mailExecutor.execute(() -> {
+                if (!forwardToSupport(category, name, email, company, message, createdAt)) {
+                    releaseVerification(id, tokenHash);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            log.warn("[contact] Mail queue full; verified submission not queued");
+            releaseVerification(id, tokenHash);
+            return error(503, "Email delivery is busy right now. Please try this link again in a few minutes.");
+        }
+
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    /**
+     * Returns a claimed submission to its unverified state after its forward failed, so the
+     * verification link can be used again instead of the message being lost.
+     *
+     * @param id The submission row id.
+     * @param tokenHash The hash of the verification token to restore.
+     */
+    private void releaseVerification(long id, @NonNull String tokenHash) {
+        try {
+            jdbc.update("UPDATE contact_submissions SET verified_at = 0, token_hash = ? WHERE id = ?", tokenHash, id);
+        } catch (DataAccessException e) {
+            log.warn("[contact] Could not restore a submission after a failed forward: {}", e.getClass().getName());
+        }
     }
 
     /**
@@ -452,7 +511,7 @@ public class ContactHandler {
 
     /**
      * Checks an address has the shape {@code local@label.label...tld}: word, hyphen, or dot characters in
-     * the local part, a domain of at least two non-empty labels, and a final label of two or more characters.
+     * the local part (without leading, trailing, or doubled dots), a domain of at least two non-empty labels, and a final label of two or more characters.
      *
      * @param email The lowercased, trimmed address.
      * @return {@code true} if the address is well-formed.
@@ -462,7 +521,15 @@ public class ContactHandler {
             return false;
         }
 
-        String domain = email.substring(email.indexOf('@') + 1);
+        int at = email.indexOf('@');
+        String local = email.substring(0, at);
+
+        // Dot-atom rules: no empty segments in the local part, which mail parsing would reject later
+        if (local.startsWith(".") || local.endsWith(".") || local.contains("..")) {
+            return false;
+        }
+
+        String domain = email.substring(at + 1);
         int lastDot = domain.lastIndexOf('.');
 
         // Needs at least two labels, a two-character final label, and no empty labels
@@ -517,11 +584,12 @@ public class ContactHandler {
      * @param company The sender's company, possibly empty.
      * @param message The message body.
      * @param createdAt When the form was submitted.
+     * @return {@code true} if the message was handed to the mail sender, {@code false} otherwise.
      */
-    private void forwardToSupport(@NonNull String category, @NonNull String name, @NonNull String email,
+    private boolean forwardToSupport(@NonNull String category, @NonNull String name, @NonNull String email,
                                   @NonNull String company, @NonNull String message, long createdAt) {
         if (sender == null) {
-            return;
+            return false;
         }
 
         String label = CATEGORIES.getOrDefault(category, "General inquiry");
@@ -554,8 +622,10 @@ public class ContactHandler {
                     + "Submitted: " + Instant.ofEpochMilli(createdAt) + "\n\n"
                     + message, html);
             sender.send(mime);
+            return true;
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception e) {
             log.warn("[contact] Forwarding to the support inbox failed: {}", e.getClass().getName());
+            return false;
         }
     }
 

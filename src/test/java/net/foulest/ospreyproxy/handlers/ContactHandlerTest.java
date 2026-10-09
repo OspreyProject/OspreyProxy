@@ -49,6 +49,30 @@ class ContactHandlerTest {
     }
 
     @Test
+    void submitLimitsVerificationEmailsPerRecipientAcrossDifferentNetworks() {
+        ContactHandler handler = handler(mock(JdbcTemplate.class), mailSender(), false, "", 50);
+        Map<String, Object> victim = Map.of(
+                "category", "general", "name", "Ada", "email", "Victim@Example.com",
+                "message", "This is a complete message.", "token", "ignored");
+
+        try {
+            for (int i = 0; i < 3; i++) {
+                assertThat(handler.submit(victim, request("198.51.100." + (10 + i))).getStatusCode().value()).isEqualTo(200);
+            }
+
+            // A fourth request for the same address is refused even from a fresh IP
+            assertThat(handler.submit(victim, request("198.51.100.99")).getStatusCode().value()).isEqualTo(429);
+
+            Map<String, Object> other = Map.of(
+                    "category", "general", "name", "Ada", "email", "someone-else@example.com",
+                    "message", "This is a complete message.", "token", "ignored");
+            assertThat(handler.submit(other, request("198.51.100.99")).getStatusCode().value()).isEqualTo(200);
+        } finally {
+            handler.shutdown();
+        }
+    }
+
+    @Test
     void submitHandlesNullBodiesAndConfiguredMailDelivery() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         JavaMailSender sender = mailSender();
@@ -259,6 +283,10 @@ class ContactHandlerTest {
                 "general", "", "name@example.com", "", "long enough")).isNotNull();
         assertThat(invoke("validate", new Class[]{String.class, String.class, String.class, String.class, String.class},
                 "general", "Name", "invalid", "", "long enough")).isNotNull();
+        for (String malformed : new String[]{"john..doe@example.com", "john.@example.com", ".john@example.com"}) {
+            assertThat(invoke("validate", new Class[]{String.class, String.class, String.class, String.class, String.class},
+                    "general", "Name", malformed, "", "long enough")).isNotNull();
+        }
         assertThat(invoke("validate", new Class[]{String.class, String.class, String.class, String.class, String.class},
                 "general", "Name", "", "", "long enough")).isNotNull();
         assertThat(invoke("validate", new Class[]{String.class, String.class, String.class, String.class, String.class},
@@ -292,7 +320,7 @@ class ContactHandlerTest {
     @Test
     void verifyConsumesAValidTokenAndHandlesRowsThatLackANumericTimestamp() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ContactHandler handler = handler(jdbc, null, false, "");
+        ContactHandler handler = handler(jdbc, mailSender(), false, "");
         String token = "A".repeat(43);
         Map<String, Object> row = new HashMap<>();
         row.put("id", 7L);
@@ -358,7 +386,7 @@ class ContactHandlerTest {
     }
 
     @Test
-    void dropsMailTasksWhenTheProductionQueueIsFull() throws Exception {
+    void rejectsMailTasksWhenTheProductionQueueIsFull() throws Exception {
         @SuppressWarnings("unchecked")
         ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
         ContactHandler handler = new ContactHandler(mock(JdbcTemplate.class), provider,
@@ -371,12 +399,49 @@ class ContactHandlerTest {
 
         try {
             AtomicBoolean ran = new AtomicBoolean();
-            executor.getRejectedExecutionHandler().rejectedExecution(() -> ran.set(true), executor);
+            assertThatThrownBy(() -> executor.getRejectedExecutionHandler()
+                    .rejectedExecution(() -> ran.set(true), executor))
+                    .isInstanceOf(java.util.concurrent.RejectedExecutionException.class);
             assertThat(ran).isFalse();
             assertThat(executor.getQueue()).isEmpty();
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void verifyRestoresTheSubmissionWhenTheForwardFails() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        JavaMailSender sender = mock(JavaMailSender.class);
+        when(sender.createMimeMessage()).thenThrow(new IllegalStateException("offline"));
+        ContactHandler handler = handler(jdbc, sender, false, "");
+        Map<String, Object> row = Map.of(
+                "id", 9L, "category", "general", "name", "Ada", "email", "ada@example.com",
+                "company", "", "message", "Complete message", "created_at", 1L);
+        when(jdbc.queryForList(startsWith("SELECT"), any(Object[].class))).thenReturn(List.of(row));
+        when(jdbc.update(startsWith("UPDATE"), any(Object[].class))).thenReturn(1);
+
+        assertThat(handler.verify(Map.of("token", "C".repeat(43)), request()).getStatusCode().value()).isEqualTo(200);
+        handler.shutdown();
+
+        verify(jdbc).update(contains("SET verified_at = 0, token_hash = ?"), any(Object[].class));
+    }
+
+    @Test
+    void verifyRestoresTheSubmissionAndReportsBusyWhenTheMailQueueRejects() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ThreadPoolExecutor full = mock(ThreadPoolExecutor.class);
+        org.mockito.Mockito.doThrow(new java.util.concurrent.RejectedExecutionException("full"))
+                .when(full).execute(any(Runnable.class));
+        ContactHandler handler = handler(jdbc, mailSender(), false, "", mock(HttpClient.class), full);
+        Map<String, Object> row = Map.of(
+                "id", 10L, "category", "general", "name", "Ada", "email", "ada@example.com",
+                "company", "", "message", "Complete message", "created_at", 1L);
+        when(jdbc.queryForList(startsWith("SELECT"), any(Object[].class))).thenReturn(List.of(row));
+        when(jdbc.update(startsWith("UPDATE"), any(Object[].class))).thenReturn(1);
+
+        assertThat(handler.verify(Map.of("token", "D".repeat(43)), request()).getStatusCode().value()).isEqualTo(503);
+        verify(jdbc).update(contains("SET verified_at = 0, token_hash = ?"), any(Object[].class));
     }
 
     @Test
@@ -443,8 +508,12 @@ class ContactHandlerTest {
     }
 
     private static HttpServletRequest request() {
+        return request("8.8.8.8");
+    }
+
+    private static HttpServletRequest request(String remoteAddress) {
         HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getRemoteAddr()).thenReturn("8.8.8.8");
+        when(request.getRemoteAddr()).thenReturn(remoteAddress);
         return request;
     }
 
