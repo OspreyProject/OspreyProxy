@@ -93,3 +93,4 @@ src.zip
 OspreyProxy.zip
 /src/main/java/net/foulest/ospreyproxy/providers/api/hidden
 /src/test/java/net/foulest/ospreyproxy/providers/api/hidden
+static-analysis-findings.md
