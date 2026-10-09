@@ -35,6 +35,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -133,9 +134,12 @@ public class ReportingTestHandler {
             return ErrorUtil.RESP_400;
         }
 
-        // Must parse as JSON; stored verbatim so the page sees exactly what the extension sent
+        // Must be exactly one JSON value (trailing tokens would break out of the poll response);
+        // stored verbatim so the page sees exactly what the extension sent
         try {
-            JsonNode ignored = JacksonUtil.MAPPER.readTree(body);
+            JsonNode ignored = JacksonUtil.MAPPER.readerFor(JsonNode.class)
+                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .readTree(body);
         } catch (Exception ex) {
             log.warn("Rejected reporting-test payload that is not valid JSON");
             return ErrorUtil.RESP_400;

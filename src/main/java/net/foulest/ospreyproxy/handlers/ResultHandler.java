@@ -149,19 +149,30 @@ public class ResultHandler {
      *
      * @param authorization The {@code Authorization} header carrying the shared secret.
      * @param since Optional lower bound on the last-scanned time, in epoch millis.
-     * @return A JSON body carrying the indexable records, or a 404 when the secret is missing or wrong.
+     * @return A JSON body carrying the indexable records, a 404 when the secret is missing or wrong,
+     *         or a 400 when {@code since} is not a number. The secret is checked first so a probe
+     *         cannot tell the endpoint exists from a malformed parameter.
      */
     @GetMapping(value = "/internal/index-feed", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<String> indexFeed(
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestParam(required = false) Long since) {
+            @RequestParam(required = false) String since) {
         // The feed is invisible unless a secret is configured and matches exactly. A wrong or missing
         // secret returns 404 rather than 403 so the endpoint's existence is not confirmed to probers
         if (feedToken.isBlank() || !constantTimeEquals(authorization, "Bearer " + feedToken)) {
             throw new StatusCodeException(ErrorUtil.RESP_404);
         }
 
-        long sinceMillis = since == null ? 0L : since;
+        long sinceMillis = 0L;
+
+        if (since != null) {
+            try {
+                sinceMillis = Long.parseLong(since.strip());
+            } catch (NumberFormatException e) {
+                return ErrorUtil.RESP_400;
+            }
+        }
+
         List<ScanRecord> records = store.findIndexableSince(sinceMillis, feedLimit);
 
         List<Map<String, Object>> items = new ArrayList<>(records.size());

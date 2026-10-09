@@ -19,6 +19,7 @@ class ReportingTestHandlerTest {
         ReportingTestHandler handler = handler(10);
         Assertions.assertThat(handler.receive("short", "{}", request(false))).isSameAs(ErrorUtil.RESP_400);
         Assertions.assertThat(handler.receive(TOKEN, "{", request(false))).isSameAs(ErrorUtil.RESP_400);
+        Assertions.assertThat(handler.receive(TOKEN, "{} ]},{\"x\":1", request(false))).isSameAs(ErrorUtil.RESP_400);
         Assertions.assertThat(handler.receive(TOKEN, "x".repeat(262_145), request(false))).isSameAs(ErrorUtil.RESP_400);
     }
 

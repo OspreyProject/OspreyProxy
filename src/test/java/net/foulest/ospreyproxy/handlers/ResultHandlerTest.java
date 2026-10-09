@@ -69,9 +69,19 @@ class ResultHandlerTest {
         Assertions.assertThat(incorrect.getStatus().getStatusCode().value()).isEqualTo(404);
 
         when(store.findIndexableSince(7L, 5)).thenReturn(List.of(record("feed.example", 99)));
-        ResponseEntity<String> response = handler.indexFeed("Bearer token", 7L);
+        ResponseEntity<String> response = handler.indexFeed("Bearer token", "7");
         Assertions.assertThat(response.getBody()).contains("\"count\":1", "feed.example");
         verify(store).findIndexableSince(7L, 5);
+    }
+
+    @Test
+    void indexFeedChecksTheSecretBeforeRejectingAMalformedSinceValue() {
+        ResultHandler handler = new ResultHandler(mock(ScanStore.class), 60, "token", 5, 10, 60);
+
+        StatusCodeException hidden = Assertions.catchThrowableOfType(
+                () -> handler.indexFeed("Bearer wrong", "abc"), StatusCodeException.class);
+        Assertions.assertThat(hidden.getStatus().getStatusCode().value()).isEqualTo(404);
+        Assertions.assertThat(handler.indexFeed("Bearer token", "abc").getStatusCode().value()).isEqualTo(400);
     }
 
     @Test
