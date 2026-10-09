@@ -131,6 +131,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
         String url = getApiUrl();
         DNSFormat format = getDnsFormat();
 
+        // IPv6 literals pass host validation but have no DNS name to filter; skip without an exception
+        if (host.indexOf(':') >= 0) {
+            return LookupResult.FAILED;
+        }
+
         try {
             boolean usesNameParameter = NAME_PARAMETER_FORMATS.contains(format);
             String encodedUrl = url + (usesNameParameter
@@ -140,7 +145,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
             if (MESSAGE_RESPONSE_FORMATS.contains(format)) {
                 byte[] response = fetchDnsMessage(encodedUrl, displayName);
 
-                if (response == null) {
+                if (response == null || !isUsableMessage(response)) {
+                    if (response != null) {
+                        log.warn("[{}] DNS response is not a usable answer (RCODE {})",
+                                displayName, response.length >= 4 ? response[3] & 0x0F : -1);
+                    }
                     return LookupResult.FAILED;
                 }
                 return interpret(response, (Map<String, Object>) null);
@@ -148,7 +157,11 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
 
             Map<String, Object> response = fetchDnsJson(encodedUrl, displayName);
 
-            if (response.isEmpty()) {
+            if (response.isEmpty() || !isUsableJson(response)) {
+                if (!response.isEmpty()) {
+                    log.warn("[{}] DNS response is not a usable answer (Status {})",
+                            displayName, response.get("Status"));
+                }
                 return LookupResult.FAILED;
             }
             return interpret(null, response);
@@ -156,6 +169,35 @@ public abstract class AbstractDNSProvider extends AbstractProvider {
             log.warn("[{}] Failed to perform lookup ({})", displayName, e.getClass().getName(), e);
             return LookupResult.FAILED;
         }
+    }
+
+    /**
+     * Checks that a wire-format response is a real answer rather than a resolver error. Only NOERROR
+     * and NXDOMAIN are answers (filtering resolvers signal a block with either); SERVFAIL, REFUSED and
+     * the other codes mean the resolver did not evaluate the name, so they must not be reported as clean.
+     *
+     * @param response The raw DNS message.
+     * @return {@code true} if the message is a response with a NOERROR or NXDOMAIN RCODE.
+     */
+    private static boolean isUsableMessage(byte @NonNull [] response) {
+        if (response.length < 12 || (response[2] & 0x80) == 0) {
+            return false;
+        }
+        return isAnswerRcode(response[3] & 0x0F);
+    }
+
+    /**
+     * Checks that a DNS JSON response carries a NOERROR or NXDOMAIN {@code Status}.
+     *
+     * @param response The parsed DNS JSON response.
+     * @return {@code true} if {@code Status} is present and is an answer code.
+     */
+    private static boolean isUsableJson(@NonNull Map<String, Object> response) {
+        return response.get("Status") instanceof Number status && isAnswerRcode(status.intValue());
+    }
+
+    private static boolean isAnswerRcode(int rcode) {
+        return rcode == 0 || rcode == 3;
     }
 
     /**

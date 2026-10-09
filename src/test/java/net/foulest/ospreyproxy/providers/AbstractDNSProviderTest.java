@@ -177,6 +177,13 @@ class AbstractDNSProviderTest {
 
     private final CircuitBreakerService circuitBreakerService = Mockito.mock(CircuitBreakerService.class);
 
+    /**
+     * Builds a minimal 12-byte DNS response header with the given RCODE.
+     */
+    private static byte[] dnsMessage(int rcode) {
+        return new byte[]{0, 0, (byte) 0x81, (byte) (0x80 | rcode), 0, 0, 0, 0, 0, 0, 0, 0};
+    }
+
     private static CloseableHttpClient mockClientReturning(int statusCode, String contentType, byte[] body) throws IOException {
         BasicClassicHttpResponse response = new BasicClassicHttpResponse(statusCode);
 
@@ -290,6 +297,18 @@ class AbstractDNSProviderTest {
     // --- lookup: invalid host triggers DNSUtil validation exception (outer catch) ---
 
     @Test
+    void lookupAndCacheReturnsFailedWithoutUpstreamCallForIpv6Literal() throws IOException {
+        CloseableHttpClient client = mockClientReturning(200, "application/dns-message", new byte[]{0x01});
+        TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_MESSAGE, client);
+
+        LookupVerdict verdict = provider.lookupAndCache("2606:4700:4700::1111");
+
+        Assertions.assertThat(verdict).isEqualTo(LookupVerdict.FAILED);
+        Mockito.verifyNoInteractions(client);
+        Mockito.verify(circuitBreakerService, Mockito.never()).recordFailure(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.any());
+    }
+
+    @Test
     void lookupAndCacheReturnsFailedWhenHostIsInvalidForNameFormat() throws IOException {
         TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.NAME_JSON,
                 mockClientReturning(200, "application/dns-json", new byte[]{0x01}));
@@ -306,13 +325,51 @@ class AbstractDNSProviderTest {
     @Test
     void lookupAndCacheReturnsInterpretedResultOnSuccessfulMessageResponse() throws IOException {
         TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_MESSAGE,
-                mockClientReturning(200, "application/dns-message", new byte[]{0x01, 0x02, 0x03}));
+                mockClientReturning(200, "application/dns-message", dnsMessage(0)));
 
         LookupVerdict verdict = provider.lookupAndCache("example.com");
 
         Assertions.assertThat(verdict).isEqualTo(LookupVerdict.of(LookupResult.MALICIOUS));
         Assertions.assertThat(provider.getCachedResult("example.com")).isEqualTo(LookupVerdict.of(LookupResult.MALICIOUS));
         Mockito.verify(circuitBreakerService).recordSuccess(ArgumentMatchers.eq("TestDNS"), ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void lookupAndCacheTreatsNxdomainAsAnAnswerButResolverErrorsAsFailed() throws IOException {
+        TestDnsProvider nxdomain = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_MESSAGE,
+                mockClientReturning(200, "application/dns-message", dnsMessage(3)));
+        Assertions.assertThat(nxdomain.lookupAndCache("example.com")).isEqualTo(LookupVerdict.of(LookupResult.MALICIOUS));
+
+        for (int rcode : new int[]{1, 2, 4, 5}) {
+            TestDnsProvider errored = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_MESSAGE,
+                    mockClientReturning(200, "application/dns-message", dnsMessage(rcode)));
+            Assertions.assertThat(errored.lookupAndCache("example.com")).isEqualTo(LookupVerdict.FAILED);
+        }
+    }
+
+    @Test
+    void lookupAndCacheReturnsFailedForShortOrNonResponseMessages() throws IOException {
+        byte[] notAResponse = dnsMessage(0);
+        notAResponse[2] = 0;
+
+        for (byte[] body : new byte[][]{new byte[]{0x01, 0x02, 0x03}, notAResponse}) {
+            TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_MESSAGE,
+                    mockClientReturning(200, "application/dns-message", body));
+            Assertions.assertThat(provider.lookupAndCache("example.com")).isEqualTo(LookupVerdict.FAILED);
+        }
+    }
+
+    @Test
+    void lookupAndCacheReturnsFailedForJsonResolverErrorsOrMissingStatus() throws IOException {
+        for (String json : new String[]{"{\"Status\":2,\"Comment\":\"x\"}", "{\"Status\":5}", "{\"Comment\":\"x\"}"}) {
+            TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_JSON,
+                    mockClientReturning(200, "application/dns-json", json.getBytes(StandardCharsets.UTF_8)));
+            Assertions.assertThat(provider.lookupAndCache("example.com")).isEqualTo(LookupVerdict.FAILED);
+        }
+
+        TestDnsProvider nxdomain = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_JSON,
+                mockClientReturning(200, "application/dns-json", "{\"Status\":3}".getBytes(StandardCharsets.UTF_8)));
+        Assertions.assertThat(nxdomain.lookupAndCache("example.com")).isEqualTo(LookupVerdict.of(LookupResult.MALICIOUS));
     }
 
     @Test
@@ -408,7 +465,7 @@ class AbstractDNSProviderTest {
 
     @Test
     void lookupAndCacheReturnsInterpretedResultOnSuccessfulJsonResponse() throws IOException {
-        byte[] body = "{\"Comment\":\"blocked\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] body = "{\"Status\":0,\"Comment\":\"blocked\"}".getBytes(StandardCharsets.UTF_8);
         TestDnsProvider provider = new TestDnsProvider(circuitBreakerService, DNSFormat.PATH_JSON,
                 mockClientReturning(200, "application/dns-json", body));
 
