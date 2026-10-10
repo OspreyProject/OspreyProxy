@@ -8,6 +8,7 @@ import io.github.bucket4j.Bucket;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import org.assertj.core.api.Assertions;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
@@ -114,7 +115,7 @@ class RateLimitUtilTest {
                 .doesNotThrowAnyException();
     }
 
-    private static void assertTooManyRequests(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertTooManyRequests(ThrowableAssert.ThrowingCallable action) {
         Assertions.assertThatThrownBy(action)
                 .isInstanceOf(StatusCodeException.class)
                 .hasMessage("429");

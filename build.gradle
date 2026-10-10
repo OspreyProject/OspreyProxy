@@ -75,6 +75,7 @@ dependencies {
 tasks.withType(JavaCompile).configureEach {
     options.errorprone {
         option('NullAway:AnnotatedPackages', 'net.foulest.ospreyproxy')
+        disable('UnrecognisedJavadocTag', 'NotJavadoc')
     }
 }
 

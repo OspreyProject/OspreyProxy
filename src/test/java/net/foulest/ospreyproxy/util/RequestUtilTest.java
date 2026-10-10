@@ -9,12 +9,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import net.foulest.ospreyproxy.exceptions.StatusCodeException;
 import net.foulest.ospreyproxy.providers.Provider;
 import org.assertj.core.api.Assertions;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -79,8 +79,8 @@ class RequestUtilTest {
         try (MockedStatic<RateLimitUtil> limits = Mockito.mockStatic(RateLimitUtil.class)) {
             assertStatus(400, () -> RequestUtil.validateURI(injected, provider, PROVIDER_NAME, HASHED_IP));
 
-            limits.verify(() -> RateLimitUtil.rejectInvalidRequest(Mockito.eq(provider), Mockito.eq(HASHED_IP),
-                    Mockito.eq(PROVIDER_NAME), Mockito.argThat(message -> !message.contains("FAKE")
+            limits.verify(() -> RateLimitUtil.rejectInvalidRequest(ArgumentMatchers.eq(provider), ArgumentMatchers.eq(HASHED_IP),
+                    ArgumentMatchers.eq(PROVIDER_NAME), ArgumentMatchers.argThat(message -> !message.contains("FAKE")
                             && !message.contains("\n") && message.contains("malformed URL"))));
         }
     }
@@ -366,7 +366,7 @@ class RequestUtilTest {
         return provider;
     }
 
-    private static void assertStatus(int status, org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertStatus(int status, ThrowableAssert.ThrowingCallable action) {
         Assertions.assertThatThrownBy(action)
                 .isInstanceOf(StatusCodeException.class)
                 .hasMessage(String.valueOf(status));

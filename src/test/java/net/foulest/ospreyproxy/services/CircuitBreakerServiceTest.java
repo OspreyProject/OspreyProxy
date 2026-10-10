@@ -9,6 +9,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.time.Duration;
 
 class CircuitBreakerServiceTest {
@@ -47,7 +48,7 @@ class CircuitBreakerServiceTest {
                 .slidingWindowSize(1)
                 .minimumNumberOfCalls(1)
                 .failureRateThreshold(1)
-                .recordExceptions(java.io.IOException.class)
+                .recordExceptions(IOException.class)
                 .waitDurationInOpenState(Duration.ofMinutes(1))
                 .build();
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.of(config);

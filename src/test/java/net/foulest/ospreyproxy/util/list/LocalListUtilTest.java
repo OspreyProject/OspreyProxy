@@ -7,6 +7,7 @@ package net.foulest.ospreyproxy.util.list;
 import net.foulest.ospreyproxy.result.LookupResult;
 import net.foulest.ospreyproxy.util.NetworkUtil;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
@@ -30,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -224,7 +226,7 @@ class LocalListUtilTest {
 
         String persisted = Files.readString(file);
         assertThat(persisted).startsWith("kept.example.com\nsecond.example.com\n# ").contains("evil.com\n");
-        assertThat(persisted.lines().filter(line -> line.equals("paypal.com"))).isEmpty();
+        assertThat(persisted.lines().filter(line -> "paypal.com".equals(line))).isEmpty();
     }
 
     @Test
@@ -284,8 +286,8 @@ class LocalListUtilTest {
         putSnapshot(Descriptor.ACOMICS, null);
         Path file = temporaryDirectory.resolve("acomics.txt");
 
-        try (var channel = Files.newByteChannel(file, java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.WRITE)) {
+        try (var channel = Files.newByteChannel(file, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE)) {
             channel.position(16L * 1024L * 1024L);
             channel.write(ByteBuffer.wrap(new byte[]{'\n'}));
         }
@@ -561,7 +563,7 @@ class LocalListUtilTest {
                 response(200, "application/vnd.github.raw", "github.example\n", null, null),
                 response(201, "application/json", "[{\"Url\":\"https://json.example/a\"}]", null, null)
         );
-        List<org.apache.hc.core5.http.ClassicHttpRequest> requests = new ArrayList<>();
+        List<ClassicHttpRequest> requests = new ArrayList<>();
         setStaticFinalField("FETCH_CLIENT", responseClient(requests, responses));
 
         FetchResult plain = fetchAttempt(Descriptor.PHISHUNT_IO, "https://feed.test/plain", "old-etag", "old-date");
@@ -864,7 +866,7 @@ class LocalListUtilTest {
         Format originalFormat = descriptorField(Descriptor.PHISHUNT_IO, "format");
 
         try {
-            List<org.apache.hc.core5.http.ClassicHttpRequest> requests = new ArrayList<>();
+            List<ClassicHttpRequest> requests = new ArrayList<>();
             setStaticFinalField("FETCH_CLIENT", responseClient(requests, List.of(
                     response(200, "text/plain", "missing-token.example\n", null, null),
                     response(200, "text/plain", "blank-token.example\n", null, null),
@@ -1062,7 +1064,7 @@ class LocalListUtilTest {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static CloseableHttpClient responseClient(List<org.apache.hc.core5.http.ClassicHttpRequest> requests,
+    private static CloseableHttpClient responseClient(List<ClassicHttpRequest> requests,
                                                       List<ClassicHttpResponse> responses) {
         Deque<ClassicHttpResponse> queuedResponses = new ArrayDeque<>(responses);
         CloseableHttpClient client = mock(CloseableHttpClient.class);
@@ -1072,7 +1074,7 @@ class LocalListUtilTest {
                 requests.add(invocation.getArgument(0));
                 HttpClientResponseHandler handler = invocation.getArgument(1);
                 return handler.handleResponse(queuedResponses.removeFirst());
-            }).when(client).execute(any(org.apache.hc.core5.http.ClassicHttpRequest.class),
+            }).when(client).execute(any(ClassicHttpRequest.class),
                     any(HttpClientResponseHandler.class));
         } catch (IOException e) {
             throw new AssertionError("Could not stub fetch client", e);

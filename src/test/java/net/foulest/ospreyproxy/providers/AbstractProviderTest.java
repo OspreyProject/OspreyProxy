@@ -387,7 +387,7 @@ class AbstractProviderTest {
 
     @Test
     void escalatedBlockSecondsDoublesThenCapsAndNeverOverflows() {
-        java.time.Duration base = java.time.Duration.ofSeconds(60);
+        Duration base = Duration.ofSeconds(60);
 
         Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, 1)).isEqualTo(60);
         Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, 2)).isEqualTo(120);
@@ -395,10 +395,10 @@ class AbstractProviderTest {
 
         for (int violations : new int[]{56, 57, 63, 64, 1000, Integer.MAX_VALUE}) {
             Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(base, violations)).isEqualTo(3600);
-            Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(java.time.Duration.ofSeconds(5), violations))
+            Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(Duration.ofSeconds(5), violations))
                     .isEqualTo(3600);
         }
 
-        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(java.time.Duration.ofDays(1), 50)).isEqualTo(3600);
+        Assertions.assertThat(AbstractProvider.escalatedBlockSeconds(Duration.ofDays(1), 50)).isEqualTo(3600);
     }
 }

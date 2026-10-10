@@ -10,12 +10,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.atomic.AtomicReference;
 
 class UpdateServiceTest {
@@ -259,11 +261,11 @@ class UpdateServiceTest {
         service.init();
 
         try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
-            files.when(() -> Files.size(crx)).thenThrow(new java.io.IOException("unavailable"));
+            files.when(() -> Files.size(crx)).thenThrow(new IOException("unavailable"));
             Assertions.assertThat(service.crxMeta("package.crx")).isNull();
         }
         try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
-            files.when(() -> Files.readAllBytes(crx)).thenThrow(new java.io.IOException("unavailable"));
+            files.when(() -> Files.readAllBytes(crx)).thenThrow(new IOException("unavailable"));
             Assertions.assertThat(service.crxMeta("package.crx")).isNull();
         }
     }
@@ -274,7 +276,7 @@ class UpdateServiceTest {
         sha256.setAccessible(true);
         try (MockedStatic<MessageDigest> digests = Mockito.mockStatic(MessageDigest.class)) {
             digests.when(() -> MessageDigest.getInstance("SHA-256"))
-                    .thenThrow(new java.security.NoSuchAlgorithmException("missing"));
+                    .thenThrow(new NoSuchAlgorithmException("missing"));
             Assertions.assertThatThrownBy(() -> sha256.invoke(null, new byte[0]))
                     .isInstanceOf(InvocationTargetException.class)
                     .hasCauseInstanceOf(IllegalStateException.class);
@@ -294,7 +296,7 @@ class UpdateServiceTest {
 
         try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
             files.when(() -> Files.getLastModifiedTime(file))
-                    .thenThrow(new java.io.IOException("unavailable"));
+                    .thenThrow(new IOException("unavailable"));
             Assertions.assertThat((long) lastModified.invoke(null, file)).isEqualTo(-1L);
         }
     }

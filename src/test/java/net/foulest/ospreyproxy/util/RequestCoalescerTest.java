@@ -129,7 +129,7 @@ class RequestCoalescerTest {
 
         futureFor(coalescer, "checked").completeExceptionally(new Exception("checked"));
         Assertions.assertThatThrownBy(() -> coalescer.get("checked", () -> "unused"))
-                .isInstanceOf(java.util.concurrent.CompletionException.class)
+                .isInstanceOf(CompletionException.class)
                 .hasCauseInstanceOf(Exception.class);
     }
 

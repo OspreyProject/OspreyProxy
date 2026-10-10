@@ -6,6 +6,7 @@ import org.mockito.Mockito;
 
 import javax.crypto.Mac;
 import java.lang.reflect.Method;
+import java.security.NoSuchAlgorithmException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,7 +39,7 @@ class HashUtilTest {
         createMac.setAccessible(true);
         try (MockedStatic<Mac> macs = Mockito.mockStatic(Mac.class)) {
             macs.when(() -> Mac.getInstance("HmacSHA256"))
-                    .thenThrow(new java.security.NoSuchAlgorithmException("missing"));
+                    .thenThrow(new NoSuchAlgorithmException("missing"));
             assertThatThrownBy(() -> createMac.invoke(null, new byte[32]))
                     .hasCauseInstanceOf(IllegalStateException.class);
         }

@@ -1,6 +1,9 @@
 package net.foulest.ospreyproxy.store;
 
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
+
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -9,9 +12,9 @@ class StoreConfigTest {
     @Test
     void configuresSqliteDataSourceAndJdbcTemplate() throws Exception {
         StoreConfig config = new StoreConfig();
-        javax.sql.DataSource dataSource = config.scanDataSource(":memory:", 1234);
+        DataSource dataSource = config.scanDataSource(":memory:", 1234);
 
-        try (var closeable = (com.zaxxer.hikari.HikariDataSource) dataSource) {
+        try (var closeable = (HikariDataSource) dataSource) {
             try (var connection = dataSource.getConnection()) {
                 assertThat(connection.getMetaData().getURL()).isEqualTo("jdbc:sqlite::memory:");
             }
@@ -24,7 +27,7 @@ class StoreConfigTest {
     void poolsASingleConnectionSoTheInMemoryDatabaseIsSharedAcrossCalls() throws Exception {
         StoreConfig config = new StoreConfig();
 
-        try (var dataSource = (com.zaxxer.hikari.HikariDataSource) config.scanDataSource(":memory:", 1000)) {
+        try (var dataSource = (HikariDataSource) config.scanDataSource(":memory:", 1000)) {
             var jdbc = config.scanJdbcTemplate(dataSource);
             jdbc.execute("CREATE TABLE t (id INTEGER)");
             jdbc.update("INSERT INTO t VALUES (1)");

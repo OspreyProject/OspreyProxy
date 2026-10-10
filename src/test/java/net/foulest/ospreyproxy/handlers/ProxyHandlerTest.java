@@ -37,6 +37,7 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -287,7 +288,7 @@ class ProxyHandlerTest {
         }
 
         Provider unserializableBody = baseProvider(mock(Provider.class));
-        Map<String, Object> circular = new java.util.HashMap<>();
+        Map<String, Object> circular = new HashMap<>();
         circular.put("self", circular);
         when(unserializableBody.buildBody("target")).thenReturn(circular);
         Assertions.assertThat(upstream(handler(unserializableBody, mock(MetricsService.class),

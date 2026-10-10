@@ -3,12 +3,12 @@ package net.foulest.ospreyproxy.handlers;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import java.io.IOException;
@@ -22,6 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -233,14 +234,14 @@ class ContactHandlerTest {
         }
 
         ThreadPoolExecutor timedOutExecutor = mock(ThreadPoolExecutor.class);
-        when(timedOutExecutor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)).thenReturn(false);
+        when(timedOutExecutor.awaitTermination(10, TimeUnit.SECONDS)).thenReturn(false);
         when(timedOutExecutor.shutdownNow()).thenReturn(new ArrayList<>());
         ContactHandler timedOut = handler(mock(JdbcTemplate.class), null, false, "", mock(HttpClient.class), timedOutExecutor);
         timedOut.shutdown();
         verify(timedOutExecutor).shutdownNow();
 
         ThreadPoolExecutor interruptedExecutor = mock(ThreadPoolExecutor.class);
-        when(interruptedExecutor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS))
+        when(interruptedExecutor.awaitTermination(10, TimeUnit.SECONDS))
                 .thenThrow(new InterruptedException("interrupted"));
         ContactHandler interrupted = handler(mock(JdbcTemplate.class), null, false, "", mock(HttpClient.class), interruptedExecutor);
         try {
@@ -401,7 +402,7 @@ class ContactHandlerTest {
             AtomicBoolean ran = new AtomicBoolean();
             assertThatThrownBy(() -> executor.getRejectedExecutionHandler()
                     .rejectedExecution(() -> ran.set(true), executor))
-                    .isInstanceOf(java.util.concurrent.RejectedExecutionException.class);
+                    .isInstanceOf(RejectedExecutionException.class);
             assertThat(ran).isFalse();
             assertThat(executor.getQueue()).isEmpty();
         } finally {
@@ -431,7 +432,7 @@ class ContactHandlerTest {
     void verifyRestoresTheSubmissionAndReportsBusyWhenTheMailQueueRejects() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ThreadPoolExecutor full = mock(ThreadPoolExecutor.class);
-        org.mockito.Mockito.doThrow(new java.util.concurrent.RejectedExecutionException("full"))
+        doThrow(new RejectedExecutionException("full"))
                 .when(full).execute(any(Runnable.class));
         ContactHandler handler = handler(jdbc, mailSender(), false, "", mock(HttpClient.class), full);
         Map<String, Object> row = Map.of(
@@ -469,10 +470,10 @@ class ContactHandlerTest {
     void submitRemovesTheRowAndRefundsTheRecipientQuotaWhenTheVerificationEmailFails() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         JavaMailSender sender = mailSender();
-        org.mockito.Mockito.doThrow(new org.springframework.mail.MailSendException("smtp down"))
+        doThrow(new MailSendException("smtp down"))
                 .when(sender).send(any(MimeMessage.class));
         ThreadPoolExecutor direct = mock(ThreadPoolExecutor.class);
-        org.mockito.Mockito.doAnswer(invocation -> {
+        doAnswer(invocation -> {
             invocation.<Runnable>getArgument(0).run();
             return null;
         }).when(direct).execute(any(Runnable.class));
@@ -521,8 +522,8 @@ class ContactHandlerTest {
     }
 
     private static ThreadPoolExecutor executor() {
-        return new ThreadPoolExecutor(1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
-                new java.util.concurrent.ArrayBlockingQueue<>(1));
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(1));
     }
 
     private static JavaMailSender mailSender() {

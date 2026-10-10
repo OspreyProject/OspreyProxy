@@ -40,6 +40,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -411,7 +412,7 @@ public class UpdateHandler {
         }
 
         try {
-            OffsetDateTime midnight = java.time.LocalDate.parse(value).atStartOfDay().atOffset(ZoneOffset.UTC);
+            OffsetDateTime midnight = LocalDate.parse(value).atStartOfDay().atOffset(ZoneOffset.UTC);
             return DateTimeFormatter.RFC_1123_DATE_TIME.format(midnight);
         } catch (@SuppressWarnings("OverlyBroadCatchBlock") Exception ignored) {
             return null;

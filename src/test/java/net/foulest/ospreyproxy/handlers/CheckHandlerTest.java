@@ -26,7 +26,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.mockito.Mockito.*;
 
@@ -122,12 +126,13 @@ class CheckHandlerTest {
         Provider malicious = provider("malicious");
         Provider limited = provider("limited");
         ProxyHandler proxy = mock(ProxyHandler.class);
+
         when(proxy.resolveForCheck(allowed, CheckHandler.prepare("example.com")))
-                .thenReturn(net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED);
+                .thenReturn(LookupVerdict.ALLOWED);
         when(proxy.resolveForCheck(malicious, CheckHandler.prepare("example.com")))
-                .thenReturn(net.foulest.ospreyproxy.result.LookupVerdict.of(LookupResult.MALICIOUS));
+                .thenReturn(LookupVerdict.of(LookupResult.MALICIOUS));
         when(proxy.resolveForCheck(limited, CheckHandler.prepare("example.com")))
-                .thenReturn(net.foulest.ospreyproxy.result.LookupVerdict.RATE_LIMITED);
+                .thenReturn(LookupVerdict.RATE_LIMITED);
 
         CheckHandler live = handler(null, List.of(allowed, malicious, limited), 10, proxy);
         ByteArrayOutputStream liveOutput = new ByteArrayOutputStream();
@@ -261,7 +266,7 @@ class CheckHandlerTest {
         ProxyHandler slowProxy = mock(ProxyHandler.class);
         when(slowProxy.resolveForCheck(eq(deadlineProvider), any())).thenAnswer(ignored -> {
             Thread.sleep(1_100L);
-            return net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED;
+            return LookupVerdict.ALLOWED;
         });
         CheckHandler deadline = handler(null, List.of(deadlineProvider), 5, slowProxy, false, "", mock(HttpClient.class), 1);
         deadline.check(new CheckRequest("example.com", null, false), request()).getBody().writeTo(new ByteArrayOutputStream());
@@ -277,7 +282,7 @@ class CheckHandlerTest {
         Provider allowedProvider = provider("allowed");
         ProxyHandler allowedProxy = mock(ProxyHandler.class);
         when(allowedProxy.resolveForCheck(eq(allowedProvider), any()))
-                .thenReturn(net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED);
+                .thenReturn(LookupVerdict.ALLOWED);
         CheckHandler persistent = handler(store, List.of(allowedProvider), 5, allowedProxy, false, "", mock(HttpClient.class), 1);
         persistent.check(new CheckRequest("example.com", null, true), request()).getBody().writeTo(new ByteArrayOutputStream());
         verify(store).upsert(any(ScanRecord.class));
@@ -290,8 +295,8 @@ class CheckHandlerTest {
     @Test
     void deadlineDoesNotInterruptAStragglingProviderCall() throws Exception {
         Provider slowProvider = provider("straggler");
-        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
-        java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        CountDownLatch finished = new CountDownLatch(1);
         ProxyHandler slowProxy = mock(ProxyHandler.class);
         when(slowProxy.resolveForCheck(eq(slowProvider), any())).thenAnswer(ignored -> {
             try {
@@ -301,7 +306,7 @@ class CheckHandlerTest {
             } finally {
                 finished.countDown();
             }
-            return net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED;
+            return LookupVerdict.ALLOWED;
         });
 
         CheckHandler handler = handler(null, List.of(slowProvider), 5, slowProxy, false, "", mock(HttpClient.class), 1);
@@ -310,7 +315,7 @@ class CheckHandlerTest {
 
         // The scan was cut off at the deadline, but the shared call is left to finish undisturbed
         Assertions.assertThat(output.toString(StandardCharsets.UTF_8)).contains("\"result\":\"failed\"");
-        Assertions.assertThat(finished.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        Assertions.assertThat(finished.await(5, TimeUnit.SECONDS)).isTrue();
         Assertions.assertThat(interrupted).isFalse();
     }
 
@@ -345,17 +350,17 @@ class CheckHandlerTest {
         Assertions.assertThat(invokeStatic("isIpLiteral", new Class[]{String.class}, "2001:db8:A.1")).isEqualTo(true);
         Assertions.assertThat(invokeStatic("isIpLiteral", new Class[]{String.class}, "1.2.3.x")).isEqualTo(false);
         Assertions.assertThat(invokeStatic("isFlagged",
-                new Class[]{net.foulest.ospreyproxy.result.LookupVerdict.class},
-                net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED)).isEqualTo(false);
+                new Class[]{LookupVerdict.class},
+                LookupVerdict.ALLOWED)).isEqualTo(false);
         Assertions.assertThat(invokeStatic("isFlagged",
-                new Class[]{net.foulest.ospreyproxy.result.LookupVerdict.class},
-                net.foulest.ospreyproxy.result.LookupVerdict.of(LookupResult.PHISHING))).isEqualTo(true);
+                new Class[]{LookupVerdict.class},
+                LookupVerdict.of(LookupResult.PHISHING))).isEqualTo(true);
 
         FutureTask<IndexedVerdict> failed = new FutureTask<>(() -> {
             throw new IllegalStateException("failed");
         });
         failed.run();
-        Assertions.assertThat(invokeStatic("safeGet", new Class[]{java.util.concurrent.Future.class}, failed)).isNull();
+        Assertions.assertThat(invokeStatic("safeGet", new Class[]{Future.class}, failed)).isNull();
     }
 
     @Test
@@ -375,9 +380,9 @@ class CheckHandlerTest {
         Method persist = CheckHandler.class.getDeclaredMethod("persist", PreparedUrl.class, Map.class);
         persist.setAccessible(true);
         persist.invoke(handler, new PreparedUrl("example.com", "example.com", "https://example.com", true),
-                Map.of("provider", net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED));
+                Map.of("provider", LookupVerdict.ALLOWED));
 
-        Method safeGet = CheckHandler.class.getDeclaredMethod("safeGet", java.util.concurrent.Future.class);
+        Method safeGet = CheckHandler.class.getDeclaredMethod("safeGet", Future.class);
         safeGet.setAccessible(true);
         FutureTask<Object> task = new FutureTask<>(() -> null);
         Thread.currentThread().interrupt();
@@ -392,7 +397,7 @@ class CheckHandlerTest {
     void interruptedScansRestoreTheFlagAndReportStragglersAsFailed() throws Exception {
         ProxyHandler proxy = mock(ProxyHandler.class);
         when(proxy.resolveForCheck(any(), any()))
-                .thenReturn(net.foulest.ospreyproxy.result.LookupVerdict.ALLOWED);
+                .thenReturn(LookupVerdict.ALLOWED);
 
         Provider provider = mock(Provider.class);
         when(provider.getEndpointName()).thenReturn("provider");
@@ -400,7 +405,7 @@ class CheckHandlerTest {
 
         CheckHandler handler = failureHandler(mock(ScanStore.class), proxy);
         Method stream = CheckHandler.class.getDeclaredMethod("streamResults",
-                OutputStream.class, java.util.List.class, PreparedUrl.class);
+                OutputStream.class, List.class, PreparedUrl.class);
         stream.setAccessible(true);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -409,7 +414,7 @@ class CheckHandlerTest {
         boolean interrupted;
         Thread.currentThread().interrupt();
         try {
-            stream.invoke(handler, out, java.util.List.of(provider), prepared);
+            stream.invoke(handler, out, List.of(provider), prepared);
         } finally {
             interrupted = Thread.interrupted();
         }
@@ -436,7 +441,7 @@ class CheckHandlerTest {
     private static CheckHandler failureHandler(ScanStore store, ProxyHandler proxyHandler) {
         ObjectProvider<ScanStore> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(store);
-        return new CheckHandler(proxyHandler, java.util.List.of(), provider,
+        return new CheckHandler(proxyHandler, List.of(), provider,
                 60, false, "", "http://unused", 1, 1, 60, 1, 60, 1);
     }
 

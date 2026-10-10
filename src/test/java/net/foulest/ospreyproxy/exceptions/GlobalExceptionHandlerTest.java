@@ -21,9 +21,13 @@ import net.foulest.ospreyproxy.util.ErrorUtil;
 import org.apache.catalina.connector.ClientAbortException;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -99,18 +103,10 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void clientErrorHandlersReturn4xxInsteadOf500() {
-        Assertions.assertThat(handler.handleBadRequest(
-                new org.springframework.web.bind.MissingServletRequestParameterException("since", "Long")))
-                .isSameAs(ErrorUtil.RESP_400);
-        Assertions.assertThat(handler.handleBadRequest(
-                new org.springframework.beans.TypeMismatchException("abc", Long.class)))
-                .isSameAs(ErrorUtil.RESP_400);
-        Assertions.assertThat(handler.handleNotAcceptable(
-                new org.springframework.web.HttpMediaTypeNotAcceptableException("no")))
-                .isSameAs(ErrorUtil.RESP_406);
-        Assertions.assertThat(handler.handleUnsupportedMediaType(
-                new org.springframework.web.HttpMediaTypeNotSupportedException("no")))
-                .isSameAs(ErrorUtil.RESP_415);
+        Assertions.assertThat(handler.handleBadRequest(new MissingServletRequestParameterException("since", "Long"))).isSameAs(ErrorUtil.RESP_400);
+        Assertions.assertThat(handler.handleBadRequest(new TypeMismatchException("abc", Long.class))).isSameAs(ErrorUtil.RESP_400);
+        Assertions.assertThat(handler.handleNotAcceptable(new HttpMediaTypeNotAcceptableException("no"))).isSameAs(ErrorUtil.RESP_406);
+        Assertions.assertThat(handler.handleUnsupportedMediaType(new HttpMediaTypeNotSupportedException("no"))).isSameAs(ErrorUtil.RESP_415);
     }
 
     @Test

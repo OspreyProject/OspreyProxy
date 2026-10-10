@@ -26,7 +26,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Main application class for OspreyProxy.
  * <p>
- * The default JDBC auto-configuration is excluded so the app starts cleanly whether or not the scan
+ * The default JDBC autoconfiguration is excluded so the app starts cleanly whether the scan
  * store is enabled. When {@code osprey.store.enabled=true}, the store's own configuration supplies a
  * single SQLite data source and JdbcTemplate; when it is off, no database beans exist at all.
  */

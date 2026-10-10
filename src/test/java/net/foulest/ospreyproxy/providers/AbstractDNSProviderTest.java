@@ -23,6 +23,7 @@ import net.foulest.ospreyproxy.services.CircuitBreakerService;
 import net.foulest.ospreyproxy.util.dns.DNSFormat;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.HttpClientResponseHandler;
@@ -549,7 +550,7 @@ class AbstractDNSProviderTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static CloseableHttpClient clientHandling(org.apache.hc.core5.http.ClassicHttpResponse response)
+    private static CloseableHttpClient clientHandling(ClassicHttpResponse response)
             throws IOException {
         CloseableHttpClient client = Mockito.mock(CloseableHttpClient.class);
         Mockito.when(client.execute(ArgumentMatchers.any(ClassicHttpRequest.class),

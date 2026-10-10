@@ -603,7 +603,7 @@ public class ContactHandler {
      * @return {@code true} if the message was handed to the mail sender, {@code false} otherwise.
      */
     private boolean forwardToSupport(@NonNull String category, @NonNull String name, @NonNull String email,
-                                  @NonNull String company, @NonNull String message, long createdAt) {
+                                     @NonNull String company, @NonNull String message, long createdAt) {
         if (sender == null) {
             return false;
         }

@@ -11,6 +11,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 class ScanAggregatorTest {
@@ -67,7 +68,7 @@ class ScanAggregatorTest {
                         ScanRecord::indexable, ScanRecord::publishedAt)
                 .containsExactly("https://bad.example/path", "bad.example", "example",
                         "suspicious", 1, 4, 123L, 123L, 1, false, null);
-        Assertions.assertThat(record.results()).containsEntry("suspicious", java.util.List.of("suspicious"));
+        Assertions.assertThat(record.results()).containsEntry("suspicious", List.of("suspicious"));
     }
 
     @Test

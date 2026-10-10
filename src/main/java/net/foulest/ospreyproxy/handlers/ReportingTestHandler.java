@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.*;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -130,7 +131,7 @@ public class ReportingTestHandler {
             return rejection;
         }
 
-        if (body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PAYLOAD_BYTES) {
+        if (body.getBytes(StandardCharsets.UTF_8).length > MAX_PAYLOAD_BYTES) {
             return ErrorUtil.RESP_400;
         }
 
