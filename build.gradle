@@ -27,7 +27,7 @@ repositories {
 
 configurations.configureEach {
     resolutionStrategy {
-        force 'tools.jackson.core:jackson-databind:3.1.5'
+        force 'tools.jackson.core:jackson-databind:3.2.3'
     }
 }
 
