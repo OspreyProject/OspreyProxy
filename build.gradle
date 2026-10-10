@@ -37,7 +37,7 @@ dependencies {
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.5.1' // KEEP ON 5.5.1
     implementation 'org.springframework.boot:spring-boot-starter-web:4.1.1'
     implementation 'org.springframework.boot:spring-boot-starter-mail:4.1.1'
-    implementation 'com.google.guava:guava:33.7.1-jre'
+    implementation 'com.google.guava:guava:33.7.2-jre'
 
     // Spring JDBC + SQLite - durable aggregate scan store (single local WAL database file)
     // https://docs.spring.io/spring-boot/reference/data/sql.html
